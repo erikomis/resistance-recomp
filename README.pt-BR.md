@@ -12,18 +12,17 @@ front end roda das telas legais pela instalação da primeira execução, pela
 tela de título e pelo menu principal até uma campanha nova. O executável da
 campanha então toca o vídeo de abertura da fase 1 e carrega "The Gauntlet"
 (York). Numa janela, com um DualSense, York roda em primeira pessoa com o
-HUD: inimigos e aliados, tiros, morrer e renascer. A cidade aparece com as
-cores certas. Ainda está lento (~14 fps medidos antes das últimas
-otimizações), e depois de morrer o jogador renasce muito acima do mapa (veja
-[Estado](#estado)).
+HUD: inimigos e aliados, tiros, morrer e renascer no checkpoint. A cidade
+aparece com as cores certas a uns 30 fps, numa janela só dos menus até a
+campanha (veja [Estado](#estado)).
 
 Construído sobre o [ps3recomp](https://github.com/sp00nznet/ps3recomp),
 seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
 do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
-> **Trabalho em andamento, bem no começo.** O capítulo 1 dá para jogar, mas
-> lento e com erros de renderização. Não há release nem app: você mesmo
+> **Trabalho em andamento, bem no começo.** O capítulo 1 dá para jogar, ainda
+> com erros de renderização em aberto. Não há release nem app: você mesmo
 > compila a partir do seu disco. Só macOS com Apple silicon, e é preciso um
 > controle. O que falta está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
@@ -34,7 +33,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 ## Estado
 
-Em 2026-10-22 (cores do mundo corretas, cache de vértices, correções da comparação com o RPCS3), cada item verificado em execuções num Mac com Apple silicon e Metal.
+Em 2026-10-22 (renascimento corrigido, uma janela persistente, gameplay a ~30 fps), cada item verificado em execuções num Mac com Apple silicon e Metal.
 
 | | |
 | --- | --- |
@@ -49,16 +48,16 @@ Em 2026-10-22 (cores do mundo corretas, cache de vértices, correções da compa
 | SPUs raw (dois programas que o `game.self` inicia depois da abertura) | ✅ traduzidas e rodando |
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
 | Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
-| Taxa de quadros | 🚧 ~14 fps no gameplay com o cache de vértices entre frames do port do inFAMOUS 2 (5,9 fps sem ele, mesmo build), medidos antes do build otimizado e do pacote de desempenho do inFAMOUS 2; novas medições em andamento |
+| Taxa de quadros | ✅ ~30 fps no gameplay: 32,5 fps com o pacote de desempenho do inFAMOUS 2 contra 6,0 fps com as chaves dele desligadas (A/B, mesmo build, primeiros 60 s de gameplay); 30,5 fps na cidade com todas as correções, inclusive a do renascimento |
 | Cores do mundo (prédios, telhados, ruas) | ✅ corretas: o mundo azul era um wrap do offset de vértice que o RSX faz e o port não fazia (veja [Como funciona](#como-funciona)) |
 | Sombras e fumaça | 🚧 retângulos escuros no chão; a comparação de profundidade das sombras estava invertida e as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça); as duas coisas corrigidas depois de uma comparação com o RPCS3, falta conferir no jogo |
-| Posição do jogador | 🚧 depois de morrer e renascer no checkpoint o jogador volta muito acima do mapa (só céu, terreno distante e água são desenhados); o save do checkpoint bate com o do RPCS3, o posicionamento no renascimento está errado (em investigação) |
-| Janela na passagem para a campanha | ✅ a janela do `game.self` abre onde estava a do menu (posição, tamanho, tela cheia); uma janela única e persistente está em desenvolvimento |
+| Renascimento | ✅ depois de morrer o jogador volta no chão, onde fica o checkpoint (antes ia parar no céu; um reinício de SPU raw que o runtime descartava, veja [Como funciona](#como-funciona)); verificado em 12 mortes |
+| Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título ainda mostra 0 |
 | Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
 | Depois do vídeo de abertura | ✅ o travamento intermitente foi corrigido (pilha de callback compartilhada) |
-| Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 |
+| Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 (a entrada com o processo do jogo em segundo plano está ligada para o launcher; ainda não testada assim com um controle físico); ainda sem vibração |
 | Teclado e mouse | ⏳ não no macOS (o fallback de teclado do toolkit é só para Windows): é preciso um controle |
-| Atualização v1.7 do jogo | ⏳ o port é da versão 01.00 do disco; portar a última atualização está nos planos (veja o [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md)) |
+| Atualização v1.7 do jogo | 🚧 em andamento: traduzindo de novo o `game.self` atualizado do `patch_06` e ligando o carregador de patches do EBOOT 01.00; hoje o port roda a 01.00 do disco (veja o [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md)) |
 | Linux e Windows | ⏳ sem suporte |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram) |
 
@@ -103,7 +102,31 @@ As correções que trouxeram o port até aqui:
   código traduzido -O1 em toda configuração menos Debug) e o trabalho de
   desempenho do port do inFAMOUS 2 (cache de vértices por stream, ring de
   staging do Metal, bind só do estado que mudou, memo de programas, cache de
-  shaders MSL, relógio de frame de 1 ms com um present por flip).
+  shaders MSL, relógio de frame de 1 ms com um present por flip): 32,5 fps no
+  gameplay com ele contra 6,0 fps com as chaves dele desligadas, 30,5 fps na
+  cidade com todas as correções.
+- **Renascimento:** a cada recarga do checkpoint o jogo escreve
+  `SPU_RunCntl`=0 na SPU raw 1 (programa `5A10969E466A2298`), traz o programa
+  de volta para o local store por DMA proxy e escreve `SPU_RunCntl`=1. O
+  runtime ignorava a parada enquanto a SPU estava parada esperando num canal e
+  descartava o reinício, então o programa antigo continuava rodando sobre a
+  imagem recarregada e o jogador ia parar no céu. Agora, como no
+  `RawSPUThread.cpp` do RPCS3, a parada para de fato a SPU raw (respeitada nas
+  leituras e esperas de canal e na espera da mailbox de saída; a parada
+  espera a thread do host) e o reinício a começa do zero
+  (`runtime/spu/spu_raw.c`, patch do toolkit). Num teste com 12 mortes a
+  câmera voltou sempre à posição da primeira vida (0 de 666 amostras fora da
+  faixa, contra 193 de 292 antes).
+- **Uma janela:** o exitspawn é um `execv`, e uma janela some junto com a
+  imagem do processo que a abriu. Um launcher pequeno, `Resistance`
+  (`tools/host_window/host_window.m` no toolkit, alvo `Resistance` no
+  `port/CMakeLists.txt`), é dono da janela e roda o `ResistanceRecomp` com
+  `PS3RECOMP_HOST_SURFACES` apontando para um nome de bootstrap Mach; o backend
+  Metal então renderiza na GPU em IOSurfaces que compartilha com o launcher e
+  não abre janela nem ícone no Dock. A imagem que o exec traz mantém o pid e
+  se conecta de novo. Fechar a janela encerra o jogo; se o launcher morre, o
+  jogo sai em ~2 s; sem o launcher o backend abre a própria janela, como
+  antes.
 
 As mudanças no toolkit são um único patch sobre o ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -113,8 +136,10 @@ resto do trabalho de desempenho, as correções de uma comparação com o RPCS3
 (direção da comparação das sombras, snapshots de profundidade recortados e
 liberados, profundidade replicada em todas as lanes, texturas comprimidas
 nunca resolvidas a partir de render targets, threads PPU começando com
-VSCR[NJ]=1, sem `getenv` a cada escrita em canal MFC da SPU), a passagem do
-estado da janela pelo exitspawn e diagnósticos (`VDEC_PICLOG`,
+VSCR[NJ]=1, sem `getenv` a cada escrita em canal MFC da SPU), a parada e o
+reinício das SPUs raw pelo `SPU_RunCntl`, a janela por IOSurface compartilhada
+(`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`), a
+passagem do estado da janela pelo exitspawn e diagnósticos (`VDEC_PICLOG`,
 `PPU_STACKINFO_LOG`, `SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`,
 `RSX_ENGINE_PASS_DUMP_TRIGGER`, `RSX_ENGINE_PASS_DUMP_DRAWS`, `RSX_VPC_LOG`,
 comandos de analógico no `PAD_FILE`, uma linha de log mais completa no
@@ -158,7 +183,7 @@ exemplo `tools/rebuild.sh lift build`):
 | `analyse` | o `ppu_loader.py` do toolkit (funções, imports, TOC) | `analysis/BCUS98107/` |
 | `lift` | o `ppu_lifter.py` do toolkit, 16 pedaços para o EBOOT e 12 para o `game.self` | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: o policy module do job manager, extraído do seu EBOOT, embrulhado e traduzido | `port/spu/captured/` |
-| `build` | CMake + Ninja, Metal, FFmpeg em runtime | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp` |
+| `build` | CMake + Ninja, Metal, FFmpeg em runtime; também o launcher da janela, `Resistance` | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
 
 Tudo na última coluna é gerado a partir da sua cópia e está no `.gitignore`.
 Mantenha essa organização: quando o EBOOT passa para a campanha, o
@@ -219,8 +244,9 @@ DualShock ou Xbox; no macOS teclado e mouse ainda não funcionam) e:
 tools/play.sh
 ```
 
-Ele abre o front end numa janela; começar uma campanha passa para o build do
-`game.self` na mesma janela. No **primeiro boot aperte START duas vezes**: na
+Ele abre o front end numa janela do launcher `Resistance` (o `play.sh` o
+compila em segundos se um build anterior a ele não o tiver); começar uma
+campanha passa para o build do `game.self` na mesma janela. No **primeiro boot aperte START duas vezes**: na
 tela legal e depois na pergunta do "initial setup" (a instalação no HDD, feita
 uma vez só). Saves, o cache da instalação e o log (`last.log`) ficam em
 `~/Library/Application Support/resistance-recomp/` (`RES_DATA` muda isso). O
@@ -264,7 +290,9 @@ Máscaras de botão: START `0x0008`, CIMA `0x0010`, DIREITA `0x0020`, BAIXO
 ### Variáveis de ambiente
 
 Os scripts definem estas por você ([tools/env.sh](tools/env.sh)); para rodar
-um build direto: `build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf`.
+um build direto: `build/BCUS98107/Resistance -- build/BCUS98107/ResistanceRecomp
+game/BCUS98107/EBOOT.elf` (ou, sem o launcher, o `ResistanceRecomp` abre a
+própria janela).
 
 | Variável | O que faz |
 | --- | --- |
@@ -286,6 +314,7 @@ um build direto: `build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf`.
 | `SPURS_PM_TRACE=1` | registra os polls do policy module do job manager (`[spurs-pm]`; desligado por padrão, custa taxa de quadros) |
 | `PS3_TITLE` | título da janela |
 | `RES_SPAWN_BIN`, `RES_SPAWN_ELF` | o build e o ELF que a passagem do exitspawn executa (padrão: a pasta de build irmã e `game/BCUS98107/…`) |
+| `PS3RECOMP_HOST_SURFACES` | definida pelo launcher `Resistance`: o nome de bootstrap Mach das superfícies compartilhadas da janela; não é para definir à mão |
 | `PS3RECOMP_WINDOW_STATE` | definida pelo port no exitspawn para a próxima janela abrir onde estava a anterior; não é para definir à mão |
 | `RES_SPAWN_KEEP=1` | mantém o arquivo de dados do exitspawn (para rodar o `game.self` de novo à mão com `RES_SPAWN_DATA=<arquivo>`) |
 | `RES_PEEK=<seg>:<end>[,*<end>...]` | a cada `<seg>`, imprime 32 bytes da memória do guest em cada endereço (`*` desreferencia antes) |
@@ -296,7 +325,7 @@ um build direto: `build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf`.
 
 | Caminho | O que é |
 | --- | --- |
-| [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn e a passagem do estado da janela, `RES_PEEK`), `CMakeLists.txt`, `config.toml`, `spu/spu_workloads.c` (registro das SPUs) |
+| [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn e a passagem do estado da janela, `RES_PEEK`), `CMakeLists.txt` (com o alvo do launcher `Resistance`), `config.toml`, `spu/spu_workloads.c` (registro das SPUs) |
 | [`patches/`](patches/) | O patch do toolkit sobre o ps3recomp v0.17.0 |
 | [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` e os scripts de execução |
 | [`ROADMAP.pt-BR.md`](ROADMAP.pt-BR.md) | Estado e próximos passos |

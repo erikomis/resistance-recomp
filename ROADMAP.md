@@ -9,11 +9,12 @@ to macOS/arm64 and what comes next. Same layout as the inFAMOUS 2 roadmap.
 ## Status at a glance (2026-10-22)
 
 - **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
-- **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning. The town renders with its proper colours (the blue world is fixed).
-- **Faster:** the cross-frame vertex cache took gameplay from 5.9 to ~14 fps (same unoptimised build). Since then the build is optimised (runtime -O2, lifted code -O1) and the inFAMOUS 2 performance stack is in; new measurements in progress.
+- **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning on the ground at the checkpoint (the respawn bug is fixed). The town renders with its proper colours (the blue world is fixed).
+- **One window:** the `Resistance` launcher owns the window and the game draws into it through shared IOSurfaces; the same window stays up from the menus through the campaign intro (~33 fps).
+- **Faster:** ~30 fps in gameplay. The inFAMOUS 2 performance stack gives 32.5 fps vs 6.0 fps with its knobs off (A/B, same build, first 60 s of gameplay); 30.5 fps in the town with every fix in, the respawn fix included.
 - **Released:** nothing yet.
-- **Open:** after dying, the player respawns far above the map; dark rectangles on the ground (shadows) and the smoke, to check in game after the RPCS3-comparison fixes; text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); no rumble; no Windows or Linux.
-- **Next:** the respawn position (top priority), the in-game check of shadows and smoke, an fps measurement with every change, then the single-window launcher and the v1.7 update.
+- **Open:** dark rectangles on the ground (shadows) and the smoke, to check in game after the RPCS3-comparison fixes; text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); no rumble; the launcher's window title shows "guest FPS" 0; no Windows or Linux.
+- **Next:** the in-game check of shadows, ground rectangles and smoke; the v1.7 port (in progress); a physical controller with the launcher; DualShock rumble; keyboard and mouse on macOS; the legal-screen text overlap; the guest-FPS title nit.
 
 ## Current state (2026-10-22)
 
@@ -63,7 +64,26 @@ What got it this far:
   14 fps in gameplay, same build, cache on vs off). The port had been compiled
   at -O0 (no `CMAKE_BUILD_TYPE`, and the toolkit's -O2 only applied to
   Release/RelWithDebInfo); now the runtime is -O2 and the lifted PPU code -O1
-  in every configuration but Debug.
+  in every configuration but Debug. With the inFAMOUS 2 performance stack:
+  32.5 fps in the first 60 s of gameplay vs 6.0 fps with its knobs off
+  (`PS3RECOMP_ENG_VCACHE_SPLIT=0`, `PS3RECOMP_METAL_BIND_ALL=1`,
+  `PS3_FRAMECLOCK_US=4000`), and 30.5 fps in the town with every fix in.
+- **Respawn:** on every checkpoint reload the game writes `SPU_RunCntl`=0 to
+  raw SPU 1 (image `5A10969E466A2298`), proxy-DMAs the program back into local
+  store and writes `SPU_RunCntl`=1. The runtime ignored the stop while the SPU
+  was parked in a channel wait and silently dropped the restart, so the old
+  program kept running over the reloaded image and the player was sent up
+  into the sky. As in RPCS3's `RawSPUThread.cpp`, `SPU_RunCntl`=0 now really
+  stops the raw SPU (the stop request is honoured in channel reads and waits
+  and in the out-mailbox stall; `raw_spu_stop` waits for the host thread) and
+  `SPU_RunCntl`=1 starts it fresh (`runtime/spu/spu_raw.c`, toolkit patch).
+- **One window:** a small launcher, `Resistance`
+  (`tools/host_window/host_window.m`), owns the window. `ResistanceRecomp`
+  renders on the GPU into IOSurfaces shared with it (the Mach bootstrap name
+  is passed in `PS3RECOMP_HOST_SURFACES`) and has no window or Dock icon of
+  its own. The window stays up across the EBOOT → `game.self` exitspawn
+  (`execv` keeps the pid and the new image reconnects). ~0.35 ms of GPU per
+  frame, no CPU copy, no measurable added latency.
 
 ---
 
@@ -73,9 +93,9 @@ What got it this far:
 
 - [x] **SPU jobs time out in gameplay.** Fixed 2026-10-22: the 15 WWS job modules lifted, SPURS kernel-style selection and atomic SPU events (see "Gameplay" under Done). The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
 - [x] **Hang after the intro movie (intermittent).** Fixed 2026-10-22: a shared HLE→guest callback stack (see "Gameplay" under Done). A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
-- [ ] **The player respawns above the map** (top priority, in progress). After dying and respawning from the checkpoint the player comes back far above the map: the draw count drops from ~250–500 to ~30–40 (only sky, far terrain and water). The checkpoint save (`USRDIR/quick.sav`, 52,832 bytes) matches RPCS3's to within 166 bytes, so the save is fine and the respawn placement is wrong. Hypotheses: PPU/SPU physics on reload; frame-time (dt) sensitivity after a long load (RPCS3's own 60 fps patch needs a minimum timestep). `RSX_VPC_LOG=16` follows the camera position.
-- [ ] **Dark rectangles on the ground (shadows) and the smoke** (in progress). The texture shadow comparison was in ARB order; the console and RPCS3 compare stored depth OP reference (RPCS3 issue #19391 shows the same rectangles). Fixed with the other RPCS3-comparison fixes (depth textures replicate depth to every lane, for soft particles and smoke); all video tests pass, the in-game check is pending.
-- [ ] **Frame rate** (in progress). ~14 fps in gameplay with the vertex cache, measured before the optimised build and the inFAMOUS 2 stack; measure again with every change.
+- [x] **The player respawns above the map.** Fixed 2026-10-22: a raw-SPU stop and restart the runtime dropped (see "Current state"). After dying the checkpoint reload sent the player straight up into the sky (draw count ~30–40: sky, far terrain and water); the save was fine. In a test with 12 deaths and respawns the camera always came back to the first life's position (0 of 666 camera samples out of range, 193 of 292 before); a separate run confirmed it (back on the ground at the same spot, then walking normally).
+- [ ] **Dark rectangles on the ground (shadows) and the smoke** (next). The texture shadow comparison was in ARB order; the console and RPCS3 compare stored depth OP reference (RPCS3 issue #19391 shows the same rectangles). Fixed with the other RPCS3-comparison fixes (depth textures replicate depth to every lane, for soft particles and smoke); all video tests pass, the in-game check is pending.
+- [x] **Frame rate.** ~30 fps in gameplay (2026-10-22): 32.5 fps with the inFAMOUS 2 stack vs 6.0 fps with its knobs off; 30.5 fps in the town with every fix in.
 - [x] **Buildings and roofs render solid bright blue.** Fixed 2026-10-22: the 28-bit vertex offset wrap (see "Current state"); the town renders with its proper colours.
 - [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
 - [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
@@ -111,7 +131,7 @@ What got it this far:
 
 ### Gameplay
 
-- [x] The first chapter (York) with a controller, in a window (2026-10-22; slow and with the rendering bugs above).
+- [x] The first chapter (York) with a controller, in a window (2026-10-22; with the rendering bugs above).
 - [ ] The first chapter (York) with keyboard and mouse.
 - [ ] Play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
 - [ ] Offline split-screen (co-op and versus): two pads, two viewports.
@@ -122,10 +142,10 @@ What got it this far:
 
 ### Performance
 
-- [ ] 30 fps (the game's own target) in gameplay. ~14 fps measured before the optimised build and the inFAMOUS 2 stack; new measurements in progress.
+- [x] ~30 fps (the game's own target) in gameplay: 30.5 fps in the town with every fix in (2026-10-22). Keep measuring with every change.
 - [x] The cross-frame vertex cache from the inFAMOUS 2 port: 5.9 → 14 fps (2026-10-22; `PS3RECOMP_ENG_VCACHE=0` turns it off).
 - [x] Optimised builds: runtime -O2 and lifted PPU code -O1 in every configuration but Debug (it had been -O0) (2026-10-22).
-- [ ] An fps A/B of the inFAMOUS 2 performance stack (applied, tests pass; see "Rendering and performance" under Done) and a measurement with every change (in progress).
+- [x] An fps A/B of the inFAMOUS 2 performance stack: 32.5 fps on vs 6.0 fps with its knobs off (`PS3RECOMP_ENG_VCACHE_SPLIT=0`, `PS3RECOMP_METAL_BIND_ALL=1`, `PS3_FRAMECLOCK_US=4000`), same build, first 60 s of gameplay (2026-10-22).
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
@@ -136,6 +156,7 @@ What got it this far:
 
 - [ ] Keyboard and mouse on macOS (the toolkit's keyboard fallback in `cellPad` is Windows-only), configurable mapping (`PS3_INPUT_MAP`).
 - [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
+- [ ] A physical controller with the launcher: the game process is in the background, so `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` is set; not tested with a controller yet.
 - [ ] Rumble (DualShock 3; the v1.7 update added it, also in the campaign).
 - [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode`; find what it uses motion for and map it to a button.
 
@@ -143,9 +164,11 @@ What got it this far:
 
 Sony's update server lists no packages for any Resistance title ID: the game patched itself through its multiplayer servers (shut down 2014-04-08). The last version is v1.7 (Patch 7), `patch_01`…`patch_07.psarc` in `USRDIR/data`; `patch_06` carries a new `game.self` (`/data/new_game.self`, ~8.7 MB), new collision data for levels 200–320, menus, fonts, translations, rumble and map-pack support. The patch notes are almost all multiplayer. The PSRewired revival server (psrewired.com) serves Resistance online and, per the RPCS3 wiki, the v1.7 update.
 
-- [ ] Finish stabilising 01.00 first.
-- [ ] Get v1.7 by letting the game update itself through PSRewired in RPCS3.
-- [ ] Re-lift the new `game.self`, revalidate the address-specific code, port the patched data path. Estimated 1–3 days to get back to playable.
+Decided 2026-10-22: the port moves to v1.7 (in progress).
+
+- [ ] Re-lift the patched `game.self` from `patch_06` (in progress).
+- [ ] Wire the 01.00 EBOOT's patch loader (in progress).
+- [ ] Revalidate the address-specific code and get back to playable.
 
 ### Rebuild
 
@@ -165,7 +188,8 @@ Sony's update server lists no packages for any Resistance title ID: the game pat
 ### App to install and play (launcher)
 
 - [x] The window keeps its position, size and fullscreen across the menu → campaign exitspawn (`PS3RECOMP_WINDOW_STATE`, 2026-10-22).
-- [ ] One persistent window: a launcher process that owns the window and a shared IOSurface the menu and campaign executables draw into (in development).
+- [x] One persistent window (2026-10-22): the `Resistance` launcher (`tools/host_window/host_window.m`) owns the window and the menu and campaign executables draw into IOSurfaces shared with it; no window or Dock icon of the game's own. Closing the window ends the game; if the launcher dies the game exits within ~2 s; without it the backend opens its own window. Verified from the menus through the campaign intro at ~33 fps.
+- [ ] The window title's "guest FPS" reads 0 with the launcher.
 - [ ] The inFAMOUS 2 launcher (Tauri) adapted: install/rebuild from the disc image, settings, controls, saves, report a problem, updates.
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
 
@@ -222,9 +246,11 @@ Sony's update server lists no packages for any Resistance title ID: the game pat
 - [x] Cross-frame vertex cache from the inFAMOUS 2 port: 5.9 → 14 fps in gameplay (same -O0 build, cache on vs off).
 - [x] Optimised builds: the port had been compiled at -O0; now the runtime is -O2 and the lifted PPU code -O1 for every configuration but Debug.
 - [x] Fixes from a comparison with RPCS3 (all video tests pass; in-game effect being evaluated): shadow comparison direction (stored depth OP reference), depth snapshots cropped to the texture size and released (they leaked every frame), depth textures replicate depth to every lane, compressed textures never resolve from render targets, PPU threads start with VSCR[NJ]=1, no `getenv` on every SPU MFC channel write.
-- [x] The inFAMOUS 2 performance and fix stack (tests pass; fps A/B in progress): per-stream vertex cache (static mesh streams cached apart from the per-frame lighting stream; `PS3RECOMP_ENG_VCACHE_SPLIT=0` turns it off), Metal staging ring, binding only changed state (`PS3RECOMP_METAL_BIND_ALL=1` turns it off), VP/FP program memo and pipeline hash index, index decode, SPU `mfc_for` cache, lock-line TTAS lock, NEON `cflts`/`cfltu`, SPU event queue full wait, texture border colour, X32_FLOAT depth lanes, depth snapshots retired by depth writes, MSL shader cache (`PS3_SHADER_CACHE=<dir>`, `PS3_SHADER_ASYNC=1` opt-in), a 1 ms frame clock and one present per flip (`PS3_FRAMECLOCK_US=4000` is the old pacing).
+- [x] The inFAMOUS 2 performance and fix stack (tests pass; fps A/B: 32.5 vs 6.0 fps): per-stream vertex cache (static mesh streams cached apart from the per-frame lighting stream; `PS3RECOMP_ENG_VCACHE_SPLIT=0` turns it off), Metal staging ring, binding only changed state (`PS3RECOMP_METAL_BIND_ALL=1` turns it off), VP/FP program memo and pipeline hash index, index decode, SPU `mfc_for` cache, lock-line TTAS lock, NEON `cflts`/`cfltu`, SPU event queue full wait, texture border colour, X32_FLOAT depth lanes, depth snapshots retired by depth writes, MSL shader cache (`PS3_SHADER_CACHE=<dir>`, `PS3_SHADER_ASYNC=1` opt-in), a 1 ms frame clock and one present per flip (`PS3_FRAMECLOCK_US=4000` is the old pacing).
 - [x] The executable is named `ResistanceRecomp` (it was `MyGameRecomp`), and the window keeps its position, size and fullscreen across exitspawn.
-- [x] Respawn diagnosis: the checkpoint save matches RPCS3's to within 166 bytes; the bug is in the respawn placement, not the save (still open, see Blockers).
+- [x] Respawn diagnosis: the checkpoint save matches RPCS3's to within 166 bytes; the bug was not in the save.
+- [x] Respawn fixed: `SPU_RunCntl`=0 really stops a raw SPU and `SPU_RunCntl`=1 starts it fresh (modelled on RPCS3's `RawSPUThread.cpp`); 12 deaths in a test, the camera back at the first life's position every time.
+- [x] One persistent window through the `Resistance` launcher and shared IOSurfaces (~0.35 ms GPU per frame, no CPU copy); the window survives the exitspawn.
 
 ### Tools
 

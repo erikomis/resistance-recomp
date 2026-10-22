@@ -290,6 +290,31 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# The window (macOS)
+# ---------------------------------------------------------------------------
+# exitspawn replaces this executable with the other build (stubs.cpp), and a
+# window goes away with the process image that opened it. `Resistance` holds
+# the window for the whole session instead: it runs ResistanceRecomp with
+# PS3RECOMP_HOST_SURFACES set, the Metal backend renders into IOSurfaces it
+# shares (libs/video/rsx_host_surface.h), and the image an exec brings up
+# attaches to the same window again. One Objective-C file and no runtime
+# library, so it builds in seconds. tools/play.sh starts the game through it:
+#
+#   build/BCUS98107/Resistance build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf
+if(APPLE)
+    enable_language(OBJC)
+    add_executable(Resistance "${PS3RECOMP_DIR}/tools/host_window/host_window.m")
+    target_include_directories(Resistance PRIVATE "${PS3RECOMP_DIR}/libs/video")
+    target_compile_definitions(Resistance PRIVATE HOST_WINDOW_TITLE="Resistance: Fall of Man")
+    target_compile_options(Resistance PRIVATE -fobjc-arc -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(Resistance PRIVATE
+        "-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework IOSurface")
+endif()
+
+# ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+if(APPLE)
+    install(TARGETS Resistance RUNTIME DESTINATION bin)
+endif()

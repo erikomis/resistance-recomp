@@ -4,7 +4,11 @@
 #   tools/play.sh
 #
 # Starts the front end (legal screens, menus); a new campaign exitspawns the
-# game.self build in the same window. A controller is required on macOS
+# game.self build in the same window. The window belongs to the launcher
+# (build/BCUS98107/Resistance, built here in seconds when missing): the game
+# process renders into it through shared IOSurfaces and has no window or Dock
+# icon of its own, so the window stays up across the exitspawn. Closing it
+# ends the game. A controller is required on macOS
 # (DualSense, DualShock or Xbox, through SDL2): the toolkit's keyboard and
 # mouse fallback is Windows-only. Close the game window (or Ctrl+C here) to
 # quit.
@@ -22,6 +26,7 @@ here=${0:A:h}; source "$here/env.sh"
 res_target game || { echo "run tools/rebuild.sh first" >&2; exit 1; }
 res_target eboot || { echo "run tools/rebuild.sh first" >&2; exit 1; }
 res_disc || exit 1
+res_launcher || exit 1
 
 DATA=${RES_DATA:-$HOME/Library/Application Support/resistance-recomp}
 mkdir -p "$DATA/dev_hdd0" "$DATA/dev_hdd1"; cd "$DATA" || exit 1
@@ -38,7 +43,7 @@ echo "Log: $LOG"
 unset PS3RECOMP_METAL_HEADLESS
 PS3_HDD0_ROOT=$DATA/dev_hdd0 PS3_HDD1_ROOT=$DATA/dev_hdd1 \
 PS3RECOMP_METAL_FPS=1 \
-    caffeinate -i "$B" "$E" > "$LOG" 2>&1
+    caffeinate -i "$L" -- "$B" "$E" > "$LOG" 2>&1
 st=$?
 echo "The game exited (status $st). Log: $LOG"
 exit $st

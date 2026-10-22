@@ -5,6 +5,7 @@
 #   RES_BUILD     build directories (default: $RES_ROOT/build)
 #                 $RES_BUILD/BCUS98107/ResistanceRecomp       the EBOOT build
 #                 $RES_BUILD/BCUS98107_game/ResistanceRecomp  the game.self build
+#                 $RES_BUILD/BCUS98107/Resistance             the window (launcher)
 #                 (a build from before the rename, still named MyGameRecomp,
 #                 is used when it is the only one there; rebuild to update it)
 #   RES_GAME      decrypted executables (default: $RES_ROOT/game/BCUS98107)
@@ -40,6 +41,19 @@ res_target() {
     [ ! -x "$B" ] && [ -x "${B:h}/MyGameRecomp" ] && B=${B:h}/MyGameRecomp
     [ -x "$B" ] || { echo "no build at $B (tools/rebuild.sh)" >&2; return 1; }
     [ -r "$E" ] || { echo "no $E (decrypt your disc's executables, see README)" >&2; return 1; }
+}
+
+# res_launcher -> $L, the program that owns the game window (target Resistance
+# of the EBOOT build). A build configured before the target existed gets it
+# here, in seconds. Run as: "$L" -- "$B" "$E". Without it the game opens its
+# own window, which an exitspawn closes and reopens.
+res_launcher() {
+    L=$RES_BUILD/BCUS98107/Resistance
+    [ -x "$L" ] && return 0
+    echo "building the game window ($L)..."
+    cmake --build "$RES_BUILD/BCUS98107" --target Resistance >&2 && [ -x "$L" ] && return 0
+    echo "could not build $L (tools/rebuild.sh build)" >&2
+    return 1
 }
 
 # The disc: PS3_VFS_ROOT, or the first mounted volume holding BCUS98107.
