@@ -6,47 +6,52 @@ Estado do port nativo de Resistance: Fall of Man (`BCUS98107`, disco, v01.00)
 para macOS/arm64 e o que vem a seguir. Mesmo formato do roadmap do inFAMOUS 2.
 `[x]` = feito e verificado; `[ ]` = a fazer; "(em andamento)" = sendo feito.
 
-## Resumo (2026-10-21)
+## Resumo (2026-10-22)
 
-- **Roda:** os dois executáveis (`EBOOT.BIN` e `game.self`) estão traduzidos, compilam e rodam no macOS/arm64 com Metal. O front end vai do boot pelas telas legais, pela instalação no HDD da primeira execução, pela tela de título e pelo menu principal (Campanha / Cooperativo / Multiplayer / Opções) até as perguntas de dificuldade da campanha e de inverter o eixo Y; os saves (`PROFILE.SAV`, `quick.sav`) são gravados e lidos de volta. Começar uma campanha faz exitspawn do `game.self`, que dá boot direto no vídeo de abertura da fase 1.
-- **Travado em:** os vídeos do jogo aparecem pretos (a imagem é desenhada como um quad em modo imediato; em investigação), então ainda não dá para assistir à abertura e o gameplay ainda não foi alcançado.
+- **Roda:** os dois executáveis (`EBOOT.BIN` e `game.self`) estão traduzidos, compilam e rodam no macOS/arm64 com Metal. O front end vai do boot pelas telas legais, pela instalação no HDD da primeira execução, pela tela de título e pelo menu principal até uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 inteiro (imagem e som), carrega o capítulo 1, "The Gauntlet" (York), e mostra "Press the START button".
+- **Travado em:** depois do START, os primeiros frames de gameplay esperam jobs de SPU que não terminam a tempo. O próprio log do jogo diz `igGeomCullClip SPU Timeout!`, `IGG::SpuBucketerDrawSort timeout` e `For fxvUpdate, WwsJobDelay timed out after 2 seconds`. O job manager roda esses jobs no interpretador de SPU.
 - **Lançado:** nada ainda.
 - **Em andamento:**
-  - [ ] (em andamento) Vídeos pretos: o cellVdec decodifica as imagens (FFmpeg em runtime), mas o quad em modo imediato que deveria mostrá-las não põe nada na tela.
-  - [ ] (em andamento) Texto das telas legais anteriores fica na tela e se sobrepõe às seguintes.
-- **Próximo:** o vídeo de abertura na tela, depois o primeiro capítulo (York) em janela.
+  - [ ] (em andamento) Capturar e traduzir os jobs de SPU do job manager (culling/clipping de geometria, ordenação de draws, efeitos, áudio NextSynth).
+  - [ ] (em andamento) Um travamento intermitente depois do vídeo de abertura: uma thread do player de vídeo fica presa para sempre em `sys_mutex_lock`. Aconteceu em 4 dos 5 runs sem `MUTEX_WATCH` e em nenhum dos 3 com ele.
+- **Próximo:** os primeiros frames de York com os jobs de SPU traduzidos, depois controle e uma sessão em janela.
 
-## Estado atual (2026-10-21)
+## Estado atual (2026-10-22)
 
 O pipeline inteiro roda a partir do disco do próprio jogador
 (`tools/rebuild.sh`): a imagem do disco é montada e usada como raiz do VFS
-(`PS3_VFS_ROOT`), os dois executáveis PPU são descriptografados
-(`game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf`), analisados,
+(`PS3_VFS_ROOT`), os dois executáveis PPU são descriptografados, analisados,
 traduzidos (EBOOT com 25.022 funções; `game.self` com 18.994) e compilados
-contra o ps3recomp v0.17.0 mais o patch de toolkit deste repositório.
+contra o ps3recomp v0.17.0 com o patch do toolkit deste repositório.
 
-O que pôs o front end na tela:
+O que trouxe até aqui:
 
 - **Job manager:** o policy module do job manager SPURS do jogo (fingerprint
-  `4E4076E700C6AFF3`, 11.136 bytes) é traduzido na base real de local store,
-  0xA00 (`tools/regen_spu_pm.sh`). Antes disso ele ficava preso para sempre em
-  `GETLLAR 0x2480` e a thread principal esperava por ele em `usleep(30)`.
-- **Metal fora da thread do guest:** o guest roda na própria thread e a thread
-  principal do macOS gira o run loop (`port/main.cpp`). Com o guest na thread
-  principal, o pump de eventos do backend Metal travava e o FIFO nunca
-  esvaziava.
-- **Pilha da thread principal:** `sys_ppu_thread_get_stack_information`
-  devolvia 0 + 0 para a thread principal; agora devolve a pilha real (patch do
+  `4E4076E700C6AFF3`, 11.136 bytes) é traduzido na base real de LS, 0xA00
+  (`tools/regen_spu_pm.sh`). Antes ele ficava preso em `GETLLAR 0x2480`.
+- **Metal fora da thread do jogo:** o jogo roda numa thread própria e a thread
+  principal do macOS gira o run loop (`port/main.cpp`). Com o jogo na thread
+  principal, o pump de eventos do Metal entrava em deadlock e o FIFO nunca
+  era drenado.
+- **exitspawn:** `sys_game_process_exitspawn` (`port/stubs.cpp`) faz execv do
+  outro build. O bloco de dados do pai vai para topo-da-pilha-principal − 0x1000,
+  onde o `game.self` procura o bloco `"ELFtastic!"`, e
+  `sys_ppu_thread_get_stack_information` agora informa a pilha principal real
+  em vez de 0 + 0 (patch do toolkit).
+- **Vídeos:** o cellVdec decodifica pelo FFmpeg carregado em tempo de execução
+  (`-DPS3RECOMP_FFMPEG_RUNTIME=ON`, FFmpeg do Homebrew). O quad do vídeo é
+  desenhado em modo imediato com posições `DATA2S`, que o dispatch do RSX não
+  transformava em vértices, por isso a tela ficava preta (patch do toolkit).
+  O libavcodec segura a última imagem reordenada por B-frames. O player espera
+  por ela antes de encerrar o vídeo, então o cellVdec esvazia o decodificador
+  quando o jogo já pegou todas as imagens e não envia AU há 1,5 s (patch do
   toolkit).
-- **exitspawn:** `sys_game_process_exitspawn` está implementado em
-  `port/stubs.cpp` como um `execv` do outro build, com o bloco de dados do pai
-  em topo-da-pilha-principal − 0x1000, onde o `game.self` procura o bloco
-  `"ELFtastic!"`.
-- **Vídeo:** o cellVdec decodifica pelo FFmpeg carregado em runtime
-  (`-DPS3RECOMP_FFMPEG_RUNTIME=ON`, FFmpeg do Homebrew).
-
-Os jobs de SPU que o jogo carrega em tempo de execução (os jobs de áudio
-NextSynth e outros) ainda rodam no interpretador de SPU do toolkit.
+- **SPUs raw:** depois do vídeo, o `game.self` carrega dois programas em SPUs
+  raw. As SPUs raw só eram iniciadas no Windows. A arena do guest também
+  parava abaixo das janelas delas em `0xE0000000`, e toda SPU raw depois da
+  primeira rodava o programa da primeira. As três coisas foram corrigidas
+  (patch do toolkit, `port/main.cpp`). Os dois programas são capturados com
+  `SPU_RAW_DUMP_DIR` e traduzidos (`tools/regen_rawspu.sh`).
 
 ---
 
@@ -54,32 +59,34 @@ NextSynth e outros) ainda rodam no interpretador de SPU do toolkit.
 
 ### Bloqueios
 
-- [ ] **Vídeos pretos.** A abertura da fase 1 (e os vídeos do front end) decodificam, mas o quad que apresenta a imagem é desenhado em modo imediato e nada chega ao frame. Descobrir o que o draw precisa (dados de vértice pelo caminho de modo imediato, a textura para onde a imagem é enviada, o formato dela) e comparar com o RPCS3.
-- [ ] **Texto das telas legais sobreposto.** O texto desenhado numa tela legal continua lá na próxima: achar o que limpa (ou deveria limpar) o texto anterior.
-- [ ] `[vm] OOB access 0xFFFFF000 (+1)` logo depois das tentativas de abrir `parameters.txt`: conferir se sumiu com a correção da informação de pilha e, se não, achar o PC do guest (`PS3_NULL_READ_STACK=1`).
+- [ ] **Jobs de SPU estouram o tempo no gameplay.** O job manager carrega o código dos jobs na LS (por volta de 0x7C00–0x14000 da imagem dele) e o interpretador roda a uns 8–9 M passos/s. Os jobs que o primeiro frame precisa não cumprem os timeouts de 2 s do jogo. Capturar o código de cada job quando ele chega por DMA, traduzir (os `lift_spu_jobs.sh` / `relift_jobmod.py` do inFAMOUS 2 são o modelo) e registrar.
+- [ ] **Travamento depois do vídeo de abertura (intermitente).** Uma thread do player de vídeo (`func_005F0360 → … → func_005EEFE4`) fica em `sys_mutex_lock`, o player nunca avisa que terminou e a thread principal fica no laço de carregamento (`func_00044DE0`, estado 2). `MUTEX_WATCH=2` mantém o lock bloqueante e informa quem espera há mais de 5 s e o dono do mutex. Até agora o travamento não se reproduziu com nenhum modo de watch. A política de mutex fair-share no macOS não resolveu.
+- [ ] **Texto das telas legais sobreposto.** O texto desenhado numa tela legal continua lá na seguinte.
+- [ ] As lanes ociosas do job manager são paradas depois de 30 s fazendo polling da mesma linha da fila (`SPU_DMA_REPEAT_SECS`); conferir se elas voltam quando chega trabalho.
 
-### Até o primeiro capítulo
+### Rumo ao primeiro capítulo
 
-- [ ] Passar (ou pular) o vídeo de abertura e entrar em York.
-- [ ] Telas de carregamento e a primeira fase carregando do `game.psarc` (6,26 GB).
+- [x] O vídeo de abertura da fase 1, assistido até o fim (5.584 imagens).
+- [x] Tela de carregamento do capítulo 1 ("The Gauntlet", York) e "Press the START button".
+- [ ] Os primeiros frames de gameplay em York.
 - [ ] Menu de pausa e opções dentro do jogo.
 
 ### Jobs de SPU
 
-- [ ] Jobs de SPU que o jogo carrega em tempo de execução: capturar cada fingerprint nova (`SPU_DUMP_MISS=<dir>`, como foi com `spujob_4E4076E700C6AFF3_11136`), traduzir, registrar. Começar pelos jobs de áudio NextSynth (`ps3soundstream`).
-- [ ] Um script que traduz todos os jobs capturados de uma vez (`lift_spu_jobs.sh`, `relift_jobmod.py`, `lift_relocmods.py` do inFAMOUS 2 são o modelo).
+- [ ] Um jeito de capturar o código dos jobs do job manager (o próprio PM faz o DMA, então o `SPU_DUMP_MISS` não os vê).
+- [ ] Um script que traduz todos os jobs capturados de uma vez.
+- [ ] Os jobs de áudio do NextSynth, que rodam no interpretador desde o boot.
 
 ### Vídeo e áudio
 
-- [ ] Tempo dos vídeos e sincronia de áudio e vídeo quando a imagem aparecer.
-- [ ] Áudio: portas do `cellAudio` e a event queue de notificação; os jobs de SPU de sound stream acima. Gravar com `AUDIO_WAV` e ouvir.
+- [ ] Sincronia de áudio e vídeo num vídeo longo.
+- [ ] Conferir o áudio de ouvido num run em janela (`AUDIO_WAV` para gravar).
 
 ### Menu
 
 - [x] Tela de título e menu principal.
-- [ ] Opções, `cellOskDialog` (teclado na tela), `cellMsgDialog`.
 - [x] Saves: `PROFILE.SAV` e `quick.sav` gravados e lidos em `PS3_HDD0_ROOT`.
-- [ ] Novo jogo até a primeira cutscene, assistida até o fim.
+- [ ] Opções, `cellOskDialog` (teclado na tela), `cellMsgDialog`.
 
 ---
 
@@ -112,8 +119,9 @@ NextSynth e outros) ainda rodam no interpretador de SPU do toolkit.
 
 ### Rebuild
 
-- [x] Um script para o rebuild inteiro a partir do disco do próprio jogador (`tools/rebuild.sh`: descriptografa com o RPCS3, analisa, traduz PPU e SPU, compila). A análise e a tradução que ele gera são idênticas, byte a byte, às testadas.
-- [ ] Descriptografar sem o RPCS3 (o `decrypt_self.py` do inFAMOUS 2, com o arquivo de chaves do próprio jogador).
+- [x] Um script para o rebuild inteiro a partir do disco do próprio jogador (`tools/rebuild.sh`).
+- [ ] Os programas das SPUs raw e os jobs de SPU a partir do disco, sem um run de captura.
+- [ ] Descriptografia sem RPCS3 (o `decrypt_self.py` do inFAMOUS 2, com o arquivo de chaves do próprio jogador).
 
 ---
 
@@ -143,26 +151,43 @@ NextSynth e outros) ainda rodam no interpretador de SPU do toolkit.
 
 ### Boot e pipeline
 
-- [x] Dump do disco `BCUS98107` v01.00 (`VERSION` 01.00 no PARAM.SFO), montado como raiz do VFS.
-- [x] `EBOOT.BIN` e `game.self` descriptografados para ELF.
-- [x] Análise: `EBOOT` com 25.022 funções, 183 imports em 14 bibliotecas; `game.self` com 18.994 funções, 134 imports em 11 bibliotecas.
-- [x] PPU traduzido para C++ nos dois, e os dois projetos compilam no macOS/arm64 com Metal.
-- [x] Policy module do job manager (`4E4076E700C6AFF3`, 11.136 bytes; guest 0x10191A80 no EBOOT, 0x10176E80 no `game.self`) traduzido na base de LS 0xA00 e registrado como imagem SPU 1 (`port/spu/spu_workloads.c`).
+- [x] Dump do disco `BCUS98107` v01.00, montado como raiz do VFS.
+- [x] `EBOOT.BIN` e `game.self` descriptografados, analisados (EBOOT com 25.022 funções e 183 imports; `game.self` com 18.994 funções e 134 imports) e traduzidos; os dois compilam no macOS/arm64 com Metal.
+- [x] Policy module do job manager traduzido na base LS 0xA00 (imagem SPU 1).
+- [x] Programas das SPUs raw `1894F66385AFD052` e `5A10969E466A2298` traduzidos na base LS 0x60 (imagens SPU 2 e 3).
 
 ### Front end
 
-- [x] CRT e TLS, `sys_memory`, carregamento de módulos pelo `cellSysmodule`, `cellDiscGameGetBootDiscInfo`, `cellSysCacheMount`, `cellGameDataCheckCreate2`.
-- [x] `cellSpursInitialize` (3 SPUs), os workloads do job manager rodando, inicialização do `cellGcm` e flips na tela.
-- [x] Guest fora da thread principal do macOS (fim do travamento do pump de eventos do Metal).
-- [x] Telas legais, a instalação no HDD da primeira execução ("initial setup", os arquivos de cache `*.done`), tela de título, menu principal.
-- [x] Perguntas de dificuldade da campanha e de inverter o eixo Y; `PROFILE.SAV` e `quick.sav` gravados e lidos.
-- [x] `sys_game_process_exitspawn` EBOOT → `game.self` (um execv do outro build; o bloco de dados em topo-da-pilha-principal − 0x1000), e o `game.self` dando boot no vídeo de abertura da fase 1.
-- [x] `sys_ppu_thread_get_stack_information` para a thread principal.
-- [x] cellVdec pelo FFmpeg em runtime.
+- [x] CRT e TLS, `sys_memory`, `cellSysmodule`, `cellDiscGameGetBootDiscInfo`, `cellSysCacheMount`, `cellGameDataCheckCreate2`.
+- [x] `cellSpursInitialize`, os workloads do job manager, inicialização do `cellGcm` e flips na tela.
+- [x] Jogo fora da thread principal do macOS.
+- [x] Telas legais, instalação no HDD da primeira execução, tela de título, menu principal, perguntas de dificuldade e de inverter o Y, avisos de sobrescrever.
+- [x] `PROFILE.SAV` e `quick.sav` gravados e lidos.
+
+### Início da campanha
+
+- [x] `sys_game_process_exitspawn` EBOOT → `game.self`, com o bloco de dados onde o `game.self` o procura.
+- [x] `sys_ppu_thread_get_stack_information` para a thread principal (antes devolvia 0 + 0, e o primeiro boot lia 0xFFFFF000).
+- [x] Vídeos na tela: FFmpeg em tempo de execução, vértices imediatos `DATA2S`, dreno por ociosidade da última imagem reordenada.
+- [x] SPUs raw no macOS: thread POSIX, arena do guest com os 32 bits inteiros, um programa por SPU.
+- [x] O capítulo 1 carrega até "Press the START button".
+
+### Ferramentas
+
+- [x] `RES_PEEK` (leitura de memória do guest pelo `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
+- [x] Runs headless com dump de frames e entrada roteirizada (`tools/run.sh`, `start.sh`, `press.sh`, `snap.sh`, `to_campaign.sh`).
 
 ---
 
 ## Retribuindo
 
-- [ ] As correções do toolkit feitas neste port como PRs para o [ps3recomp](https://github.com/sp00nznet/ps3recomp), cada uma com teste quando possível (primeiro a informação de pilha da thread principal).
-- [x] Repositório próprio (`resistance-recomp`), como o `infamous2-recomp`: fontes do port, um patch do toolkit, `tools/setup_toolkit.sh`, README, créditos e um `.gitignore` que bloqueia dados do jogo, firmware e saves.
+Pull requests para o [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp), a partir de branches no [erikomis/ps3recomp](https://github.com/erikomis/ps3recomp), cada um com teste:
+
+- [ ] [#463](https://github.com/sp00nznet/ps3recomp/pull/463) Dispatch do RSX: toda codificação imediata do ATTR0 emite um vértice (os vídeos pretos).
+- [ ] [#469](https://github.com/sp00nznet/ps3recomp/pull/469) `sys_ppu_thread_get_stack_information` para a thread principal.
+- [ ] [#471](https://github.com/sp00nznet/ps3recomp/pull/471) cellVdec: dreno por ociosidade das imagens que o libavcodec segura.
+- [ ] [#473](https://github.com/sp00nznet/ps3recomp/pull/473) SPUs raw no POSIX, um programa por SPU.
+- [ ] [#474](https://github.com/sp00nznet/ps3recomp/pull/474) Diagnóstico `MUTEX_WATCH`.
+- [ ] [#475](https://github.com/sp00nznet/ps3recomp/pull/475) Template: a arena do guest no POSIX cobre as janelas das SPUs raw.
+- [ ] [#477](https://github.com/sp00nznet/ps3recomp/pull/477) Template: o jogo fora da thread principal do macOS.
+- [x] Repositório próprio (`resistance-recomp`): fontes do port, um patch do toolkit, `tools/setup_toolkit.sh`, README, créditos e um `.gitignore` que bloqueia dados do jogo, firmware e saves.

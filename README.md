@@ -7,10 +7,12 @@ to **macOS/arm64**, built with static recompilation: the game's PowerPC and
 SPU code is translated to C/C++ and compiled into native executables, with
 graphics on Metal. It is not an emulator.
 
-**It boots to the main menu and into the campaign's first movie.** The front
-end runs from the legal screens through the first-run install, the title
-screen and the main menu to a new campaign, and the campaign executable boots
-into the level-1 intro. Gameplay has not been reached yet.
+**It boots to the main menu, plays the campaign intro and loads chapter 1.**
+The front end runs from the legal screens through the first-run install, the
+title screen and the main menu to a new campaign. The campaign executable then
+plays the level-1 intro movie and loads "The Gauntlet" (York) up to "Press the
+START button". The first gameplay frames are not there yet: they wait on SPU
+jobs that still run in the interpreter.
 
 Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), following the
 author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
@@ -28,7 +30,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 ## Status
 
-As of 2026-10-21, every item verified in runs on an Apple-silicon Mac with Metal.
+As of 2026-10-22, every item verified in runs on an Apple-silicon Mac with Metal.
 
 | | |
 | --- | --- |
@@ -39,9 +41,12 @@ As of 2026-10-21, every item verified in runs on an Apple-silicon Mac with Metal
 | Campaign difficulty and invert-Y prompts | ✅ |
 | Saves and profile (`quick.sav`, `PROFILE.SAV`) written and read | ✅ |
 | EBOOT → `game.self` hand-off (`sys_game_process_exitspawn`) into the level-1 intro movie | ✅ |
-| Video decoding (cellVdec through FFmpeg) | ✅ decodes; 🚧 movies show black on screen |
-| Gameplay | ⏳ not reached yet |
-| SPU jobs (NextSynth audio and others) | 🧪 run in the toolkit's SPU interpreter, not translated yet |
+| Movies (cellVdec through FFmpeg, drawn as an immediate-mode quad) | ✅ the level-1 intro plays to the end |
+| Raw SPUs (two programs `game.self` starts after the intro) | ✅ lifted and running |
+| Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
+| Gameplay | 🚧 the first frames wait on SPU jobs that time out (`igGeomCullClip SPU Timeout!`) |
+| SPU jobs (geometry, draw sort, effects, NextSynth audio) | 🧪 run in the toolkit's SPU interpreter, not translated yet |
+| After the intro movie | 🚧 an intermittent hang in the movie player (a thread stuck in `sys_mutex_lock`) |
 | Controller, keyboard and mouse | ⏳ only scripted input tested so far |
 | Linux and Windows | ⏳ not supported |
 | Online multiplayer | ❌ out of scope (the official servers are gone) |
@@ -143,6 +148,21 @@ python ps3recomp/tools/spu_lifter.py --auto-functions out/spu_pm/pm.elf --base 0
 The same blob can be captured at runtime instead: run without a lifted PM and
 with `SPU_DUMP_MISS=<dir>`, and pass the resulting
 `spujob_4E4076E700C6AFF3_11136.bin` to `tools/regen_spu_pm.sh`.
+
+#### The raw-SPU programs
+
+After the level-1 intro, `game.self` streams two programs into raw SPUs by
+proxy DMA (local store 0x60 onward, entry 0x90). They are captured from a run,
+then lifted at base 0x60:
+
+```sh
+SPU_RAW_DUMP_DIR=$PWD/out/rawspu tools/to_campaign.sh rawspu   # then wait ~5 min for "[spu-raw] dumped -> ..." twice
+tools/regen_rawspu.sh out/rawspu                          # -> port/spu/rawspu0, port/spu/rawspu1
+```
+
+`port/spu/spu_workloads.c` registers them as SPU images 2
+(`1894F66385AFD052`) and 3 (`5A10969E466A2298`). Like the policy module, the
+lifted C is translated game code and stays out of git.
 `port/spu/spu_workloads.c` registers the lifted entry
 (`resistance_spu_spu_func_00000A00`) under that fingerprint as SPU image 1.
 

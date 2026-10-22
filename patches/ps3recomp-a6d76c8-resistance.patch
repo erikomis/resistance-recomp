@@ -1,20 +1,297 @@
 diff --git a/libs/codec/cellVdec.c b/libs/codec/cellVdec.c
-index 204a005..3c3d86d 100644
+index 204a005..05f1c43 100644
 --- a/libs/codec/cellVdec.c
 +++ b/libs/codec/cellVdec.c
-@@ -446,6 +446,12 @@ static s32 vdec_take_picture(VdecSlot* v, u32 dst, u32 type, u32 matrix, u8 alph
+@@ -18,6 +18,28 @@
+ #include "ps3emu/guest_call.h" /* g_ps3_guest_caller -- cbFunc is a GUEST OPD */
+ #include "../../runtime/memory/vm.h"     /* VM_HLE_INJECT_BASE */
+ 
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN
++#include <windows.h>
++static SRWLOCK s_vdec_lock = SRWLOCK_INIT;
++#define VDEC_LOCK()   AcquireSRWLockExclusive(&s_vdec_lock)
++#define VDEC_UNLOCK() ReleaseSRWLockExclusive(&s_vdec_lock)
++static u64 vdec_now_ms(void) { return (u64)GetTickCount64(); }
++#else
++#include <pthread.h>
++#include <time.h>
++#include <unistd.h>
++static pthread_mutex_t s_vdec_lock = PTHREAD_MUTEX_INITIALIZER;
++#define VDEC_LOCK()   pthread_mutex_lock(&s_vdec_lock)
++#define VDEC_UNLOCK() pthread_mutex_unlock(&s_vdec_lock)
++static u64 vdec_now_ms(void)
++{
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (u64)ts.tv_sec * 1000u + (u64)ts.tv_nsec / 1000000u;
++}
++#endif
++
+ /* ---------------------------------------------------------------------------
+  * Internal state
+  * -----------------------------------------------------------------------*/
+@@ -54,6 +76,9 @@ typedef struct {
+     CellVdecAuInfo aus[VDEC_AU_RING];   /* by auCount % VDEC_AU_RING */
+     u32 newPics;        /* pictures queued by the current decode call */
+     u64 nextPts;        /* synthesized PTS for an AU that carries none (90 kHz) */
++    u32 picsDecoded;    /* pictures the decoder has given back, this sequence */
++    u64 lastAuMs;       /* when the last AU arrived (idle drain) */
++    int idleDrained;    /* the idle drain already ran since that AU */
+ } VdecSlot;
+ 
+ static VdecSlot s_vdec[MAX_VDEC];
+@@ -122,17 +147,85 @@ static void vdec_on_picture(void* ctx, const VdecFfPicture* pic)
+     q->item.height    = (u16)pic->height;
+     v->qCount++;
+     v->newPics++;
++    v->picsDecoded++;
+ }
+ 
+-/* PICOUT for each picture the last decoder call queued. */
++/* PICOUT for each picture the last decoder call queued. The count is taken
++ * under the lock; the callbacks run outside it, because a title's PICOUT
++ * handler may call GetPicItem/GetPicture right away. */
+ static void vdec_notify_new_pics(CellVdecHandle handle)
+ {
++    VDEC_LOCK();
+     u32 n = s_vdec[handle].newPics;
+     s_vdec[handle].newPics = 0;
++    VDEC_UNLOCK();
+     while (n--)
+         vdec_notify(handle, CELL_VDEC_MSG_TYPE_PICOUT, CELL_OK);
+ }
+ 
++/* Idle drain. libavcodec holds back the pictures a B-frame stream may still
++ * reorder (has_b_frames of them) until it sees the next AU or the end of the
++ * stream. A title that waits for every picture before it calls EndSeq never
++ * gets the last ones, and EndSeq is where they used to come out: Resistance's
++ * movie player is handed 5583 pictures for its 5584-AU intro and waits for the
++ * last one for ever, so the level behind the movie never loads.
++ *
++ * When a sequence has had no AU for VDEC_IDLE_DRAIN_MS (default 1500, 0 =
++ * off), the title has taken every picture it was given (the queue is empty,
++ * so it is waiting on the decoder, not the other way round) and the decoder
++ * still owes pictures, drain it as EndSeq would and announce them. The drain
++ * flushes the decoder, so if the title was only stalled and sends more AUs,
++ * they decode from the next reference picture on -- a glitch, where not
++ * draining is a hang. Both other conditions matter: Resistance holds back AUs
++ * for over 500 ms while it prebuffers (pictures still queued) and, on a
++ * loaded host, mid-movie. */
++static void* vdec_idle_thread(void* arg)
++{
++    (void)arg;
++    const char* e = getenv("VDEC_IDLE_DRAIN_MS");
++    const u64 idle_ms = e ? (u64)strtoull(e, NULL, 0) : 1500u;
++    if (!idle_ms) return NULL;
++    for (;;) {
++#ifdef _WIN32
++        Sleep(50);
++#else
++        usleep(50 * 1000);
++#endif
++        for (CellVdecHandle h = 0; h < MAX_VDEC; h++) {
++            VDEC_LOCK();
++            VdecSlot* v = &s_vdec[h];
++            int drained = 0;
++            if (v->in_use && v->ff && v->seqStarted && !v->idleDrained &&
++                v->qCount == 0 && v->picsDecoded < v->auCount && v->lastAuMs &&
++                vdec_now_ms() - v->lastAuMs >= idle_ms) {
++                v->idleDrained = 1;
++                vdec_ff_drain(v->ff, vdec_on_picture, v);
++                printf("[cellVdec] handle %u idle %llu ms: drained to %u of %u pictures\n",
++                       h, (unsigned long long)idle_ms, v->picsDecoded, v->auCount);
++                drained = 1;
++            }
++            VDEC_UNLOCK();
++            if (drained)
++                vdec_notify_new_pics(h);
++        }
++    }
++    return NULL;
++}
++
++static void vdec_idle_thread_start(void)
++{
++    static int started = 0;
++    if (started) return;
++    started = 1;
++#ifdef _WIN32
++    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)vdec_idle_thread, NULL, 0, NULL);
++#else
++    pthread_t t;
++    if (pthread_create(&t, NULL, vdec_idle_thread, NULL) == 0)
++        pthread_detach(t);
++#endif
++}
++
+ /* ---------------------------------------------------------------------------
+  * API implementations
+  * -----------------------------------------------------------------------*/
+@@ -176,16 +269,20 @@ s32 cellVdecOpen(const CellVdecType* type, const CellVdecResource* res,
+ 
+     for (int i = 0; i < MAX_VDEC; i++) {
+         if (!s_vdec[i].in_use) {
++            VDEC_LOCK();
+             memset(&s_vdec[i], 0, sizeof(VdecSlot));
+             s_vdec[i].in_use = 1;
+             s_vdec[i].codecType = codec_type;
+             s_vdec[i].cbFunc = cb_ea ? vm_read32(cb_ea + 0) : 0;
+             s_vdec[i].cbArg  = cb_ea ? vm_read32(cb_ea + 4) : 0;
+             s_vdec[i].ff = vdec_ff_open(codec_type);
++            VDEC_UNLOCK();
+             vm_write32((u32)(uintptr_t)handle, (u32)i);
+             printf("[cellVdec] Open -> handle=%u\n", i);
+-            if (s_vdec[i].ff)
++            if (s_vdec[i].ff) {
+                 printf("[cellVdec] decoding with libavcodec\n");
++                vdec_idle_thread_start();
++            }
+             return CELL_OK;
+         }
+     }
+@@ -215,12 +312,14 @@ s32 cellVdecClose(CellVdecHandle handle)
+     if (handle >= MAX_VDEC || !s_vdec[handle].in_use)
+         return (s32)CELL_VDEC_ERROR_ARG;
+ 
++    VDEC_LOCK();
+     if (s_vdec[handle].ff) {
+         vdec_queue_clear(&s_vdec[handle]);
+         vdec_ff_close(s_vdec[handle].ff);
+         s_vdec[handle].ff = NULL;
+     }
+     s_vdec[handle].in_use = 0;
++    VDEC_UNLOCK();
+     return CELL_OK;
+ }
+ 
+@@ -231,13 +330,19 @@ s32 cellVdecStartSeq(CellVdecHandle handle)
+     if (handle >= MAX_VDEC || !s_vdec[handle].in_use)
+         return (s32)CELL_VDEC_ERROR_ARG;
+ 
++    VDEC_LOCK();
+     s_vdec[handle].seqStarted = 1;
+     if (s_vdec[handle].ff) {
+         /* A new sequence: nothing from the last one is shown. */
+         vdec_ff_reset(s_vdec[handle].ff);
+         s_vdec[handle].nextPts = 0;
+         vdec_queue_clear(&s_vdec[handle]);
++        s_vdec[handle].auCount = 0;
++        s_vdec[handle].picsDecoded = 0;
++        s_vdec[handle].lastAuMs = 0;
++        s_vdec[handle].idleDrained = 0;
+     }
++    VDEC_UNLOCK();
+     return CELL_OK;
+ }
+ 
+@@ -248,14 +353,16 @@ s32 cellVdecEndSeq(CellVdecHandle handle)
+     if (handle >= MAX_VDEC || !s_vdec[handle].in_use)
+         return (s32)CELL_VDEC_ERROR_ARG;
+ 
+-    s_vdec[handle].seqStarted = 0;
+-
+     /* Pictures the decoder still holds for reordering come out now, each
+      * with its PICOUT, before SEQDONE. */
+-    if (s_vdec[handle].ff) {
++    VDEC_LOCK();
++    s_vdec[handle].seqStarted = 0;
++    const int ff = s_vdec[handle].ff != NULL;
++    if (ff)
+         vdec_ff_drain(s_vdec[handle].ff, vdec_on_picture, &s_vdec[handle]);
++    VDEC_UNLOCK();
++    if (ff)
+         vdec_notify_new_pics(handle);
+-    }
+ 
+     /* Notify sequence done */
+     vdec_notify(handle, CELL_VDEC_MSG_TYPE_SEQDONE, CELL_OK);
+@@ -290,14 +397,20 @@ s32 cellVdecDecodeAu(CellVdecHandle handle, s32 mode, const CellVdecAuInfo* auIn
+            (unsigned long long)au.pts);
+ 
+     if (v->ff) {
+-        if (v->qCount >= VDEC_BUSY_AT)
++        VDEC_LOCK();
++        if (v->qCount >= VDEC_BUSY_AT) {
++            VDEC_UNLOCK();
+             return (s32)CELL_VDEC_ERROR_BUSY;  /* title must take pictures */
++        }
+         v->auCount++;
+         v->aus[v->auCount % VDEC_AU_RING] = au;
+         v->newPics = 0;
+         if (au.size)   /* an empty packet would mean end of stream to FFmpeg */
+             vdec_ff_decode(v->ff, vm_ptr8(au.startAddr), au.size, v->auCount,
+                            vdec_on_picture, v);
++        v->lastAuMs = vdec_now_ms();
++        v->idleDrained = 0;
++        VDEC_UNLOCK();
+         vdec_notify(handle, CELL_VDEC_MSG_TYPE_AUDONE, CELL_OK);
+         vdec_notify_new_pics(handle);
+         return CELL_OK;
+@@ -417,12 +530,16 @@ s32 cellVdecGetPicItem(CellVdecHandle handle, const CellVdecPicItem** picItem)
+         return (s32)CELL_VDEC_ERROR_ARG;
+     const VdecSlot* v = &s_vdec[handle];
+     if (v->ff) {
+-        if (!v->qCount)
++        VDEC_LOCK();
++        if (!v->qCount) {
++            VDEC_UNLOCK();
+             return (s32)CELL_VDEC_ERROR_EMPTY;
++        }
+         const VdecPic* q = &v->queue[v->qHead];
+         vdec_write_item(handle, &q->item);
+         vdec_write_pic_type(handle, q);
+         vm_write32(out, VDEC_ITEM_EA(handle));
++        VDEC_UNLOCK();
+         return CELL_OK;
+     }
+     if (!s_vdec[handle].hasPic)
+@@ -446,6 +563,14 @@ static s32 vdec_take_picture(VdecSlot* v, u32 dst, u32 type, u32 matrix, u8 alph
      VdecPic* q = &v->queue[v->qHead];
      v->qHead = (v->qHead + 1) % VDEC_QUEUE;
      v->qCount--;
-+    /* VDEC_PICLOG=1: the first pictures handed out, with where they went. */
++    /* VDEC_PICLOG=1: the first pictures handed out, with where they went, then
++     * every 1000th and the last few before the AU count. */
 +    { static int s_pl = -1; static unsigned s_n = 0;
 +      if (s_pl < 0) s_pl = getenv("VDEC_PICLOG") ? 1 : 0;
-+      if (s_pl && s_n++ < 16)
-+          printf("[cellVdec] GetPicture #%u %ux%u type=%u matrix=%u alpha=%u -> 0x%08X\n",
-+                 s_n, q->item.width, q->item.height, type, matrix, alpha, dst); }
++      s_n++;
++      if (s_pl && (s_n <= 16 || s_n % 1000 == 0 || v->auCount < s_n + 4))
++          printf("[cellVdec] GetPicture #%u (AUs %u) %ux%u type=%u matrix=%u alpha=%u -> 0x%08X\n",
++                 s_n, v->auCount, q->item.width, q->item.height, type, matrix, alpha, dst); }
      if (dst)                                           /* NULL: a skip */
          vdec_store_picture(dst, q->yuv, q->item.width, q->item.height,
                             type, matrix, alpha);
+@@ -460,9 +585,13 @@ s32 cellVdecGetPicture(CellVdecHandle handle, const void* format, void* outBuff)
+     if (handle >= MAX_VDEC || !s_vdec[handle].in_use || !fmt_ea)
+         return (s32)CELL_VDEC_ERROR_ARG;
+     VdecSlot* v = &s_vdec[handle];
+-    if (v->ff)
+-        return vdec_take_picture(v, dst, vm_read32(fmt_ea + 0),
+-                                 vm_read32(fmt_ea + 4), vm_read8(fmt_ea + 8));
++    if (v->ff) {
++        VDEC_LOCK();
++        s32 rc = vdec_take_picture(v, dst, vm_read32(fmt_ea + 0),
++                                   vm_read32(fmt_ea + 4), vm_read8(fmt_ea + 8));
++        VDEC_UNLOCK();
++        return rc;
++    }
+     if (!v->hasPic)
+         return (s32)CELL_VDEC_ERROR_EMPTY;
+     v->hasPic = 0;
+@@ -509,8 +638,11 @@ s32 cellVdecGetPictureExt(CellVdecHandle handle, const void* format,
+         return CELL_OK;
+     if (!fmt_ea)
+         return (s32)CELL_VDEC_ERROR_ARG;
+-    return vdec_take_picture(&s_vdec[handle], dst, vm_read32(fmt_ea + 0),
+-                             vm_read32(fmt_ea + 4), vm_read8(fmt_ea + 0xC));
++    VDEC_LOCK();
++    s32 rc = vdec_take_picture(&s_vdec[handle], dst, vm_read32(fmt_ea + 0),
++                               vm_read32(fmt_ea + 4), vm_read8(fmt_ea + 0xC));
++    VDEC_UNLOCK();
++    return rc;
+ }
+ 
+ s32 cellVdecSetFrameRate(CellVdecHandle handle, u32 frameRateCode)
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
 index 19a8516..96e0088 100644
 --- a/libs/spurs/cellSpurs.c
@@ -53,6 +330,233 @@ index 19a8516..96e0088 100644
              spurs_api_unlock(si);
              return CELL_OK;
          }
+diff --git a/libs/video/rsx_dispatch.c b/libs/video/rsx_dispatch.c
+index 7350528..d281db7 100644
+--- a/libs/video/rsx_dispatch.c
++++ b/libs/video/rsx_dispatch.c
+@@ -327,11 +327,23 @@ void rsx_dispatch_method(rsx_dispatch* rsx, u32 method, u32 arg)
+         (method >= 0x0A80 && method < 0x0B00))
+         vtx_const_fold(rsx, method, arg);
+ 
+-    /* Completing a floating-point position emits a register-based vertex.
+-     * Other attributes update the current values copied with that position.
+-     * Keep these writes as ordinary constant state outside BEGIN/END. */
+-    if (rsx->in_begin_end && (method == 0x1508 || method == 0x1C0C) &&
+-        rsx->sink.immediate_vertex)
++    /* Completing a position emits a register-based vertex: the last word of
++     * ATTR0 in any of its immediate encodings. Other attributes update the
++     * current values copied with that position. Keep these writes as ordinary
++     * constant state outside BEGIN/END.
++     *
++     * Only the float encodings used to count (DATA3F's Z, DATA4F's W).
++     * Resistance's movie player sends its quad as DATA2S positions, so every
++     * movie frame drew nothing and the cutscenes played on a black screen. */
++    if (rsx->in_begin_end && rsx->sink.immediate_vertex &&
++        (method == 0x1508 ||    /* DATA3F  Z            */
++         method == 0x1C0C ||    /* DATA4F  W            */
++         method == 0x1884 ||    /* DATA2F  Y            */
++         method == 0x1E40 ||    /* DATA1F  X            */
++         method == 0x1900 ||    /* DATA2S  (one word)   */
++         method == 0x1940 ||    /* DATA4UB (one word)   */
++         method == 0x1984 ||    /* DATA4S  second word  */
++         method == 0x0A84))     /* SCALED4S second word */
+         rsx->sink.immediate_vertex(rsx->sink.user, rsx);
+ 
+     /* Transform program upload window: word goes to instruction slot
+diff --git a/libs/video/tests/test_rsx_draw_engine.c b/libs/video/tests/test_rsx_draw_engine.c
+index aee6109..e7ba27f 100644
+--- a/libs/video/tests/test_rsx_draw_engine.c
++++ b/libs/video/tests/test_rsx_draw_engine.c
+@@ -1541,6 +1541,33 @@ static void test_immediate_compositor(void)
+     CHECK(stub.n_draw == 5 && stub.captured_vertices[1][3] == 0 &&
+           stub.captured_vertices[1][35] == 0,
+           "explicit all-zero DATA4F preserves position W and attribute alpha");
++    /* Resistance's movie player: a QUADS group whose positions are DATA2S on
++     * ATTR0 (0x1900, x in the low half), each vertex's ATTR1 written first and
++     * the colour/UV set once as constants. The single ATTR0 word completes the
++     * position, as on hardware; only DATA3F/DATA4F positions used to emit, and
++     * every movie frame drew nothing. */
++    m(M_BEGIN_END, 8u);
++    m(0x1C20, f32_bits(1)); m(0x1C24, f32_bits(1)); m(0x1C28, f32_bits(1)); m(0x1C2C, f32_bits(1));
++    m(0x1898, f32_bits(1)); m(0x189C, f32_bits(0.9f));
++    const u32 quad[4] = { 0x00000000u, 0x02D00000u, 0x02D00500u, 0x00000500u };
++    for (u32 i = 0; i < 4; i++) { m(0x1904, quad[i]); m(0x1900, quad[i]); }
++    m(M_BEGIN_END, 0);
++    CHECK(stub.n_draw == 6 && stub.draw_vertices == 4 && stub.draw_indices == 6,
++          "DATA2S positions emit a vertex each (draws %d, %u verts)",
++          stub.n_draw, stub.draw_vertices);
++    CHECK(stub.captured_vertices[2][0] == 1280 && stub.captured_vertices[2][1] == 720 &&
++          stub.captured_vertices[2][3] == 1 && stub.captured_vertices[2][4] == 1280,
++          "DATA2S position is (x low half, y high half, 0, 1) with ATTR1 current");
++    /* The other single-word encodings of ATTR0 complete a position too, and a
++     * two-word one completes on its last word only. */
++    m(M_BEGIN_END, 5u);
++    for (u32 i = 0; i < 3; i++) m(0x1940, 0x01020304u);           /* DATA4UB */
++    m(M_BEGIN_END, 0);
++    CHECK(stub.n_draw == 7 && stub.draw_vertices == 3, "DATA4UB ATTR0 emits per write");
++    m(M_BEGIN_END, 5u);
++    for (u32 i = 0; i < 3; i++) { m(0x1880, f32_bits(1)); m(0x1884, f32_bits(2)); } /* DATA2F */
++    m(M_BEGIN_END, 0);
++    CHECK(stub.n_draw == 8 && stub.draw_vertices == 3, "DATA2F ATTR0 emits on its Y word");
+     engine_down();
+ }
+ 
+diff --git a/runtime/spu/spu_raw.c b/runtime/spu/spu_raw.c
+index f6dc8be..7cc466c 100644
+--- a/runtime/spu/spu_raw.c
++++ b/runtime/spu/spu_raw.c
+@@ -229,10 +229,27 @@ void spu_raw_note_image(uint32_t src_ea, uint32_t entry)
+ /* ---------------------------------------------------------------------------
+  * The SPU host thread
+  * -----------------------------------------------------------------------*/
++/* The thread body is the same on both hosts; only the thread API differs.
++ * Raw SPUs used to start on Windows only (the whole thread was under _WIN32),
++ * so on macOS and Linux a raw SPU loaded, was told to run, and never did:
++ * Resistance's game.self stalls behind the two it starts after its intro. */
+ #ifdef _WIN32
+-static DWORD WINAPI raw_spu_thread(LPVOID arg)
++#define RAW_XCHG(p, v)    InterlockedExchange((p), (v))
++#define RAW_CAS(p, v, c)  InterlockedCompareExchange((p), (v), (c))
++#else
++#include <pthread.h>
++#define RAW_XCHG(p, v)    __atomic_exchange_n((p), (v), __ATOMIC_SEQ_CST)
++static inline long raw_cas(volatile long* p, long v, long c)
++{
++    long e = c;
++    __atomic_compare_exchange_n(p, &e, v, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++    return e;
++}
++#define RAW_CAS(p, v, c)  raw_cas((p), (v), (c))
++#endif
++
++static void raw_spu_run(raw_spu* s)
+ {
+-    raw_spu* s = (raw_spu*)arg;
+     spu_context* c = s->ctx;
+ 
+     c->status = SPU_STATUS_RUNNING;
+@@ -253,7 +270,7 @@ static DWORD WINAPI raw_spu_thread(LPVOID arg)
+     s->int_stat |= 0x2u;
+     if (s->int_stat & s->int_mask) ps3_intr_raise(s->intrtag);
+     publish(s);
+-    InterlockedExchange(&s->started, 0);
++    RAW_XCHG(&s->started, 0);
+ 
+     fprintf(stderr, "[spu-raw] spu%u stopped: halted=%d pc=0x%05X lr=0x%05X "
+                     "steps=%llu stop_code=0x%X outmbox(n=%u v=0x%08X) "
+@@ -265,35 +282,68 @@ static DWORD WINAPI raw_spu_thread(LPVOID arg)
+             (unsigned)c->ch_out_intr_mbox.count, c->ch_out_intr_mbox.value,
+             (unsigned)c->ch_in_mbox.count);
+     fflush(stderr);
+-    return 0;
+ }
++
++#ifdef _WIN32
++static DWORD WINAPI raw_spu_thread(LPVOID arg) { raw_spu_run((raw_spu*)arg); return 0; }
++#else
++static void* raw_spu_thread(void* arg) { raw_spu_run((raw_spu*)arg); return NULL; }
+ #endif
+ 
+ static void raw_spu_start(raw_spu* s)
+ {
+     uint32_t n = (uint32_t)(s - s_spu);
++    /* An imported image belongs to the one start that follows the import.
++     * These used to stay set, so every later raw SPU skipped its own lookup
++     * and ran the first one's program: Resistance's second raw SPU started
++     * image 2 instead of its own and stopped after four instructions. */
++    spu_lifted_entry_fn entry = s_pending_entry;
++    int image_id = s_pending_image_id;
++    uint32_t elf_entry = s_pending_elf_entry;
++    s_pending_entry = NULL;
++    const int loaded = s->get_runs > 0;   /* a program was streamed in */
+     /* No image was imported: the PPU streamed the program in by proxy DMA.
+      * Ports register each image's executable segment too (build_spu_workloads
+      * .text fingerprint), so one of the GET runs matches it. */
+-    for (int r = 0; !s_pending_entry && r < s->get_runs; r++) {
++    for (int r = 0; !entry && r < s->get_runs; r++) {
+         uint64_t fp = spu_workload_fingerprint(vm_base + s->base + s->get_lo[r],
+                                                s->get_hi[r] - s->get_lo[r]);
+-        s_pending_entry = spu_workload_find_img(fp, &s_pending_image_id);
+-        fprintf(stderr, "[spu-raw] spu%u proxy-loaded LS 0x%05X..0x%05X fp=0x%016llX -> %s\n",
++        entry = spu_workload_find_img(fp, &image_id);
++        fprintf(stderr, "[spu-raw] spu%u proxy-loaded LS 0x%05X..0x%05X fp=0x%016llX npc=0x%05X -> %s\n",
+                 n, s->get_lo[r], s->get_hi[r], (unsigned long long)fp,
+-                s_pending_entry ? "lifted entry registered" : "no match");
++                be32_load(s->base + SPU_RAW_NPC) & ~3u,
++                entry ? "lifted entry registered" : "no match");
++        /* SPU_RAW_DUMP_DIR=<dir>: write an unmatched run out as
++         * rawspu_<fp>_<lo>.bin -- the bytes exactly as they sit in local store
++         * at <lo>, which is the base to lift them at. */
++        { const char* dir = getenv("SPU_RAW_DUMP_DIR");
++          if (dir && *dir && !entry) {
++              char path[512];
++              snprintf(path, sizeof path, "%s/rawspu_%016llX_%05X.bin", dir,
++                       (unsigned long long)fp, s->get_lo[r]);
++              FILE* f = fopen(path, "wb");
++              if (f) {
++                  fwrite(vm_base + s->base + s->get_lo[r], 1, s->get_hi[r] - s->get_lo[r], f);
++                  fclose(f);
++                  fprintf(stderr, "[spu-raw] dumped -> %s\n", path);
++              }
++          } }
+     }
+     s->get_runs = 0;
+-    if (!s_pending_entry) {
++    /* Restarted with nothing new loaded (a stop-and-signal serviced by the
++     * PPU): the program it already had. */
++    if (!entry && !loaded && s->entry && s->ctx) {
++        entry = s->entry;
++        image_id = s->ctx->image_id;
++    }
++    if (!entry) {
+         fprintf(stderr, "[spu-raw] spu%u run requested but no lifted image is "
+                         "registered -- the SPU cannot run. Lift the image and "
+                         "register it (see a port's src/spu_images.c).\n", n);
+         fflush(stderr);
+         return;
+     }
+-#ifdef _WIN32
+-    if (InterlockedCompareExchange(&s->started, 1, 0) != 0) return;  /* already up */
+-#endif
++    if (RAW_CAS(&s->started, 1, 0) != 0) return;  /* already up */
+ 
+     if (!s->ctx) {
+         s->ctx = (spu_context*)malloc(sizeof(spu_context));
+@@ -304,12 +354,12 @@ static void raw_spu_start(raw_spu* s)
+     /* THE point of this whole file: local store is the guest window, not a copy.
+      * The PPU keeps writing command buffers into it while the SPU runs. */
+     s->ctx->ls       = vm_base + s->base;
+-    s->ctx->image_id = s_pending_image_id;
+-    s->entry         = s_pending_entry;
++    s->ctx->image_id = image_id;
++    s->entry         = entry;
+     s->ctx->gpr[1]._u32[0] = SPU_LS_SIZE - 0x10;      /* SPU ABI stack top */
+ 
+     uint32_t npc = be32_load(s->base + SPU_RAW_NPC) & ~3u;
+-    s->ctx->pc = npc ? npc : s_pending_elf_entry;
++    s->ctx->pc = npc ? npc : elf_entry;
+ 
+     g_spu_force_ch_block = 1;   /* an empty RdInMbox must park, not fabricate 0 */
+ 
+@@ -330,7 +380,17 @@ static void raw_spu_start(raw_spu* s)
+ 
+ #ifdef _WIN32
+     s->thread = CreateThread(NULL, 1u << 20, raw_spu_thread, s, 0, NULL);
+-    if (!s->thread) InterlockedExchange(&s->started, 0);
++    if (!s->thread) RAW_XCHG(&s->started, 0);
++#else
++    {
++        pthread_t t;
++        pthread_attr_t a;
++        pthread_attr_init(&a);
++        pthread_attr_setstacksize(&a, 8u << 20);   /* lifted SPU code recurses on the host stack */
++        if (pthread_create(&t, &a, raw_spu_thread, s) == 0) pthread_detach(t);
++        else RAW_XCHG(&s->started, 0);
++        pthread_attr_destroy(&a);
++    }
+ #endif
+ }
+ 
 diff --git a/runtime/spu/spurs_policy.c b/runtime/spu/spurs_policy.c
 index 905b351..367eee6 100644
 --- a/runtime/spu/spurs_policy.c
@@ -114,6 +618,131 @@ index 905b351..367eee6 100644
      ctx->gpr[4]._u32[2] = 0;
      ctx->gpr[4]._u32[3] = 0;
      ctx->gpr[5]._u32[0] = 0;                           /* poll status */
+diff --git a/runtime/syscalls/sys_mutex.c b/runtime/syscalls/sys_mutex.c
+index 2e760ea..0b9eb2a 100644
+--- a/runtime/syscalls/sys_mutex.c
++++ b/runtime/syscalls/sys_mutex.c
+@@ -8,6 +8,10 @@
+ #include "../memory/vm.h"
+ #include <string.h>
+ #include <stdio.h>
++#include <stdlib.h>   /* getenv */
++#ifndef _WIN32
++#include <unistd.h>   /* sleep: MUTEX_WATCH=2 reporter */
++#endif
+ 
+ /* ---------------------------------------------------------------------------
+  * Globals
+@@ -124,6 +128,15 @@ int64_t sys_mutex_create(ppu_context* ctx)
+         } else {
+             pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_ERRORCHECK);
+         }
++#if defined(__APPLE__)
++        /* lv2 hands an unlocked mutex to a waiter (FIFO or priority order);
++         * macOS's default first-fit policy does not, and lets whoever asks
++         * next take it. A title whose worker threads lock, poll and unlock
++         * the same mutex in a loop then starves a thread blocked on it for
++         * good: Resistance's movie player never finished its intro, so the
++         * level behind it never loaded. Fair-share queues the waiters. */
++        pthread_mutexattr_setpolicy_np(&mattr, PTHREAD_MUTEX_POLICY_FAIRSHARE_NP);
++#endif
+         pthread_mutex_init(&m->mtx, &mattr);
+         pthread_mutexattr_destroy(&mattr);
+     }
+@@ -177,6 +190,59 @@ int64_t sys_mutex_destroy(ppu_context* ctx)
+  * r3 = mutex_id
+  * r4 = timeout_usec (0 = infinite)
+  * -----------------------------------------------------------------------*/
++#ifndef _WIN32
++/* MUTEX_WATCH=2 bookkeeping: who is blocked on which mutex since when. */
++#define MUTEX_WATCH_SLOTS 64
++static struct { volatile int used; uint64_t tid; uint32_t id, lr; struct timespec t0; }
++    s_mw[MUTEX_WATCH_SLOTS];
++
++static void* mutex_watch_reporter(void* arg)
++{
++    (void)arg;
++    for (;;) {
++        sleep(5);
++        struct timespec now;
++        clock_gettime(CLOCK_MONOTONIC, &now);
++        for (int i = 0; i < MUTEX_WATCH_SLOTS; i++) {
++            if (!s_mw[i].used) continue;
++            long waited = (long)(now.tv_sec - s_mw[i].t0.tv_sec);
++            if (waited < 5) continue;
++            const sys_mutex_info* m = &g_sys_mutexes[s_mw[i].id - 1];
++            fprintf(stderr, "[mutex] tid=%llu blocked %lds on mutex %u '%.8s' lr=0x%08X; "
++                    "owner tid=%llu count=%d\n",
++                    (unsigned long long)s_mw[i].tid, waited, s_mw[i].id, m->name,
++                    s_mw[i].lr, (unsigned long long)m->owner_tid, m->lock_count);
++        }
++    }
++    return NULL;
++}
++
++static int mutex_watch_enter(uint64_t tid, uint32_t id, uint32_t lr)
++{
++    static int started = 0;
++    if (!__atomic_exchange_n(&started, 1, __ATOMIC_SEQ_CST)) {
++        pthread_t t;
++        if (pthread_create(&t, NULL, mutex_watch_reporter, NULL) == 0) pthread_detach(t);
++    }
++    for (int i = 0; i < MUTEX_WATCH_SLOTS; i++) {
++        int expected = 0;
++        if (__atomic_compare_exchange_n(&s_mw[i].used, &expected, 2, 0,
++                                        __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
++            s_mw[i].tid = tid; s_mw[i].id = id; s_mw[i].lr = lr;
++            clock_gettime(CLOCK_MONOTONIC, &s_mw[i].t0);
++            __atomic_store_n(&s_mw[i].used, 1, __ATOMIC_SEQ_CST);
++            return i;
++        }
++    }
++    return -1;
++}
++
++static void mutex_watch_leave(int slot)
++{
++    if (slot >= 0) __atomic_store_n(&s_mw[slot].used, 0, __ATOMIC_SEQ_CST);
++}
++#endif
++
+ int64_t sys_mutex_lock(ppu_context* ctx)
+ {
+     uint32_t mutex_id    = LV2_ARG_U32(ctx, 0);
+@@ -217,7 +283,32 @@ int64_t sys_mutex_lock(ppu_context* ctx)
+         }
+     }
+ #else
+-    if (timeout_us == 0) {
++    static int s_watch = -1;
++    if (s_watch < 0) { const char* e = getenv("MUTEX_WATCH"); s_watch = e ? atoi(e) : 0; }
++    if (timeout_us == 0 && s_watch == 2) {
++        /* MUTEX_WATCH=2: the wait stays a real blocking lock (the polling of
++         * =1 changes the timing enough to hide some hangs), and a reporter
++         * thread names every waiter older than 5 s and the mutex's owner. */
++        int slot = mutex_watch_enter(caller_tid, mutex_id, (uint32_t)ctx->lr);
++        pthread_mutex_lock(&m->mtx);
++        mutex_watch_leave(slot);
++    } else if (timeout_us == 0 && s_watch) {
++        /* MUTEX_WATCH=1: an infinite lock waits in 5 s slices and says who it
++         * is waiting on, so a guest deadlock names its two threads. */
++        unsigned waited = 0;
++        for (;;) {
++            struct timespec ts;
++            clock_gettime(CLOCK_REALTIME, &ts);
++            ts.tv_sec += 5;
++            if (pthread_mutex_timedlock(&m->mtx, &ts) == 0) break;
++            waited += 5;
++            fprintf(stderr, "[mutex] tid=%llu waiting %us on mutex %u '%.8s' "
++                    "owner tid=%llu count=%u lr=0x%08X\n",
++                    (unsigned long long)caller_tid, waited, mutex_id, m->name,
++                    (unsigned long long)m->owner_tid, (unsigned)m->lock_count,
++                    (uint32_t)ctx->lr);
++        }
++    } else if (timeout_us == 0) {
+         pthread_mutex_lock(&m->mtx);
+     } else {
+         struct timespec ts;
 diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
 index c64b0b8..cf7878e 100644
 --- a/runtime/syscalls/sys_ppu_thread.c

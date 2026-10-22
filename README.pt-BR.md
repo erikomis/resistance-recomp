@@ -7,10 +7,13 @@ para **macOS/arm64**, feito com recompilação estática: o código PowerPC e SP
 do jogo é traduzido para C/C++ e compilado como executáveis nativos, com
 gráficos em Metal. Não é um emulador.
 
-**Ele chega ao menu principal e ao primeiro vídeo da campanha.** O front end
-roda das telas legais pela instalação da primeira execução, pela tela de
-título e pelo menu principal até uma campanha nova, e o executável da
-campanha dá boot na abertura da fase 1. O gameplay ainda não foi alcançado.
+**Ele chega ao menu principal, toca a abertura da campanha e carrega o
+capítulo 1.** O front end roda das telas legais pela instalação da primeira
+execução, pela tela de título e pelo menu principal até uma campanha nova. O
+executável da campanha então toca o vídeo de abertura da fase 1 e carrega
+"The Gauntlet" (York) até "Press the START button". Os primeiros frames de
+gameplay ainda não saem: eles esperam jobs de SPU que ainda rodam no
+interpretador.
 
 Construído sobre o [ps3recomp](https://github.com/sp00nznet/ps3recomp),
 seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
@@ -28,7 +31,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 ## Estado
 
-Em 2026-10-21, cada item verificado em execuções num Mac com Apple silicon e Metal.
+Em 2026-10-22, cada item verificado em execuções num Mac com Apple silicon e Metal.
 
 | | |
 | --- | --- |
@@ -39,9 +42,12 @@ Em 2026-10-21, cada item verificado em execuções num Mac com Apple silicon e M
 | Perguntas de dificuldade da campanha e de inverter o eixo Y | ✅ |
 | Saves e perfil (`quick.sav`, `PROFILE.SAV`) gravados e lidos | ✅ |
 | Passagem do EBOOT para o `game.self` (`sys_game_process_exitspawn`) até o vídeo de abertura da fase 1 | ✅ |
-| Decodificação de vídeo (cellVdec pelo FFmpeg) | ✅ decodifica; 🚧 os vídeos aparecem pretos na tela |
-| Gameplay | ⏳ ainda não alcançado |
-| Jobs de SPU (áudio NextSynth e outros) | 🧪 rodam no interpretador de SPU do toolkit, ainda não traduzidos |
+| Vídeos (cellVdec pelo FFmpeg, desenhados como quad em modo imediato) | ✅ a abertura da fase 1 toca até o fim |
+| SPUs raw (dois programas que o `game.self` inicia depois da abertura) | ✅ traduzidas e rodando |
+| Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
+| Gameplay | 🚧 os primeiros frames esperam jobs de SPU que estouram o tempo (`igGeomCullClip SPU Timeout!`) |
+| Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | 🧪 rodam no interpretador de SPU do toolkit, ainda não traduzidos |
+| Depois do vídeo de abertura | 🚧 um travamento intermitente no player de vídeo (uma thread presa em `sys_mutex_lock`) |
 | Controle, teclado e mouse | ⏳ até agora só entrada por script foi testada |
 | Linux e Windows | ⏳ sem suporte |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram) |
@@ -149,6 +155,21 @@ traduzido e com `SPU_DUMP_MISS=<pasta>`, e passe o
 `tools/regen_spu_pm.sh`. O `port/spu/spu_workloads.c` registra a entrada
 traduzida (`resistance_spu_spu_func_00000A00`) com essa fingerprint como
 imagem SPU 1.
+
+#### Os programas das SPUs raw
+
+Depois da abertura da fase 1, o `game.self` carrega dois programas em SPUs raw
+por DMA proxy (local store a partir de 0x60, entrada em 0x90). Eles são
+capturados num run e traduzidos na base 0x60:
+
+```sh
+SPU_RAW_DUMP_DIR=$PWD/out/rawspu tools/to_campaign.sh rawspu   # depois espere ~5 min por "[spu-raw] dumped -> ..." duas vezes
+tools/regen_rawspu.sh out/rawspu                          # -> port/spu/rawspu0, port/spu/rawspu1
+```
+
+O `port/spu/spu_workloads.c` registra os dois como imagens SPU 2
+(`1894F66385AFD052`) e 3 (`5A10969E466A2298`). Como o policy module, o C
+traduzido é código do jogo e fica fora do git.
 
 ## Jogando pelo terminal
 

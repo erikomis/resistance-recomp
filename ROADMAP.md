@@ -6,46 +6,51 @@ Status of the native Resistance: Fall of Man (`BCUS98107`, disc, v01.00) port
 to macOS/arm64 and what comes next. Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
-## Status at a glance (2026-10-21)
+## Status at a glance (2026-10-22)
 
-- **Runs:** both executables (`EBOOT.BIN` and `game.self`) are lifted, build and run on macOS/arm64 with Metal. The front end goes from boot through the legal screens, the first-run HDD install, the title screen and the main menu (Campaign / Cooperative / Multiplayer / Options) to the campaign difficulty and invert-Y prompts; saves (`PROFILE.SAV`, `quick.sav`) are written and read back. Starting a campaign exitspawns `game.self`, which boots straight into the level-1 intro movie.
-- **Blocked at:** the in-game movies show black (the picture is drawn as an immediate-mode quad; under investigation), so the intro cannot be watched yet and gameplay has not been reached.
+- **Runs:** both executables (`EBOOT.BIN` and `game.self`) are lifted, build and run on macOS/arm64 with Metal. The front end goes from boot through the legal screens, the first-run HDD install, the title screen and the main menu to a new campaign. `game.self` then plays the full level-1 intro movie (picture and sound), loads chapter 1, "The Gauntlet" (York), and shows "Press the START button".
+- **Blocked at:** after START, the first gameplay frames wait on SPU jobs that do not finish in time. The game's own log says `igGeomCullClip SPU Timeout!`, `IGG::SpuBucketerDrawSort timeout` and `For fxvUpdate, WwsJobDelay timed out after 2 seconds`. The job manager runs those jobs in the SPU interpreter.
 - **Released:** nothing yet.
 - **In progress:**
-  - [ ] (in progress) Black movies: cellVdec decodes the pictures (FFmpeg runtime) but the immediate-mode quad that should show them puts nothing on screen.
-  - [ ] (in progress) Text from earlier legal screens stays on screen and overlaps the next ones.
-- **Next:** the intro movie on screen, then the first chapter (York) in a window.
+  - [ ] (in progress) Capture and lift the job manager's SPU jobs (geometry cull/clip, draw-bucket sort, effects, NextSynth audio).
+  - [ ] (in progress) An intermittent hang after the intro movie: a movie-player thread blocks for good in `sys_mutex_lock`. It hit 4 of the 5 runs without `MUTEX_WATCH` and none of the 3 with it.
+- **Next:** the first frames of York with the SPU jobs lifted, then input and a windowed session.
 
-## Current state (2026-10-21)
+## Current state (2026-10-22)
 
 The whole pipeline runs from the player's own disc (`tools/rebuild.sh`): the
 disc image is mounted and used as the VFS root (`PS3_VFS_ROOT`), both PPU
-executables are decrypted (`game/BCUS98107/EBOOT.elf`,
-`game/BCUS98107/modules/game.elf`), analysed, lifted (EBOOT 25,022
-functions; `game.self` 18,994) and built against ps3recomp v0.17.0 plus this
+executables are decrypted, analysed, lifted (EBOOT 25,022 functions;
+`game.self` 18,994) and built against ps3recomp v0.17.0 plus this
 repository's toolkit patch.
 
-What got the front end on screen:
+What got it this far:
 
 - **Job manager:** the game's SPURS job-manager policy module (fingerprint
   `4E4076E700C6AFF3`, 11,136 bytes) is lifted at its real local-store base,
   0xA00 (`tools/regen_spu_pm.sh`). Before that it spun for ever on
-  `GETLLAR 0x2480` and the main thread waited on it in `usleep(30)`.
+  `GETLLAR 0x2480`.
 - **Metal off the guest thread:** the guest runs on its own thread and the
   macOS main thread turns the run loop (`port/main.cpp`). With the guest on the
-  main thread the Metal backend's event pump deadlocked and the FIFO never
-  drained.
-- **Main-thread stack:** `sys_ppu_thread_get_stack_information` reported
-  0 + 0 for the main thread; it now reports the real stack (toolkit patch).
-- **exitspawn:** `sys_game_process_exitspawn` is implemented in
-  `port/stubs.cpp` as an `execv` of the other build, with the parent's data
-  block placed at main-stack-top − 0x1000, where `game.self` looks for its
-  `"ELFtastic!"` block.
-- **Video:** cellVdec decodes through FFmpeg loaded at runtime
-  (`-DPS3RECOMP_FFMPEG_RUNTIME=ON`, Homebrew FFmpeg).
-
-The SPU jobs the game loads at runtime (the NextSynth audio jobs and others)
-still run in the toolkit's SPU interpreter.
+  main thread the Metal event pump deadlocked and the FIFO never drained.
+- **exitspawn:** `sys_game_process_exitspawn` (`port/stubs.cpp`) execs the
+  other build. The parent's data block goes at main-stack-top − 0x1000, where
+  `game.self` looks for its `"ELFtastic!"` block, and
+  `sys_ppu_thread_get_stack_information` now reports the real main stack
+  instead of 0 + 0 (toolkit patch).
+- **Movies:** cellVdec decodes through FFmpeg loaded at runtime
+  (`-DPS3RECOMP_FFMPEG_RUNTIME=ON`, Homebrew FFmpeg). The movie quad is drawn
+  in immediate mode with `DATA2S` positions, which the RSX dispatch did not
+  turn into vertices, so the screen stayed black (toolkit patch).
+  libavcodec holds back the last B-frame-reordered picture. The player
+  waits for it before it ends the movie, so cellVdec drains the decoder once the
+  title has taken every picture and sent no AU for 1.5 s (toolkit patch).
+- **Raw SPUs:** after the movie, `game.self` streams two programs into raw
+  SPUs. Raw SPUs only ever started on Windows. The guest arena also stopped
+  below their `0xE0000000` windows, and every raw SPU after the first ran the
+  first one's program. All three are fixed (toolkit patch, `port/main.cpp`).
+  Both programs are captured with `SPU_RAW_DUMP_DIR` and lifted
+  (`tools/regen_rawspu.sh`).
 
 ---
 
@@ -53,32 +58,34 @@ still run in the toolkit's SPU interpreter.
 
 ### Blockers
 
-- [ ] **Movies are black.** The level-1 intro (and the front-end movies) decode, but the quad that presents the picture is drawn in immediate mode and nothing reaches the frame. Find what the draw needs (vertex data through the immediate-mode path, the texture the picture is uploaded to, its format) and compare with RPCS3.
-- [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next: find what clears (or should clear) the previous text.
-- [ ] `[vm] OOB access 0xFFFFF000 (+1)` right after the `parameters.txt` probes: check whether it went away with the stack-information fix, and if not, find the guest PC (`PS3_NULL_READ_STACK=1`).
+- [ ] **SPU jobs time out in gameplay.** The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
+- [ ] **Hang after the intro movie (intermittent).** A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
+- [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
+- [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
 
 ### Into the first chapter
 
-- [ ] Get through (or skip) the intro movie into York.
-- [ ] Loading screens and the first level streaming from `game.psarc` (6.26 GB).
+- [x] The level-1 intro movie, watched to the end (5,584 pictures).
+- [x] Chapter 1 loading screen ("The Gauntlet", York) and "Press the START button".
+- [ ] The first gameplay frames in York.
 - [ ] Pause menu and in-game options.
 
 ### SPU jobs
 
-- [ ] SPU jobs the game loads at runtime: capture each new fingerprint (`SPU_DUMP_MISS=<dir>`, as `spujob_4E4076E700C6AFF3_11136` was), lift it, register it. Start with the NextSynth audio jobs (`ps3soundstream`).
-- [ ] A script that lifts every captured job in one go (inFAMOUS 2's `lift_spu_jobs.sh`, `relift_jobmod.py`, `lift_relocmods.py` are the model).
+- [ ] A capture path for the job manager's job code (the PM DMAs it in itself, so `SPU_DUMP_MISS` does not see it).
+- [ ] A script that lifts every captured job in one go.
+- [ ] The NextSynth audio jobs, which run in the interpreter from boot.
 
 ### Video and audio
 
-- [ ] Movie timing and A/V sync once the picture shows.
-- [ ] Audio: `cellAudio` ports and the notify event queue; the sound-stream SPU jobs above. Record with `AUDIO_WAV` and listen.
+- [ ] A/V sync over a long movie.
+- [ ] Audio check by ear in a windowed run (`AUDIO_WAV` to record).
 
 ### Menu
 
 - [x] Title screen and main menu.
-- [ ] Options, `cellOskDialog` (on-screen keyboard), `cellMsgDialog`.
 - [x] Saves: `PROFILE.SAV` and `quick.sav` written and read under `PS3_HDD0_ROOT`.
-- [ ] New game into the first cutscene, watched to the end.
+- [ ] Options, `cellOskDialog` (on-screen keyboard), `cellMsgDialog`.
 
 ---
 
@@ -111,7 +118,8 @@ still run in the toolkit's SPU interpreter.
 
 ### Rebuild
 
-- [x] One script for the whole rebuild from the player's own disc (`tools/rebuild.sh`: decrypt with RPCS3, analyse, lift PPU and SPU, compile). The analysis and the lift it produces are byte-identical to the tested ones.
+- [x] One script for the whole rebuild from the player's own disc (`tools/rebuild.sh`).
+- [ ] The raw-SPU programs and the SPU jobs from the disc without a capture run.
 - [ ] Decryption without RPCS3 (inFAMOUS 2's `decrypt_self.py`, with the player's own key file).
 
 ---
@@ -142,26 +150,43 @@ still run in the toolkit's SPU interpreter.
 
 ### Boot and pipeline
 
-- [x] Disc dump `BCUS98107` v01.00 (PARAM.SFO `VERSION` 01.00), mounted as the VFS root.
-- [x] `EBOOT.BIN` and `game.self` decrypted to ELF.
-- [x] Analysis: `EBOOT` 25,022 functions, 183 imports in 14 libraries; `game.self` 18,994 functions, 134 imports in 11 libraries.
-- [x] PPU lifted to C++ for both, and both projects build on macOS/arm64 with Metal.
-- [x] Job-manager policy module (`4E4076E700C6AFF3`, 11,136 bytes; guest 0x10191A80 in the EBOOT, 0x10176E80 in `game.self`) lifted at LS base 0xA00 and registered as SPU image 1 (`port/spu/spu_workloads.c`).
+- [x] Disc dump `BCUS98107` v01.00, mounted as the VFS root.
+- [x] `EBOOT.BIN` and `game.self` decrypted, analysed (EBOOT 25,022 functions, 183 imports; `game.self` 18,994 functions, 134 imports) and lifted; both build on macOS/arm64 with Metal.
+- [x] Job-manager policy module lifted at LS base 0xA00 (SPU image 1).
+- [x] Raw-SPU programs `1894F66385AFD052` and `5A10969E466A2298` lifted at LS base 0x60 (SPU images 2 and 3).
 
 ### Front end
 
-- [x] CRT and TLS, `sys_memory`, `cellSysmodule` loads, `cellDiscGameGetBootDiscInfo`, `cellSysCacheMount`, `cellGameDataCheckCreate2`.
-- [x] `cellSpursInitialize` (3 SPUs), the job-manager workloads running, `cellGcm` init and flips on screen.
-- [x] Guest off the macOS main thread (no more Metal event-pump deadlock).
-- [x] Legal screens, the first-run "initial setup" HDD install (the `*.done` cache files), title screen, main menu.
-- [x] Campaign difficulty and invert-Y prompts; `PROFILE.SAV` and `quick.sav` written and read.
-- [x] `sys_game_process_exitspawn` EBOOT → `game.self` (an execv of the other build; the data block at main-stack-top − 0x1000), and `game.self` booting into the level-1 intro movie.
-- [x] `sys_ppu_thread_get_stack_information` for the main thread.
-- [x] cellVdec through the FFmpeg runtime.
+- [x] CRT and TLS, `sys_memory`, `cellSysmodule`, `cellDiscGameGetBootDiscInfo`, `cellSysCacheMount`, `cellGameDataCheckCreate2`.
+- [x] `cellSpursInitialize`, the job-manager workloads, `cellGcm` init and flips on screen.
+- [x] Guest off the macOS main thread.
+- [x] Legal screens, the first-run HDD install, title screen, main menu, campaign difficulty and invert-Y prompts, the overwrite warnings.
+- [x] `PROFILE.SAV` and `quick.sav` written and read.
+
+### Campaign start
+
+- [x] `sys_game_process_exitspawn` EBOOT → `game.self` with the data block where `game.self` looks for it.
+- [x] `sys_ppu_thread_get_stack_information` for the main thread (it used to return 0 + 0, and the first boot read 0xFFFFF000).
+- [x] Movies on screen: FFmpeg runtime, immediate-mode `DATA2S` vertices, idle drain of the last reordered picture.
+- [x] Raw SPUs on macOS: the POSIX thread, the full 32-bit guest arena, one program per SPU.
+- [x] Chapter 1 loads to "Press the START button".
+
+### Tools
+
+- [x] `RES_PEEK` (guest memory peeks from `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
+- [x] Headless runs with frame dumps and scripted input (`tools/run.sh`, `start.sh`, `press.sh`, `snap.sh`, `to_campaign.sh`).
 
 ---
 
 ## Giving back
 
-- [ ] Toolkit fixes from this port as PRs to [ps3recomp](https://github.com/sp00nznet/ps3recomp), each with a test where possible (the main-thread stack information first).
-- [x] Its own repository (`resistance-recomp`), as `infamous2-recomp`: port sources, a toolkit patch, `tools/setup_toolkit.sh`, README, credits, and a `.gitignore` that blocks game data, firmware and saves.
+Pull requests to [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp), from branches on [erikomis/ps3recomp](https://github.com/erikomis/ps3recomp), each with a test:
+
+- [ ] [#463](https://github.com/sp00nznet/ps3recomp/pull/463) RSX dispatch: every ATTR0 immediate encoding emits a vertex (the black movies).
+- [ ] [#469](https://github.com/sp00nznet/ps3recomp/pull/469) `sys_ppu_thread_get_stack_information` for the main thread.
+- [ ] [#471](https://github.com/sp00nznet/ps3recomp/pull/471) cellVdec: idle drain of the pictures libavcodec holds back.
+- [ ] [#473](https://github.com/sp00nznet/ps3recomp/pull/473) Raw SPUs on POSIX, one program per SPU.
+- [ ] [#474](https://github.com/sp00nznet/ps3recomp/pull/474) `MUTEX_WATCH` diagnostic.
+- [ ] [#475](https://github.com/sp00nznet/ps3recomp/pull/475) Template: the POSIX guest arena spans the raw-SPU windows.
+- [ ] [#477](https://github.com/sp00nznet/ps3recomp/pull/477) Template: the guest off the macOS main thread.
+- [x] Its own repository (`resistance-recomp`): port sources, a toolkit patch, `tools/setup_toolkit.sh`, README, credits, and a `.gitignore` that blocks game data, firmware and saves.
