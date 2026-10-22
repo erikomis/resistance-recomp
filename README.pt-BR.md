@@ -7,21 +7,24 @@ para **macOS/arm64**, feito com recompilação estática: o código PowerPC e SP
 do jogo é traduzido para C/C++ e compilado como executáveis nativos, com
 gráficos em Metal. Não é um emulador.
 
-**Ele chega ao gameplay.** O front end roda das telas legais pela instalação da primeira
-execução, pela tela de título e pelo menu principal até uma campanha nova. O
-executável da campanha então toca o vídeo de abertura da fase 1 e carrega
-"The Gauntlet" (York) até "Press the START button", e depois do START o jogo
-está no gameplay (visão em primeira pessoa e HUD). Jogar com controle numa
-janela é o próximo passo.
+**Ele chega ao gameplay, e o capítulo 1 já foi jogado com controle.** O
+front end roda das telas legais pela instalação da primeira execução, pela
+tela de título e pelo menu principal até uma campanha nova. O executável da
+campanha então toca o vídeo de abertura da fase 1 e carrega "The Gauntlet"
+(York). Numa janela, com um DualSense, York roda em primeira pessoa com o
+HUD: inimigos e aliados, tiros, morrer e renascer. Roda a 7–8 fps, os prédios
+aparecem azul forte e o jogador pode acabar acima do mapa (veja
+[Estado](#estado)).
 
 Construído sobre o [ps3recomp](https://github.com/sp00nznet/ps3recomp),
 seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
 do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
-> **Trabalho em andamento, bem no começo.** Nada é jogável ainda, não há
-> release nem app: você mesmo compila a partir do seu disco. Só macOS com
-> Apple silicon. O que falta está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
+> **Trabalho em andamento, bem no começo.** O capítulo 1 dá para jogar, mas
+> lento e com erros de renderização. Não há release nem app: você mesmo
+> compila a partir do seu disco. Só macOS com Apple silicon, e é preciso um
+> controle. O que falta está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
 > **Este repositório não contém dados do jogo, firmware, chaves da Sony nem
 > nada traduzido a partir deles.** Cada um gera tudo isso localmente a partir
@@ -30,7 +33,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 ## Estado
 
-Em 2026-10-22 (gameplay), cada item verificado em execuções num Mac com Apple silicon e Metal.
+Em 2026-10-22 (capítulo 1 jogado com controle), cada item verificado em execuções num Mac com Apple silicon e Metal.
 
 | | |
 | --- | --- |
@@ -44,10 +47,15 @@ Em 2026-10-22 (gameplay), cada item verificado em execuções num Mac com Apple 
 | Vídeos (cellVdec pelo FFmpeg, desenhados como quad em modo imediato) | ✅ a abertura da fase 1 toca até o fim |
 | SPUs raw (dois programas que o `game.self` inicia depois da abertura) | ✅ traduzidas e rodando |
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
-| Gameplay | ✅ capítulo 1 em primeira pessoa com HUD (~24 fps headless); 🚧 ainda não jogado com controle |
+| Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
+| Taxa de quadros | 🚧 7–8 fps em janela (frames de ~130–146 ms): a thread do RSX fica ~100% ocupada decodificando vértices na CPU (`dc_fetch` ~41%, `rsx_vertex_remap_build` ~13%) e o resto do jogo espera por ela; um cache de vértices entre frames (vindo do port do inFAMOUS 2) está em andamento |
+| Prédios e telhados | 🚧 desenhados em azul forte chapado (em investigação com dumps por passada) |
+| Sombras | 🚧 retângulos escuros/pretos no chão (ainda não investigado) |
+| Posição do jogador | 🚧 depois de morrer e renascer a visão fica acima da cidade (vista do céu, do avesso); num run headless andar para a frente também terminou nos telhados (ainda não investigado) |
 | Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
 | Depois do vídeo de abertura | ✅ o travamento intermitente foi corrigido (pilha de callback compartilhada) |
-| Controle, teclado e mouse | ⏳ até agora só entrada por script foi testada |
+| Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 |
+| Teclado e mouse | ⏳ não no macOS (o fallback de teclado do toolkit é só para Windows): é preciso um controle |
 | Linux e Windows | ⏳ sem suporte |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram) |
 
@@ -85,7 +93,9 @@ As mudanças no toolkit são um único patch sobre o ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
 a informação de pilha da thread principal, o contexto de kernel SPURS que o
 policy module lê e alguns diagnósticos (`VDEC_PICLOG`, `PPU_STACKINFO_LOG`,
-`SPURS_PM_R4_WORD0`, uma linha de log mais completa no `AddWorkload`).
+`SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`, `RSX_ENGINE_PASS_DUMP_TRIGGER`,
+comandos de analógico no `PAD_FILE`, uma linha de log mais completa no
+`AddWorkload`).
 
 ## Compilando a partir do código
 
@@ -170,6 +180,24 @@ O `port/spu/spu_workloads.c` registra os dois como imagens SPU 2
 (`1894F66385AFD052`) e 3 (`5A10969E466A2298`). Como o policy module, o C
 traduzido é código do jogo e fica fora do git.
 
+## Jogando
+
+Monte a imagem do seu disco, conecte ou pareie um controle (DualSense,
+DualShock ou Xbox; no macOS teclado e mouse ainda não funcionam) e:
+
+```sh
+tools/play.sh
+```
+
+Ele abre o front end numa janela; começar uma campanha passa para o build do
+`game.self` na mesma janela. No **primeiro boot aperte START duas vezes**: na
+tela legal e depois na pergunta do "initial setup" (a instalação no HDD, feita
+uma vez só). Saves, o cache da instalação e o log (`last.log`) ficam em
+`~/Library/Application Support/resistance-recomp/` (`RES_DATA` muda isso). O
+título da janela mostra a taxa de quadros. Feche a janela, ou aperte Ctrl+C no
+terminal, para sair. Se faltar um build, o `play.sh` avisa: rode o
+`tools/rebuild.sh`.
+
 ## Jogando pelo terminal
 
 Monte o seu disco e:
@@ -190,6 +218,7 @@ a passagem para o `game.self`.
 
 | Script | O que faz |
 | --- | --- |
+| `tools/play.sh` | jogar numa janela com controle (veja [Jogando](#jogando)) |
 | `tools/run.sh <nome> <segundos> [eboot\|game]` | execução com tempo, um PNG do frame a cada 10 s em `out/<nome>/`, log em `out/<nome>.log`; pasta de execução nova a menos que `KEEP=1` ou `CWD=<pasta>` |
 | `tools/start.sh <nome> [eboot\|game]` | execução em segundo plano controlada pelo `PAD_FILE`; `out/game.cwd/` persistente |
 | `tools/press.sh <nome> <tag> <máscara> [polls] [espera]` | aperta um botão, espera e salva o frame como `<tag>.png` |
@@ -213,9 +242,12 @@ um build direto: `build/BCUS98107/MyGameRecomp game/BCUS98107/EBOOT.elf`.
 | `PS3_HDD0_ROOT`, `PS3_HDD1_ROOT` | pastas graváveis para o `/dev_hdd0` (cache da instalação, saves, perfil) e o `/dev_hdd1` |
 | `PS3RECOMP_FFMPEG_AVCODEC`, `PS3RECOMP_FFMPEG_AVUTIL` | caminhos da `libavcodec` / `libavutil` (no macOS, por exemplo `/opt/homebrew/lib/libavcodec.dylib`); `PS3RECOMP_FFMPEG=0` desliga a decodificação de vídeo |
 | `PAD_SCRIPT="<seg>:<máscara>,..."` | botões em tempos fixos, por exemplo `PAD_SCRIPT="40:0x0008,70:0x0008"` para os dois START do primeiro boot |
-| `PAD_FILE=<arquivo>` | entrada em malha fechada: escreva `<máscara> [polls]` no arquivo e o controle aperta no próximo poll e depois esvazia o arquivo |
+| `PAD_FILE=<arquivo>` | entrada em malha fechada: escreva `<máscara> [polls]` no arquivo e o controle aperta no próximo poll e depois esvazia o arquivo; `S <lx> <ly> <rx> <ry> <polls>` segura os analógicos em vez disso (0–255, 128 = centro) |
 | `PS3RECOMP_METAL_FRAME_DUMP=<arquivo.ppm>` | regrava esse arquivo com o frame a cada 120 apresentações |
 | `PS3RECOMP_METAL_HEADLESS=1` | sem janela (renderização fora da tela) |
+| `PS3RECOMP_METAL_FPS=1` | taxa de quadros e tempos de frame no título da janela (e linhas `[RSX FPS]` no log) |
+| `RSX_ENGINE_PASS_DUMP_TRIGGER=<arquivo>` | com o dump por passada do draw engine (`RSX_ENGINE_PASS_DUMP=<pasta>`), começa a capturar quando esse arquivo aparece, para um script fazer o dump do frame até onde levou o jogo |
+| `SPURS_PM_TRACE=1` | registra os polls do policy module do job manager (`[spurs-pm]`; desligado por padrão, custa taxa de quadros) |
 | `PS3_TITLE` | título da janela |
 | `RES_SPAWN_BIN`, `RES_SPAWN_ELF` | o build e o ELF que a passagem do exitspawn executa (padrão: a pasta de build irmã e `game/BCUS98107/…`) |
 | `RES_SPAWN_KEEP=1` | mantém o arquivo de dados do exitspawn (para rodar o `game.self` de novo à mão com `RES_SPAWN_DATA=<arquivo>`) |
@@ -229,7 +261,7 @@ um build direto: `build/BCUS98107/MyGameRecomp game/BCUS98107/EBOOT.elf`.
 | --- | --- |
 | [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn, `RES_PEEK`), `CMakeLists.txt`, `config.toml`, `spu/spu_workloads.c` (registro das SPUs) |
 | [`patches/`](patches/) | O patch do toolkit sobre o ps3recomp v0.17.0 |
-| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py` e os scripts de execução |
+| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` e os scripts de execução |
 | [`ROADMAP.pt-BR.md`](ROADMAP.pt-BR.md) | Estado e próximos passos |
 
 ## Licença

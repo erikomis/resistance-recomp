@@ -8,11 +8,11 @@ para macOS/arm64 e o que vem a seguir. Mesmo formato do roadmap do inFAMOUS 2.
 
 ## Resumo (2026-10-22)
 
-- **Roda até o gameplay:** os dois executáveis estão traduzidos, compilam e rodam no macOS/arm64 com Metal. Boot, telas legais, instalação da primeira execução, tela de título e menu principal levam a uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 e carrega o capítulo 1, "The Gauntlet" (York). Depois do START o jogo está no gameplay: visão em primeira pessoa, HUD (vida, munição, granadas), uns 24 frames por segundo apresentados num run headless.
-- **Ainda não testado:** jogar de fato (andar, atirar) com controle numa janela; até agora só botões roteirizados.
+- **Roda até o gameplay:** os dois executáveis estão traduzidos, compilam e rodam no macOS/arm64 com Metal. Boot, telas legais, instalação da primeira execução, tela de título e menu principal levam a uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 e carrega o capítulo 1, "The Gauntlet" (York).
+- **Jogado:** o capítulo 1 numa janela com um DualSense (SDL2), `tools/play.sh`: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer.
 - **Lançado:** nada ainda.
-- **Em aberto:** o texto das telas legais anteriores se sobrepõe às seguintes; o agendador SPURS no estilo do kernel e os eventos de SPU atômicos são novos e precisam de sessões longas; sem Windows nem Linux.
-- **Próximo:** uma sessão em janela com controle pelo começo de York, depois desempenho.
+- **Em aberto:** 7–8 fps em janela (frames de ~130–146 ms; o gargalo é a decodificação de vértices na CPU da thread do RSX); prédios e telhados desenhados em azul forte chapado; retângulos escuros/pretos no chão (sombras); o jogador acaba acima do mapa depois de renascer; o texto das telas legais anteriores se sobrepõe às seguintes; teclado e mouse não funcionam no macOS (é preciso um controle); sem Windows nem Linux.
+- **Próximo:** o cache de vértices entre frames do port do inFAMOUS 2 (em andamento), depois os prédios azuis (em andamento) e a posição do jogador.
 
 ## Estado atual (2026-10-22)
 
@@ -59,6 +59,10 @@ O que trouxe até aqui:
 
 - [x] **Jobs de SPU estouram o tempo no gameplay.** Corrigido em 2026-10-22: os 15 módulos de job WWS traduzidos, seleção no estilo do kernel SPURS e eventos de SPU atômicos (veja "Gameplay" em Feito). O job manager carrega o código dos jobs na LS (por volta de 0x7C00–0x14000 da imagem dele) e o interpretador roda a uns 8–9 M passos/s. Os jobs que o primeiro frame precisa não cumprem os timeouts de 2 s do jogo. Capturar o código de cada job quando ele chega por DMA, traduzir (os `lift_spu_jobs.sh` / `relift_jobmod.py` do inFAMOUS 2 são o modelo) e registrar.
 - [x] **Travamento depois do vídeo de abertura (intermitente).** Corrigido em 2026-10-22: pilha de callback HLE→jogo compartilhada (veja "Gameplay" em Feito). Uma thread do player de vídeo (`func_005F0360 → … → func_005EEFE4`) fica em `sys_mutex_lock`, o player nunca avisa que terminou e a thread principal fica no laço de carregamento (`func_00044DE0`, estado 2). `MUTEX_WATCH=2` mantém o lock bloqueante e informa quem espera há mais de 5 s e o dono do mutex. Até agora o travamento não se reproduziu com nenhum modo de watch. A política de mutex fair-share no macOS não resolveu.
+- [ ] **Taxa de quadros: 7–8 fps em janela** (em andamento). Os frames levam ~130–146 ms. Um perfil do host mostra a thread do RSX ~100% ocupada no fetch/decodificação de vértices na CPU do draw engine (`dc_fetch` ~41%, `rsx_vertex_remap_build` ~13%); o resto do jogo espera por ela. Portando o cache de vértices entre frames do port do inFAMOUS 2 (ainda não entrou).
+- [ ] **Prédios e telhados aparecem em azul forte chapado** (em andamento). Em investigação com dumps por passada (`RSX_ENGINE_PASS_DUMP`, `RSX_ENGINE_PASS_DUMP_TRIGGER`).
+- [ ] **Retângulos escuros/pretos no chão** (as sombras). Ainda não investigado.
+- [ ] **O jogador acaba acima do mapa.** Depois de morrer e renascer a visão fica acima da cidade (a cidade vista do céu, do avesso); num run headless andar para a frente também terminou nos telhados. A posição ou a colisão do jogador dá errado. Ainda não investigado.
 - [ ] **Texto das telas legais sobreposto.** O texto desenhado numa tela legal continua lá na seguinte.
 - [ ] As lanes ociosas do job manager são paradas depois de 30 s fazendo polling da mesma linha da fila (`SPU_DMA_REPEAT_SECS`); conferir se elas voltam quando chega trabalho.
 
@@ -67,6 +71,7 @@ O que trouxe até aqui:
 - [x] O vídeo de abertura da fase 1, assistido até o fim (5.584 imagens).
 - [x] Tela de carregamento do capítulo 1 ("The Gauntlet", York) e "Press the START button".
 - [x] Os primeiros frames de gameplay em York (primeira pessoa, HUD).
+- [x] York jogado com controle: inimigos e aliados, tiros, morrer e renascer (2026-10-22).
 - [ ] Menu de pausa e opções dentro do jogo.
 
 ### Jobs de SPU
@@ -92,7 +97,8 @@ O que trouxe até aqui:
 
 ### Gameplay
 
-- [ ] O primeiro capítulo (York) com teclado e com controle, em janela.
+- [x] O primeiro capítulo (York) com controle, em janela (2026-10-22; lento e com os erros de renderização acima).
+- [ ] O primeiro capítulo (York) com teclado e mouse.
 - [ ] Zerar a campanha anotando o que quebra: todos os capítulos, os veículos, os chefes, o tiro alternativo de cada arma.
 - [ ] Tela dividida offline (cooperativo e versus): dois controles, duas viewports.
 
@@ -102,7 +108,8 @@ O que trouxe até aqui:
 
 ### Desempenho
 
-- [ ] 30 fps (a meta do próprio jogo) no gameplay. Perfil por thread (`PS3_FTRACE`) assim que houver gameplay.
+- [ ] 30 fps (a meta do próprio jogo) no gameplay. Hoje 7–8 fps em janela; o primeiro perfil do host põe a decodificação de vértices na CPU da thread do RSX no caminho crítico (veja Bloqueios).
+- [ ] O cache de vértices entre frames do port do inFAMOUS 2 (em andamento).
 - [ ] Medir quanto do tempo de SPU é interpretado e cortar (traduzir o que sobrar).
 
 ### Estabilidade
@@ -111,8 +118,9 @@ O que trouxe até aqui:
 
 ### Controles
 
-- [ ] Teclado e mouse (o `cellPad` do toolkit), mapeamento configurável (`PS3_INPUT_MAP`).
-- [ ] DualSense/DualShock/Xbox via SDL2, vibração.
+- [ ] Teclado e mouse no macOS (o fallback de teclado do `cellPad` do toolkit é só para Windows), mapeamento configurável (`PS3_INPUT_MAP`).
+- [x] DualSense/DualShock/Xbox via SDL2 (um DualSense jogou o capítulo 1, 2026-10-22).
+- [ ] Vibração.
 - [ ] SIXAXIS: o jogo chama `cellPadSetSensorMode`/`cellPadInfoSensorMode`; descobrir para que usa o movimento e mapear num botão.
 
 ### Rebuild
@@ -177,11 +185,17 @@ O que trouxe até aqui:
 - [x] Seleção de workloads no estilo do kernel SPURS (`SPURS_RPCS3_SCHED`, que o port liga): o poll do policy module recebe o workload que o kernel rodaria, o readyCount é do PM, as prioridades contam. Sem isso os jobs de gameplay (`igGeomCullClip`, `SpuBucketerDrawSort`) estouravam o tempo.
 - [x] Eventos de SPU atômicos: o aviso de reserva perdida vindo de uma escrita do PPU apagava o evento de stall-and-notify da lista do job manager, que esperava a interrupção para sempre; o primeiro frame de gameplay nunca terminava.
 - [x] `sys_mutex_destroy` recusa um mutex travado ou com quem espera (EBUSY), como o lv2.
+- [x] Capítulo 1 jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer.
+- [x] `tools/play.sh`: jogar em janela com controle; saves, cache da instalação e log em `~/Library/Application Support/resistance-recomp/`, taxa de quadros no título da janela.
+- [x] Perfil do host de uma sessão em janela: a decodificação de vértices na CPU da thread do RSX é o gargalo.
+- [x] O log `[spurs-pm]` de cada poll do job manager só com `SPURS_PM_TRACE` (gravava 1,9 milhão de linhas numa sessão curta, o bastante para custar taxa de quadros).
 
 ### Ferramentas
 
 - [x] `RES_PEEK` (leitura de memória do guest pelo `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
 - [x] Runs headless com dump de frames e entrada roteirizada (`tools/run.sh`, `start.sh`, `press.sh`, `snap.sh`, `to_campaign.sh`).
+- [x] `RSX_ENGINE_PASS_DUMP_TRIGGER=<arquivo>`: o dump por passada começa quando esse arquivo aparece, para um script capturar o frame até onde levou o jogo (2026-10-22).
+- [x] Comandos de analógico no `PAD_FILE`, `S lx ly rx ry polls`: segurar os analógicos por script para andar ou virar a câmera (2026-10-22).
 
 ---
 

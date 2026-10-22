@@ -8,11 +8,11 @@ to macOS/arm64 and what comes next. Same layout as the inFAMOUS 2 roadmap.
 
 ## Status at a glance (2026-10-22)
 
-- **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York). After START the game is in gameplay: first-person view, HUD (health, ammo, grenades), about 24 frames per second presented in a headless run.
-- **Not tried yet:** actually playing it (moving, shooting) with a controller in a window; only scripted button presses so far.
+- **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
+- **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning.
 - **Released:** nothing yet.
-- **Open:** text from earlier legal screens overlaps later ones; the SPURS kernel-style scheduler and the atomic SPU events are new and need long sessions; no Windows or Linux.
-- **Next:** a windowed session with a controller through the start of York, then performance.
+- **Open:** 7–8 fps windowed (frames of ~130–146 ms; the RSX thread's CPU vertex decode is the bottleneck); buildings and roofs drawn solid bright blue; dark/black rectangles on the ground (shadows); the player ends up above the map after respawning; text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); no Windows or Linux.
+- **Next:** the cross-frame vertex cache from the inFAMOUS 2 port (in progress), then the blue buildings (in progress) and the player position.
 
 ## Current state (2026-10-22)
 
@@ -58,6 +58,10 @@ What got it this far:
 
 - [x] **SPU jobs time out in gameplay.** Fixed 2026-10-22: the 15 WWS job modules lifted, SPURS kernel-style selection and atomic SPU events (see "Gameplay" under Done). The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
 - [x] **Hang after the intro movie (intermittent).** Fixed 2026-10-22: a shared HLE→guest callback stack (see "Gameplay" under Done). A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
+- [ ] **Frame rate: 7–8 fps windowed** (in progress). Frames take ~130–146 ms. A host profile shows the RSX thread ~100% busy in the draw engine's CPU vertex fetch/decode (`dc_fetch` ~41%, `rsx_vertex_remap_build` ~13%); the rest of the game waits on it. Porting the cross-frame vertex cache from the inFAMOUS 2 port (not landed yet).
+- [ ] **Buildings and roofs render solid bright blue** (in progress). Under investigation with per-pass dumps (`RSX_ENGINE_PASS_DUMP`, `RSX_ENGINE_PASS_DUMP_TRIGGER`).
+- [ ] **Dark/black rectangles on the ground** (the shadows). Not investigated yet.
+- [ ] **The player ends up above the map.** After dying and respawning the view is from above the town (the town seen from the sky, inside-out); in a headless run walking forward also ended on the rooftops. Player position or collision goes wrong. Not investigated yet.
 - [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
 - [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
 
@@ -66,6 +70,7 @@ What got it this far:
 - [x] The level-1 intro movie, watched to the end (5,584 pictures).
 - [x] Chapter 1 loading screen ("The Gauntlet", York) and "Press the START button".
 - [x] The first gameplay frames in York (first person, HUD).
+- [x] York played with a controller: enemies and allies, shooting, dying and respawning (2026-10-22).
 - [ ] Pause menu and in-game options.
 
 ### SPU jobs
@@ -91,7 +96,8 @@ What got it this far:
 
 ### Gameplay
 
-- [ ] The first chapter (York) with keyboard and with a controller, in a window.
+- [x] The first chapter (York) with a controller, in a window (2026-10-22; slow and with the rendering bugs above).
+- [ ] The first chapter (York) with keyboard and mouse.
 - [ ] Play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
 - [ ] Offline split-screen (co-op and versus): two pads, two viewports.
 
@@ -101,7 +107,8 @@ What got it this far:
 
 ### Performance
 
-- [ ] 30 fps (the game's own target) in gameplay. Profile per thread (`PS3_FTRACE`) as soon as there is gameplay.
+- [ ] 30 fps (the game's own target) in gameplay. Now 7–8 fps windowed; the first host profile puts the RSX thread's CPU vertex decode on the critical path (see Blockers).
+- [ ] The cross-frame vertex cache from the inFAMOUS 2 port (in progress).
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
@@ -110,8 +117,9 @@ What got it this far:
 
 ### Controls
 
-- [ ] Keyboard and mouse (the toolkit's `cellPad`), configurable mapping (`PS3_INPUT_MAP`).
-- [ ] DualSense/DualShock/Xbox via SDL2, rumble.
+- [ ] Keyboard and mouse on macOS (the toolkit's keyboard fallback in `cellPad` is Windows-only), configurable mapping (`PS3_INPUT_MAP`).
+- [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
+- [ ] Rumble.
 - [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode`; find what it uses motion for and map it to a button.
 
 ### Rebuild
@@ -176,11 +184,17 @@ What got it this far:
 - [x] SPURS kernel-style workload selection (`SPURS_RPCS3_SCHED`, which the port turns on): the policy module's poll gets the workload the kernel would run, readyCount is the PM's, priorities count. Without it the gameplay jobs (`igGeomCullClip`, `SpuBucketerDrawSort`) timed out.
 - [x] Atomic SPU event updates: a PPU store's reservation-lost raise overwrote the job manager's list stall-and-notify event, and it waited for its interrupt for ever; the first gameplay frame never finished.
 - [x] `sys_mutex_destroy` refuses a held mutex or one with waiters (EBUSY), as lv2 does.
+- [x] Chapter 1 played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning.
+- [x] `tools/play.sh`: windowed play with a controller; saves, install cache and log in `~/Library/Application Support/resistance-recomp/`, frame rate in the window title.
+- [x] Host profile of a windowed session: the RSX thread's CPU vertex decode is the bottleneck.
+- [x] The job manager's per-poll `[spurs-pm]` log only under `SPURS_PM_TRACE` (it wrote 1.9 million lines in a short session, enough to cost frame rate).
 
 ### Tools
 
 - [x] `RES_PEEK` (guest memory peeks from `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
 - [x] Headless runs with frame dumps and scripted input (`tools/run.sh`, `start.sh`, `press.sh`, `snap.sh`, `to_campaign.sh`).
+- [x] `RSX_ENGINE_PASS_DUMP_TRIGGER=<file>`: the per-pass dump starts when that file appears, so a script captures the frame it has steered the game to (2026-10-22).
+- [x] `PAD_FILE` stick commands, `S lx ly rx ry polls`: hold the sticks from a script to walk or turn the camera (2026-10-22).
 
 ---
 

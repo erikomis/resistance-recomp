@@ -292,6 +292,62 @@ index 204a005..05f1c43 100644
  }
  
  s32 cellVdecSetFrameRate(CellVdecHandle handle, u32 frameRateCode)
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 7fa8cab..7c35fa5 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -735,6 +735,7 @@ skip_inject: ;
+      *   echo 0x0040 4 > pad.txt  # DOWN for 4 polls (menus auto-repeat a
+      *                            # long hold; the default is 40)
+      */
++    static u8 s_pf_stick[4]; static int s_pf_stick_n = 0;   /* PAD_FILE "S ..." */
+     { static int s_pf = -1; static char pf_path[512];
+       static unsigned held_mask = 0; static int held_n = 0;
+       if (s_pf < 0) { const char* e = getenv("PAD_FILE");
+@@ -746,11 +747,25 @@ skip_inject: ;
+               if (f) {
+                   char buf[64]; buf[0] = 0;
+                   if (fgets(buf, sizeof buf, f)) {
+-                      char* rest;
+-                      unsigned m = (unsigned)strtoul(buf, &rest, 0);
+-                      int n = (int)strtol(rest, 0, 0);
+-                      if (m) { held_mask = m; held_n = n > 0 ? n : 40;
+-                               printf("[cellPad] PAD_FILE press 0x%04X\n", m); fflush(stdout); }
++                      int lx, ly, rx, ry, sn;
++                      if (buf[0] == 'S' &&
++                          sscanf(buf + 1, "%d %d %d %d %d", &lx, &ly, &rx, &ry, &sn) == 5) {
++                          /* "S lx ly rx ry polls": hold the sticks (0-255, 128 =
++                           * centre) for that many polls -- turn the camera or walk
++                           * from a driver script, as a mask does for buttons. */
++                          s_pf_stick[0] = (u8)lx; s_pf_stick[1] = (u8)ly;
++                          s_pf_stick[2] = (u8)rx; s_pf_stick[3] = (u8)ry;
++                          s_pf_stick_n = sn > 0 ? sn : 40;
++                          held_mask = 0; held_n = 1;   /* consume the file below */
++                          printf("[cellPad] PAD_FILE sticks %d,%d,%d,%d for %d polls\n",
++                                 lx, ly, rx, ry, s_pf_stick_n); fflush(stdout);
++                      } else {
++                          char* rest;
++                          unsigned m = (unsigned)strtoul(buf, &rest, 0);
++                          int n = (int)strtol(rest, 0, 0);
++                          if (m) { held_mask = m; held_n = n > 0 ? n : 40;
++                                   printf("[cellPad] PAD_FILE press 0x%04X\n", m); fflush(stdout); }
++                      }
+                   }
+                   fclose(f);
+                   if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
+@@ -782,6 +797,12 @@ skip_inject: ;
+       if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
+                   hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
+                   hs->connected = 1; }
++      if (s_pf_stick_n > 0 && port_no == 0) {     /* PAD_FILE "S ..." */
++          s_pf_stick_n--;
++          hs->analog_lx = s_pf_stick[0]; hs->analog_ly = s_pf_stick[1];
++          hs->analog_rx = s_pf_stick[2]; hs->analog_ry = s_pf_stick[3];
++          hs->connected = 1;
++      }
+       /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
+        * deflections instead of holding one. Guessing a single stick position and
+        * re-running costs ~5 minutes a try; a sweep answers "can input move the
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
 index 19a8516..984cc7f 100644
 --- a/libs/spurs/cellSpurs.c
@@ -488,6 +544,35 @@ index 7350528..d281db7 100644
          rsx->sink.immediate_vertex(rsx->sink.user, rsx);
  
      /* Transform program upload window: word goes to instruction slot
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index f99986b..0575171 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -2279,6 +2279,24 @@ static int pd_capturing(void)
+     if (s_pd.state == 1 && s_pd.after_s &&
+         difftime(time(NULL), s_pd.start) >= (double)s_pd.after_s && pd_open_index())
+         fprintf(s_pd.index, "from a draw of frame %u, %u s in\n", g.frames, s_pd.after_s);
++    /* RSX_ENGINE_PASS_DUMP_TRIGGER=<file>: start when that file appears, so a
++     * driver script can capture the frame it has steered the game to rather
++     * than guess a time (how long a title takes to reach a scene varies from
++     * run to run). Checked once a frame. */
++    if (s_pd.state == 1) {
++        static const char* trig = (const char*)1;
++        static u32 last_frame = ~0u;
++        if (trig == (const char*)1) trig = getenv("RSX_ENGINE_PASS_DUMP_TRIGGER");
++        if (trig && *trig && g.frames != last_frame) {
++            last_frame = g.frames;
++            FILE* t = fopen(trig, "rb");
++            if (t) {
++                fclose(t);
++                if (pd_open_index())
++                    fprintf(s_pd.index, "from a draw of frame %u, on %s\n", g.frames, trig);
++            }
++        }
++    }
+     return s_pd.state == 2;
+ }
+ 
 diff --git a/libs/video/tests/test_rsx_draw_engine.c b/libs/video/tests/test_rsx_draw_engine.c
 index aee6109..e7ba27f 100644
 --- a/libs/video/tests/test_rsx_draw_engine.c
@@ -642,7 +727,7 @@ index f54150d..492cce3 100644
      ctx.gpr[3]  = a0; ctx.gpr[4] = a1; ctx.gpr[5] = a2; ctx.gpr[6] = a3;
      ctx.gpr[7]  = a4; ctx.gpr[8] = a5; ctx.gpr[9] = a6; ctx.gpr[10] = a7;
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 59f5e4b..ceb6f41 100644
+index 59f5e4b..e7f8fb0 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -27,7 +27,7 @@
@@ -830,8 +915,18 @@ index 59f5e4b..ceb6f41 100644
  void spu_indirect_branch(spu_context* ctx)
  {
      /* Real SPU bi/bisl mask the target to the 256 KB local store; the high bits
-@@ -2160,7 +2174,27 @@ void spu_indirect_branch(spu_context* ctx)
-             if (n <= 4 || (n % 4096) == 0)
+@@ -2157,10 +2171,36 @@ void spu_indirect_branch(spu_context* ctx)
+             /* cellSpursModulePoll: report "no contention — keep running".
+              * (The host scheduler admits bounded workers; this service does not preempt.) */
+             unsigned n = ++g_spurs_pm_polls;
+-            if (n <= 4 || (n % 4096) == 0)
++            /* The count restarts with every policy-module run, so "first 4"
++             * meant four lines per run: 1.9 million lines (91 MB) in a short
++             * Resistance session, enough to cost frame rate. SPURS_PM_TRACE=1
++             * (as for the RUN/END lines) brings them back. */
++            static int s_poll_trace = -1;
++            if (s_poll_trace < 0) s_poll_trace = getenv("SPURS_PM_TRACE") ? 1 : 0;
++            if (s_poll_trace && (n <= 4 || (n % 4096) == 0))
                  fprintf(stderr, "[spurs-pm] poll #%u (r3=0x%08X) -> continue\n",
                          n, ctx->gpr[3]._u32[0]);
 -            ctx->gpr[3] = spu_make_preferred_u32(0);
