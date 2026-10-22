@@ -1,0 +1,195 @@
+diff --git a/libs/codec/cellVdec.c b/libs/codec/cellVdec.c
+index 204a005..3c3d86d 100644
+--- a/libs/codec/cellVdec.c
++++ b/libs/codec/cellVdec.c
+@@ -446,6 +446,12 @@ static s32 vdec_take_picture(VdecSlot* v, u32 dst, u32 type, u32 matrix, u8 alph
+     VdecPic* q = &v->queue[v->qHead];
+     v->qHead = (v->qHead + 1) % VDEC_QUEUE;
+     v->qCount--;
++    /* VDEC_PICLOG=1: the first pictures handed out, with where they went. */
++    { static int s_pl = -1; static unsigned s_n = 0;
++      if (s_pl < 0) s_pl = getenv("VDEC_PICLOG") ? 1 : 0;
++      if (s_pl && s_n++ < 16)
++          printf("[cellVdec] GetPicture #%u %ux%u type=%u matrix=%u alpha=%u -> 0x%08X\n",
++                 s_n, q->item.width, q->item.height, type, matrix, alpha, dst); }
+     if (dst)                                           /* NULL: a skip */
+         vdec_store_picture(dst, q->yuv, q->item.width, q->item.height,
+                            type, matrix, alpha);
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 19a8516..96e0088 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -423,6 +423,9 @@ enum {
+     SPURS_WKL_STATE1   = 0x80,
+     SPURS_WKL_ENABLED  = 0xB0,
+     SPURS_SYSSRV_MSG   = 0xBD,
++    SPURS_WKL_FLAG_RECEIVER = 0x77,
++    SPURS_UNK11        = 0x988,
++    SPURS_UNK12        = 0x98C,
+     SPURS_WKL_INFO1    = 0xB00,
+     SPURS_WKL_INFO_SZ  = 0x20,
+     /* CELL_SPURS_SIZE = 4096 (SDK cell/spurs/types.h). The 8192-byte variant
+@@ -525,6 +528,9 @@ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
+     memset(vm_base + spurs_ea, 0, SPURS_INST_SIZE);
+     *(vm_base + spurs_ea + SPURS_NSPUS) = (u8)si->nspus;
+     vm_write64(spurs_ea + SPURS_WKL_FLAG, 0xFFFFFFFFFFFFFFFFull); /* no receiver */
++    vm_base[spurs_ea + SPURS_WKL_FLAG_RECEIVER] = 0xFF;
++    vm_write32(spurs_ea + SPURS_UNK11, 0xFFFFFFFFu);
++    vm_write32(spurs_ea + SPURS_UNK12, 0xFFFFFFFFu);
+ 
+     s32 start_rc = spurs_scheduler_start(si);
+     AcquireSRWLockExclusive(&si->lock);
+@@ -1404,8 +1410,11 @@ s32 cellSpursAddWorkload(CellSpurs* spurs, CellSpursWorkloadId* wid,
+ 
+             /* wid out-param is guest BE */
+             vm_write32((u32)(uintptr_t)wid, i);
+-            printf("[cellSpurs] AddWorkload(wid=%u, pm=%p, size=%u)\n",
+-                   i, pm, sizePm);
++            printf("[cellSpurs] AddWorkload(wid=%u, pm=%p, size=%u, data=0x%016llX, "
++                   "priority=%u/%u, contention=%u..%u)\n",
++                   i, pm, sizePm, (unsigned long long)data,
++                   s_workloads[i].priority[0], s_workloads[i].priority[1],
++                   minContention, maxContention);
+             spurs_api_unlock(si);
+             return CELL_OK;
+         }
+diff --git a/runtime/spu/spurs_policy.c b/runtime/spu/spurs_policy.c
+index 905b351..367eee6 100644
+--- a/runtime/spu/spurs_policy.c
++++ b/runtime/spu/spurs_policy.c
+@@ -27,6 +27,7 @@
+ #include "../platform/win32_compat.h"
+ #include "spu_workload.h"
+ #include "spu_coherency.h"
++#include "../ppu/ppu_memory.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -265,6 +266,26 @@ int spu_run_policy_module(spu_lifted_entry_fn entry, int image_id,
+     KBE32(0x1DC, wid);                  /* wklCurrentId             */
+     KBE32(0x1E0, SPURS_PM_EXIT_TO_KERNEL_LS);
+     KBE32(0x1E4, SPURS_PM_SELECT_WORKLOAD_LS);
++    {
++        extern uint8_t* vm_base;
++        uint32_t info = spurs_ea + 0xB00u + wid * 0x20u;
++        uint32_t pm_ea = (uint32_t)((uintptr_t)pm_host - (uintptr_t)vm_base);
++        uint32_t enabled = vm_read32(spurs_ea + 0xB0u);
++        uint16_t runnable = (uint16_t)(0x8000u >> (wid & 15u));
++        if (!(enabled & (0x80000000u >> (wid & 31u))))
++            runnable = 0;
++        memset(ls + 0x180, 0, 0x30);
++        memset(ls + 0x1A0, 0, 0x10);
++        ls[0x1A0 + (wid & 15u)] = vm_read8(info + 0x18u + (spu_num & 7u));
++        ls[0x1EC] = (uint8_t)(runnable >> 8);
++        ls[0x1ED] = (uint8_t)runnable;
++        ls[0x1EE] = 0;
++        ls[0x1EF] = 0;
++        memset(ls + 0x220, 0, 0x10);
++        ls[0x220 + (wid & 15u)] = vm_read8(info + 0x14u);
++        KBE32(0x1D0, 0);
++        KBE32(0x1D4, pm_ea);
++    }
+ #undef KBE32
+ 
+     /* Entry registers per cellSpursModuleEntry. */
+@@ -282,8 +303,19 @@ int spu_run_policy_module(spu_lifted_entry_fn entry, int image_id,
+      * list's per-SPU cursor rows (SPU 0-3) and first job slots (SPU 4): the
+      * "ticket values exploding" with extra SPUs. Titles pass a 32-bit list
+      * EA (high half 0), so audit stays off, as on hardware. */
+-    ctx->gpr[4]._u32[0] = (uint32_t)(wkl_data >> 32);
+-    ctx->gpr[4]._u32[1] = (uint32_t)wkl_data;
++    /* Most SPURS callers pass the workload data as a preferred-word
++     * doubleword (high half in word 0, low half in word 1). Some retail
++     * job-manager policies, including the Resistance image, consume a
++     * 32-bit workload EA from preferred word 0 instead. Keep the canonical
++     * ABI as the default and allow a title-scoped probe to select the latter
++     * layout while validating the first queue access. */
++    if (getenv("SPURS_PM_R4_WORD0")) {
++        ctx->gpr[4]._u32[0] = (uint32_t)wkl_data;
++        ctx->gpr[4]._u32[1] = 0;
++    } else {
++        ctx->gpr[4]._u32[0] = (uint32_t)(wkl_data >> 32);
++        ctx->gpr[4]._u32[1] = (uint32_t)wkl_data;
++    }
+     ctx->gpr[4]._u32[2] = 0;
+     ctx->gpr[4]._u32[3] = 0;
+     ctx->gpr[5]._u32[0] = 0;                           /* poll status */
+diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
+index c64b0b8..cf7878e 100644
+--- a/runtime/syscalls/sys_ppu_thread.c
++++ b/runtime/syscalls/sys_ppu_thread.c
+@@ -1250,6 +1250,17 @@ int64_t sys_ppu_thread_get_join_state(ppu_context* ctx)
+  * r3 = pointer to receive stack info struct
+  *   struct { u32 addr; u32 size; }
+  * -----------------------------------------------------------------------*/
++
++/* The main thread's real stack, when the host knows it. The main thread is not
++ * in the thread table, and the default below names the start of the thread
++ * stack region -- memory sys_ppu_thread_create hands out to the first threads.
++ * A title that keys data off its own stack top reads someone else's stack
++ * there: Resistance finds the block sys_game_process_exitspawn passed it at
++ * (addr + size - 0x1000). A host that runs the main thread on a stack of its
++ * own sets these before ppu_run; zero keeps the old default. */
++uint32_t g_ppu_main_stack_addr = 0;
++uint32_t g_ppu_main_stack_size = 0;
++
+ int64_t sys_ppu_thread_get_stack_information(ppu_context* ctx)
+ {
+     uint32_t out_addr = LV2_ARG_PTR(ctx, 0);
+@@ -1264,8 +1275,8 @@ int64_t sys_ppu_thread_get_stack_information(ppu_context* ctx)
+             uint32_t* out = (uint32_t*)vm_to_host(out_addr);
+ #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || defined(_WIN32)
+             /* byteswap both fields */
+-            uint32_t sa = VM_STACK_BASE;
+-            uint32_t ss = VM_PPU_STACK_SIZE;
++            uint32_t sa = g_ppu_main_stack_size ? g_ppu_main_stack_addr : VM_STACK_BASE;
++            uint32_t ss = g_ppu_main_stack_size ? g_ppu_main_stack_size : VM_PPU_STACK_SIZE;
+             sa = ((sa >> 24) & 0xFF) | ((sa >> 8) & 0xFF00) |
+                  ((sa <<  8) & 0xFF0000) | ((sa << 24) & 0xFF000000u);
+             ss = ((ss >> 24) & 0xFF) | ((ss >> 8) & 0xFF00) |
+@@ -1273,18 +1284,30 @@ int64_t sys_ppu_thread_get_stack_information(ppu_context* ctx)
+             out[0] = sa;
+             out[1] = ss;
+ #else
+-            out[0] = VM_STACK_BASE;
+-            out[1] = VM_PPU_STACK_SIZE;
++            out[0] = g_ppu_main_stack_size ? g_ppu_main_stack_addr : VM_STACK_BASE;
++            out[1] = g_ppu_main_stack_size ? g_ppu_main_stack_size : VM_PPU_STACK_SIZE;
+ #endif
+         }
+         return CELL_OK;
+     }
+ 
++    /* The main thread is in the table too, registered by ppu_run with no stack
++     * of its own (0 + 0). Reporting that sent Resistance's game.self looking
++     * for its exitspawn block at 0 + 0 - 0x1000 = 0xFFFFF000. A thread with no
++     * recorded stack gets the main-thread answer above. */
++    uint32_t t_sa = t->stack_addr, t_ss = t->stack_size;
++    if (!t_ss) {
++        t_sa = g_ppu_main_stack_size ? g_ppu_main_stack_addr : VM_STACK_BASE;
++        t_ss = g_ppu_main_stack_size ? g_ppu_main_stack_size : VM_PPU_STACK_SIZE;
++    }
++    if (getenv("PPU_STACKINFO_LOG"))
++        fprintf(stderr, "[ppu_thread] get_stack_information tid=%llu -> 0x%08X+0x%X\n",
++                (unsigned long long)tid, t_sa, t_ss);
+     if (out_addr != 0) {
+         uint32_t* out = (uint32_t*)vm_to_host(out_addr);
+ #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || defined(_WIN32)
+-        uint32_t sa = t->stack_addr;
+-        uint32_t ss = t->stack_size;
++        uint32_t sa = t_sa;
++        uint32_t ss = t_ss;
+         sa = ((sa >> 24) & 0xFF) | ((sa >> 8) & 0xFF00) |
+              ((sa <<  8) & 0xFF0000) | ((sa << 24) & 0xFF000000u);
+         ss = ((ss >> 24) & 0xFF) | ((ss >> 8) & 0xFF00) |
+@@ -1292,8 +1315,8 @@ int64_t sys_ppu_thread_get_stack_information(ppu_context* ctx)
+         out[0] = sa;
+         out[1] = ss;
+ #else
+-        out[0] = t->stack_addr;
+-        out[1] = t->stack_size;
++        out[0] = t_sa;
++        out[1] = t_ss;
+ #endif
+     }
+ 

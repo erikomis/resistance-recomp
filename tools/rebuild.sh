@@ -1,0 +1,100 @@
+#!/bin/zsh
+# Rebuild the port from your own disc: decrypt, analyse, lift, compile.
+#
+#   tools/rebuild.sh [step ...]
+#
+# Steps, in order (default: all of them): toolkit decrypt analyse lift spu build
+#
+#   toolkit  tools/setup_toolkit.sh (./ps3recomp at the pinned commit + patch)
+#   decrypt  copies PS3_GAME/USRDIR/EBOOT.BIN and game.self from the disc to
+#            game/BCUS98107/ and decrypts them with RPCS3 (rpcs3 --decrypt;
+#            RPCS3=<path> if it is not in /Applications). Skipped for a file
+#            whose .elf is already there, so ELFs decrypted some other way
+#            can simply be dropped in: game/BCUS98107/EBOOT.elf and
+#            game/BCUS98107/modules/game.elf.
+#   analyse  toolkit tools/ppu_loader.py -> analysis/BCUS98107{,/game_module}
+#   lift     toolkit tools/ppu_lifter.py -> recompiled/BCUS98107{,/game_module}
+#            (16 and 12 chunks: the same split, byte for byte, as the tested lift)
+#   spu      tools/regen_spu_pm.sh -> port/spu/captured/
+#   build    cmake + ninja -> build/BCUS98107/MyGameRecomp (EBOOT) and
+#            build/BCUS98107_game/MyGameRecomp (game.self), Metal, FFmpeg video
+#
+# Everything it writes (game/, analysis/, recompiled/, build/, out/,
+# port/spu/captured/) is game-derived and .gitignore'd.
+# Environment: PS3_VFS_ROOT (the mounted disc), PS3RECOMP_DIR, PY, RPCS3, JOBS.
+set -e
+here=${0:A:h}; source "$here/env.sh"
+TK=${PS3RECOMP_DIR:-$RES_ROOT/ps3recomp}
+AN=$RES_ROOT/analysis/BCUS98107
+RC=$RES_ROOT/recompiled/BCUS98107
+if (( $# )); then steps=("$@"); else steps=(toolkit decrypt analyse lift spu build); fi
+jobs=(); [ -n "$JOBS" ] && jobs=(-j "$JOBS")
+
+# sha256 of the decrypted executables of BCUS98107 v01.00 the port was made from
+EBOOT_SHA=59f560d221acb946f325627317e983d8b81a0db721a9b25280d8fbd277776177
+GAME_SHA=2e007861b0c515ab4212d031e8533114fc75ee221ffbd840d0e9ff168dd3bd37
+
+say() { print -P "%B==> $*%b"; }
+
+find_rpcs3() {
+    for c in "$RPCS3" ~/Applications/RPCS3.app/Contents/MacOS/rpcs3 \
+             /Applications/RPCS3.app/Contents/MacOS/rpcs3 "$(command -v rpcs3)"; do
+        [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
+    done
+    return 1
+}
+
+decrypt_one() {   # <disc file> <dest dir> <name.elf> <expected sha>
+    local src=$1 dst=$2 elf=$3 want=$4 rp
+    mkdir -p "$dst"
+    if [ ! -f "$dst/$elf" ]; then
+        rp=$(find_rpcs3) || { echo "RPCS3 not found (set RPCS3=<path>), or put a decrypted $elf in $dst" >&2; exit 1; }
+        cp "$src" "$dst/"
+        "$rp" --decrypt "$dst/${src:t}" >/dev/null 2>&1 || true
+        [ -f "$dst/$elf" ] || { echo "RPCS3 did not write $dst/$elf" >&2; exit 1; }
+    fi
+    [ "$(head -c 4 "$dst/$elf")" = $'\x7fELF' ] || { echo "$dst/$elf is not an ELF" >&2; exit 1; }
+    if [ "$(shasum -a 256 "$dst/$elf" | cut -d' ' -f1)" != "$want" ]; then
+        echo "WARNING: $elf differs from the tested BCUS98107 v01.00 executable; the port may not match it" >&2
+    fi
+}
+
+configure_build() {   # <build dir> <recompiled dir>
+    local bp=${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null)}
+    cmake -S "$RES_ROOT/port" -B "$1" -G Ninja \
+          -DPS3RECOMP_DIR="$TK" -DRECOMP_DIR="$2" -DSPU_DIR="$RES_ROOT/port/spu" \
+          -DPS3RECOMP_FFMPEG_RUNTIME=ON -DPS3RECOMP_FFMPEG_INCLUDE_DIR="${bp:-/opt/homebrew}/include"
+    cmake --build "$1" "${jobs[@]}"
+}
+
+for s in $steps; do
+    case $s in
+    toolkit)
+        say "toolkit"; "$here/setup_toolkit.sh" "$TK" ;;
+    decrypt)
+        say "decrypt"; res_disc
+        decrypt_one "$PS3_VFS_ROOT/PS3_GAME/USRDIR/EBOOT.BIN" "$RES_GAME" EBOOT.elf $EBOOT_SHA
+        decrypt_one "$PS3_VFS_ROOT/PS3_GAME/USRDIR/game.self" "$RES_GAME/modules" game.elf $GAME_SHA ;;
+    analyse)
+        say "analyse"
+        "$PY" "$TK/tools/ppu_loader.py" "$RES_GAME/EBOOT.elf" -o "$AN"
+        "$PY" "$TK/tools/ppu_loader.py" "$RES_GAME/modules/game.elf" -o "$AN/game_module" ;;
+    lift)
+        say "lift (EBOOT, then game.self)"
+        "$PY" "$TK/tools/ppu_lifter.py" "$RES_GAME/EBOOT.elf" "${jobs[@]}" --chunks 16 \
+            --functions "$AN/EBOOT.functions.json" --hle-stubs "$AN/EBOOT.imports.json" --output "$RC"
+        "$PY" "$TK/tools/ppu_lifter.py" "$RES_GAME/modules/game.elf" "${jobs[@]}" --chunks 12 \
+            --functions "$AN/game_module/game.functions.json" --hle-stubs "$AN/game_module/game.imports.json" \
+            --output "$RC/game_module" ;;
+    spu)
+        say "spu (job-manager policy module)"
+        PS3RECOMP_DIR=$TK SPU_PM_OUT=${SPU_PM_OUT:-$RES_ROOT/port/spu/captured} "$here/regen_spu_pm.sh" "$RES_GAME/EBOOT.elf" ;;
+    build)
+        say "build"
+        configure_build "$RES_BUILD/BCUS98107" "$RC"
+        configure_build "$RES_BUILD/BCUS98107_game" "$RC/game_module" ;;
+    *)
+        echo "unknown step '$s' (toolkit decrypt analyse lift spu build)" >&2; exit 2 ;;
+    esac
+done
+say "done"
