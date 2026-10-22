@@ -7,13 +7,12 @@ para **macOS/arm64**, feito com recompilação estática: o código PowerPC e SP
 do jogo é traduzido para C/C++ e compilado como executáveis nativos, com
 gráficos em Metal. Não é um emulador.
 
-**Ele chega ao menu principal, toca a abertura da campanha e carrega o
-capítulo 1.** O front end roda das telas legais pela instalação da primeira
+**Ele chega ao gameplay.** O front end roda das telas legais pela instalação da primeira
 execução, pela tela de título e pelo menu principal até uma campanha nova. O
 executável da campanha então toca o vídeo de abertura da fase 1 e carrega
-"The Gauntlet" (York) até "Press the START button". Os primeiros frames de
-gameplay ainda não saem: eles esperam jobs de SPU que ainda rodam no
-interpretador.
+"The Gauntlet" (York) até "Press the START button", e depois do START o jogo
+está no gameplay (visão em primeira pessoa e HUD). Jogar com controle numa
+janela é o próximo passo.
 
 Construído sobre o [ps3recomp](https://github.com/sp00nznet/ps3recomp),
 seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
@@ -31,7 +30,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 ## Estado
 
-Em 2026-10-22, cada item verificado em execuções num Mac com Apple silicon e Metal.
+Em 2026-10-22 (gameplay), cada item verificado em execuções num Mac com Apple silicon e Metal.
 
 | | |
 | --- | --- |
@@ -45,9 +44,9 @@ Em 2026-10-22, cada item verificado em execuções num Mac com Apple silicon e M
 | Vídeos (cellVdec pelo FFmpeg, desenhados como quad em modo imediato) | ✅ a abertura da fase 1 toca até o fim |
 | SPUs raw (dois programas que o `game.self` inicia depois da abertura) | ✅ traduzidas e rodando |
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
-| Gameplay | 🚧 os primeiros frames esperam jobs de SPU que estouram o tempo (`igGeomCullClip SPU Timeout!`) |
-| Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | 🧪 rodam no interpretador de SPU do toolkit, ainda não traduzidos |
-| Depois do vídeo de abertura | 🚧 um travamento intermitente no player de vídeo (uma thread presa em `sys_mutex_lock`) |
+| Gameplay | ✅ capítulo 1 em primeira pessoa com HUD (~24 fps headless); 🚧 ainda não jogado com controle |
+| Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
+| Depois do vídeo de abertura | ✅ o travamento intermitente foi corrigido (pilha de callback compartilhada) |
 | Controle, teclado e mouse | ⏳ até agora só entrada por script foi testada |
 | Linux e Windows | ⏳ sem suporte |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram) |

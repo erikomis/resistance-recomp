@@ -8,13 +8,11 @@ to macOS/arm64 and what comes next. Same layout as the inFAMOUS 2 roadmap.
 
 ## Status at a glance (2026-10-22)
 
-- **Runs:** both executables (`EBOOT.BIN` and `game.self`) are lifted, build and run on macOS/arm64 with Metal. The front end goes from boot through the legal screens, the first-run HDD install, the title screen and the main menu to a new campaign. `game.self` then plays the full level-1 intro movie (picture and sound), loads chapter 1, "The Gauntlet" (York), and shows "Press the START button".
-- **Blocked at:** after START, the first gameplay frames wait on SPU jobs that do not finish in time. The game's own log says `igGeomCullClip SPU Timeout!`, `IGG::SpuBucketerDrawSort timeout` and `For fxvUpdate, WwsJobDelay timed out after 2 seconds`. The job manager runs those jobs in the SPU interpreter.
+- **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York). After START the game is in gameplay: first-person view, HUD (health, ammo, grenades), about 24 frames per second presented in a headless run.
+- **Not tried yet:** actually playing it (moving, shooting) with a controller in a window; only scripted button presses so far.
 - **Released:** nothing yet.
-- **In progress:**
-  - [ ] (in progress) Capture and lift the job manager's SPU jobs (geometry cull/clip, draw-bucket sort, effects, NextSynth audio).
-  - [ ] (in progress) An intermittent hang after the intro movie: a movie-player thread blocks for good in `sys_mutex_lock`. It hit 4 of the 5 runs without `MUTEX_WATCH` and none of the 3 with it.
-- **Next:** the first frames of York with the SPU jobs lifted, then input and a windowed session.
+- **Open:** text from earlier legal screens overlaps later ones; the SPURS kernel-style scheduler and the atomic SPU events are new and need long sessions; no Windows or Linux.
+- **Next:** a windowed session with a controller through the start of York, then performance.
 
 ## Current state (2026-10-22)
 
@@ -58,8 +56,8 @@ What got it this far:
 
 ### Blockers
 
-- [ ] **SPU jobs time out in gameplay.** The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
-- [ ] **Hang after the intro movie (intermittent).** A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
+- [x] **SPU jobs time out in gameplay.** Fixed 2026-10-22: the 15 WWS job modules lifted, SPURS kernel-style selection and atomic SPU events (see "Gameplay" under Done). The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
+- [x] **Hang after the intro movie (intermittent).** Fixed 2026-10-22: a shared HLE→guest callback stack (see "Gameplay" under Done). A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
 - [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
 - [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
 
@@ -67,7 +65,7 @@ What got it this far:
 
 - [x] The level-1 intro movie, watched to the end (5,584 pictures).
 - [x] Chapter 1 loading screen ("The Gauntlet", York) and "Press the START button".
-- [ ] The first gameplay frames in York.
+- [x] The first gameplay frames in York (first person, HUD).
 - [ ] Pause menu and in-game options.
 
 ### SPU jobs
@@ -170,6 +168,14 @@ What got it this far:
 - [x] Movies on screen: FFmpeg runtime, immediate-mode `DATA2S` vertices, idle drain of the last reordered picture.
 - [x] Raw SPUs on macOS: the POSIX thread, the full 32-bit guest arena, one program per SPU.
 - [x] Chapter 1 loads to "Press the START button".
+
+### Gameplay (2026-10-22)
+
+- [x] Hang after the intro movie: every HLE→guest callback ran on one shared guest stack (0xCFFE0000), and the movie player's adec and vdec callbacks overwrote each other's frames; a scoped mutex guard then unlocked NULL and the player mutex stayed locked. Per-host-thread callback stacks (toolkit patch). 3 of 3 runs pass, 5 of 6 hung before.
+- [x] The 15 WWS job modules (`C0DEC0DE`) linked into the executables, lifted at their own link base (13 at 0x4000, two audio modules at 0x7000; `tools/regen_jobmods.sh`).
+- [x] SPURS kernel-style workload selection (`SPURS_RPCS3_SCHED`, which the port turns on): the policy module's poll gets the workload the kernel would run, readyCount is the PM's, priorities count. Without it the gameplay jobs (`igGeomCullClip`, `SpuBucketerDrawSort`) timed out.
+- [x] Atomic SPU event updates: a PPU store's reservation-lost raise overwrote the job manager's list stall-and-notify event, and it waited for its interrupt for ever; the first gameplay frame never finished.
+- [x] `sys_mutex_destroy` refuses a held mutex or one with waiters (EBUSY), as lv2 does.
 
 ### Tools
 

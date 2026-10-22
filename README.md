@@ -7,12 +7,12 @@ to **macOS/arm64**, built with static recompilation: the game's PowerPC and
 SPU code is translated to C/C++ and compiled into native executables, with
 graphics on Metal. It is not an emulator.
 
-**It boots to the main menu, plays the campaign intro and loads chapter 1.**
+**It reaches gameplay.**
 The front end runs from the legal screens through the first-run install, the
 title screen and the main menu to a new campaign. The campaign executable then
 plays the level-1 intro movie and loads "The Gauntlet" (York) up to "Press the
-START button". The first gameplay frames are not there yet: they wait on SPU
-jobs that still run in the interpreter.
+START button", and after START the game is in gameplay (first-person view and
+HUD). Playing it with a controller in a window is the next step.
 
 Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), following the
 author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
@@ -30,7 +30,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 ## Status
 
-As of 2026-10-22, every item verified in runs on an Apple-silicon Mac with Metal.
+As of 2026-10-22 (gameplay), every item verified in runs on an Apple-silicon Mac with Metal.
 
 | | |
 | --- | --- |
@@ -44,9 +44,9 @@ As of 2026-10-22, every item verified in runs on an Apple-silicon Mac with Metal
 | Movies (cellVdec through FFmpeg, drawn as an immediate-mode quad) | ✅ the level-1 intro plays to the end |
 | Raw SPUs (two programs `game.self` starts after the intro) | ✅ lifted and running |
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
-| Gameplay | 🚧 the first frames wait on SPU jobs that time out (`igGeomCullClip SPU Timeout!`) |
-| SPU jobs (geometry, draw sort, effects, NextSynth audio) | 🧪 run in the toolkit's SPU interpreter, not translated yet |
-| After the intro movie | 🚧 an intermittent hang in the movie player (a thread stuck in `sys_mutex_lock`) |
+| Gameplay | ✅ chapter 1 in first person with HUD (~24 fps headless); 🚧 not yet played with a controller |
+| SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
+| After the intro movie | ✅ the old intermittent hang is fixed (shared callback stack) |
 | Controller, keyboard and mouse | ⏳ only scripted input tested so far |
 | Linux and Windows | ⏳ not supported |
 | Online multiplayer | ❌ out of scope (the official servers are gone) |

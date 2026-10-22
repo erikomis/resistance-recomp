@@ -353,6 +353,22 @@ int main(int argc, char** argv)
 
     printf("=== ps3recomp game runner ===\n");
 
+    /* The toolkit's SPURS kernel-style workload selection is opt-in there;
+     * this game needs it. With the old round-robin selection every workload
+     * but wid 0 yielded at its first poll, and the gameplay jobs
+     * (igGeomCullClip, SpuBucketerDrawSort) timed out. SPURS_RPCS3_SCHED=0
+     * in the environment still turns it off. */
+    {
+        const char* s = getenv("SPURS_RPCS3_SCHED");
+#ifdef _WIN32
+        if (!s) _putenv_s("SPURS_RPCS3_SCHED", "1");
+        else if (strcmp(s, "0") == 0) _putenv_s("SPURS_RPCS3_SCHED", "");
+#else
+        if (!s) setenv("SPURS_RPCS3_SCHED", "1", 1);
+        else if (strcmp(s, "0") == 0) unsetenv("SPURS_RPCS3_SCHED");
+#endif
+    }
+
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "Resistance: Fall of Man";
     g_rsx_ready = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);

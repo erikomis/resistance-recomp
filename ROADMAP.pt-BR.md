@@ -8,13 +8,11 @@ para macOS/arm64 e o que vem a seguir. Mesmo formato do roadmap do inFAMOUS 2.
 
 ## Resumo (2026-10-22)
 
-- **Roda:** os dois executáveis (`EBOOT.BIN` e `game.self`) estão traduzidos, compilam e rodam no macOS/arm64 com Metal. O front end vai do boot pelas telas legais, pela instalação no HDD da primeira execução, pela tela de título e pelo menu principal até uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 inteiro (imagem e som), carrega o capítulo 1, "The Gauntlet" (York), e mostra "Press the START button".
-- **Travado em:** depois do START, os primeiros frames de gameplay esperam jobs de SPU que não terminam a tempo. O próprio log do jogo diz `igGeomCullClip SPU Timeout!`, `IGG::SpuBucketerDrawSort timeout` e `For fxvUpdate, WwsJobDelay timed out after 2 seconds`. O job manager roda esses jobs no interpretador de SPU.
+- **Roda até o gameplay:** os dois executáveis estão traduzidos, compilam e rodam no macOS/arm64 com Metal. Boot, telas legais, instalação da primeira execução, tela de título e menu principal levam a uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 e carrega o capítulo 1, "The Gauntlet" (York). Depois do START o jogo está no gameplay: visão em primeira pessoa, HUD (vida, munição, granadas), uns 24 frames por segundo apresentados num run headless.
+- **Ainda não testado:** jogar de fato (andar, atirar) com controle numa janela; até agora só botões roteirizados.
 - **Lançado:** nada ainda.
-- **Em andamento:**
-  - [ ] (em andamento) Capturar e traduzir os jobs de SPU do job manager (culling/clipping de geometria, ordenação de draws, efeitos, áudio NextSynth).
-  - [ ] (em andamento) Um travamento intermitente depois do vídeo de abertura: uma thread do player de vídeo fica presa para sempre em `sys_mutex_lock`. Aconteceu em 4 dos 5 runs sem `MUTEX_WATCH` e em nenhum dos 3 com ele.
-- **Próximo:** os primeiros frames de York com os jobs de SPU traduzidos, depois controle e uma sessão em janela.
+- **Em aberto:** o texto das telas legais anteriores se sobrepõe às seguintes; o agendador SPURS no estilo do kernel e os eventos de SPU atômicos são novos e precisam de sessões longas; sem Windows nem Linux.
+- **Próximo:** uma sessão em janela com controle pelo começo de York, depois desempenho.
 
 ## Estado atual (2026-10-22)
 
@@ -59,8 +57,8 @@ O que trouxe até aqui:
 
 ### Bloqueios
 
-- [ ] **Jobs de SPU estouram o tempo no gameplay.** O job manager carrega o código dos jobs na LS (por volta de 0x7C00–0x14000 da imagem dele) e o interpretador roda a uns 8–9 M passos/s. Os jobs que o primeiro frame precisa não cumprem os timeouts de 2 s do jogo. Capturar o código de cada job quando ele chega por DMA, traduzir (os `lift_spu_jobs.sh` / `relift_jobmod.py` do inFAMOUS 2 são o modelo) e registrar.
-- [ ] **Travamento depois do vídeo de abertura (intermitente).** Uma thread do player de vídeo (`func_005F0360 → … → func_005EEFE4`) fica em `sys_mutex_lock`, o player nunca avisa que terminou e a thread principal fica no laço de carregamento (`func_00044DE0`, estado 2). `MUTEX_WATCH=2` mantém o lock bloqueante e informa quem espera há mais de 5 s e o dono do mutex. Até agora o travamento não se reproduziu com nenhum modo de watch. A política de mutex fair-share no macOS não resolveu.
+- [x] **Jobs de SPU estouram o tempo no gameplay.** Corrigido em 2026-10-22: os 15 módulos de job WWS traduzidos, seleção no estilo do kernel SPURS e eventos de SPU atômicos (veja "Gameplay" em Feito). O job manager carrega o código dos jobs na LS (por volta de 0x7C00–0x14000 da imagem dele) e o interpretador roda a uns 8–9 M passos/s. Os jobs que o primeiro frame precisa não cumprem os timeouts de 2 s do jogo. Capturar o código de cada job quando ele chega por DMA, traduzir (os `lift_spu_jobs.sh` / `relift_jobmod.py` do inFAMOUS 2 são o modelo) e registrar.
+- [x] **Travamento depois do vídeo de abertura (intermitente).** Corrigido em 2026-10-22: pilha de callback HLE→jogo compartilhada (veja "Gameplay" em Feito). Uma thread do player de vídeo (`func_005F0360 → … → func_005EEFE4`) fica em `sys_mutex_lock`, o player nunca avisa que terminou e a thread principal fica no laço de carregamento (`func_00044DE0`, estado 2). `MUTEX_WATCH=2` mantém o lock bloqueante e informa quem espera há mais de 5 s e o dono do mutex. Até agora o travamento não se reproduziu com nenhum modo de watch. A política de mutex fair-share no macOS não resolveu.
 - [ ] **Texto das telas legais sobreposto.** O texto desenhado numa tela legal continua lá na seguinte.
 - [ ] As lanes ociosas do job manager são paradas depois de 30 s fazendo polling da mesma linha da fila (`SPU_DMA_REPEAT_SECS`); conferir se elas voltam quando chega trabalho.
 
@@ -68,7 +66,7 @@ O que trouxe até aqui:
 
 - [x] O vídeo de abertura da fase 1, assistido até o fim (5.584 imagens).
 - [x] Tela de carregamento do capítulo 1 ("The Gauntlet", York) e "Press the START button".
-- [ ] Os primeiros frames de gameplay em York.
+- [x] Os primeiros frames de gameplay em York (primeira pessoa, HUD).
 - [ ] Menu de pausa e opções dentro do jogo.
 
 ### Jobs de SPU
@@ -171,6 +169,14 @@ O que trouxe até aqui:
 - [x] Vídeos na tela: FFmpeg em tempo de execução, vértices imediatos `DATA2S`, dreno por ociosidade da última imagem reordenada.
 - [x] SPUs raw no macOS: thread POSIX, arena do guest com os 32 bits inteiros, um programa por SPU.
 - [x] O capítulo 1 carrega até "Press the START button".
+
+### Gameplay (2026-10-22)
+
+- [x] Travamento depois do vídeo de abertura: todo callback HLE→jogo rodava numa pilha de guest compartilhada (0xCFFE0000), e os callbacks de adec e vdec do player escreviam um por cima do outro; um guard de mutex então destravava NULL e o mutex do player ficava travado. Pilhas de callback por thread do host (patch do toolkit). 3 de 3 runs passam; antes 5 de 6 travavam.
+- [x] Os 15 módulos de job WWS (`C0DEC0DE`) embutidos nos executáveis, traduzidos na própria base (13 em 0x4000, dois de áudio em 0x7000; `tools/regen_jobmods.sh`).
+- [x] Seleção de workloads no estilo do kernel SPURS (`SPURS_RPCS3_SCHED`, que o port liga): o poll do policy module recebe o workload que o kernel rodaria, o readyCount é do PM, as prioridades contam. Sem isso os jobs de gameplay (`igGeomCullClip`, `SpuBucketerDrawSort`) estouravam o tempo.
+- [x] Eventos de SPU atômicos: o aviso de reserva perdida vindo de uma escrita do PPU apagava o evento de stall-and-notify da lista do job manager, que esperava a interrupção para sempre; o primeiro frame de gameplay nunca terminava.
+- [x] `sys_mutex_destroy` recusa um mutex travado ou com quem espera (EBUSY), como o lv2.
 
 ### Ferramentas
 

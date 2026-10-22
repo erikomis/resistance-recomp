@@ -15,7 +15,9 @@
 #   analyse  toolkit tools/ppu_loader.py -> analysis/BCUS98107{,/game_module}
 #   lift     toolkit tools/ppu_lifter.py -> recompiled/BCUS98107{,/game_module}
 #            (16 and 12 chunks: the same split, byte for byte, as the tested lift)
-#   spu      tools/regen_spu_pm.sh -> port/spu/captured/
+#   spu      tools/regen_spu_pm.sh -> port/spu/captured/,
+#            tools/regen_jobmods.sh -> port/spu/jobmod_*/, and
+#            tools/regen_rawspu.sh when a raw-SPU capture exists
 #   build    cmake + ninja -> build/BCUS98107/MyGameRecomp (EBOOT) and
 #            build/BCUS98107_game/MyGameRecomp (game.self), Metal, FFmpeg video
 #
@@ -87,8 +89,14 @@ for s in $steps; do
             --functions "$AN/game_module/game.functions.json" --hle-stubs "$AN/game_module/game.imports.json" \
             --output "$RC/game_module" ;;
     spu)
-        say "spu (job-manager policy module)"
-        PS3RECOMP_DIR=$TK SPU_PM_OUT=${SPU_PM_OUT:-$RES_ROOT/port/spu/captured} "$here/regen_spu_pm.sh" "$RES_GAME/EBOOT.elf" ;;
+        say "spu (job-manager policy module, WWS job modules)"
+        PS3RECOMP_DIR=$TK SPU_PM_OUT=${SPU_PM_OUT:-$RES_ROOT/port/spu/captured} "$here/regen_spu_pm.sh" "$RES_GAME/EBOOT.elf"
+        PS3RECOMP_DIR=$TK "$here/regen_jobmods.sh" "$RES_GAME/modules/game.elf"
+        if [ -f "$RES_OUT/rawspu/rawspu_1894F66385AFD052_00060.bin" ]; then
+            PS3RECOMP_DIR=$TK "$here/regen_rawspu.sh" "$RES_OUT/rawspu"
+        else
+            say "  (no raw-SPU capture in $RES_OUT/rawspu yet: see README, \"The raw-SPU programs\")"
+        fi ;;
     build)
         say "build"
         configure_build "$RES_BUILD/BCUS98107" "$RC"

@@ -47,6 +47,8 @@ missed/
 port/spu/captured/
 port/spu/*/spu_recomp.c
 port/spu/*/spu_recomp.h
+port/spu/jobmods_register.c
+port/spu/jobmods_manifest.json
 port/recompiled/
 
 # Firmware and keys
