@@ -4,6 +4,7 @@
 #   tools/rebuild.sh [step ...]
 #
 # Steps, in order (default: all of them): toolkit decrypt analyse lift spu build
+# (and launcher, only when named)
 #
 #   toolkit  tools/setup_toolkit.sh (./ps3recomp at the pinned commit + patch)
 #   decrypt  copies PS3_GAME/USRDIR/EBOOT.BIN and game.self from the disc to
@@ -21,6 +22,9 @@
 #   build    cmake + ninja -> build/BCUS98107/ResistanceRecomp (EBOOT) and
 #            build/BCUS98107_game/ResistanceRecomp (game.self), Metal, FFmpeg video,
 #            and build/BCUS98107/Resistance, the window launcher tools/play.sh runs
+#   launcher only when named (tools/rebuild.sh launcher): the desktop app in
+#            launcher/ (Tauri; needs Node 20+ and Rust) -> build/launcher/
+#            Resistance Launcher.app. CARGO_TARGET_DIR is honoured.
 #
 # Everything it writes (game/, analysis/, recompiled/, build/, out/,
 # port/spu/captured/) is game-derived and .gitignore'd.
@@ -102,8 +106,18 @@ for s in $steps; do
         say "build"
         configure_build "$RES_BUILD/BCUS98107" "$RC"
         configure_build "$RES_BUILD/BCUS98107_game" "$RC/game_module" ;;
+    launcher)
+        say "launcher (the desktop app)"
+        command -v npm >/dev/null || { echo "npm not found: install Node 20+ (brew install node)" >&2; exit 1; }
+        command -v cargo >/dev/null || { echo "cargo not found: install Rust (https://rustup.rs)" >&2; exit 1; }
+        ( cd "$RES_ROOT/launcher" && npm ci && npx tauri build --bundles app )
+        tgt=${CARGO_TARGET_DIR:-$RES_ROOT/launcher/src-tauri/target}
+        mkdir -p "$RES_BUILD/launcher"
+        rm -rf "$RES_BUILD/launcher/Resistance Launcher.app"
+        cp -R "$tgt/release/bundle/macos/Resistance Launcher.app" "$RES_BUILD/launcher/"
+        echo "$RES_BUILD/launcher/Resistance Launcher.app" ;;
     *)
-        echo "unknown step '$s' (toolkit decrypt analyse lift spu build)" >&2; exit 2 ;;
+        echo "unknown step '$s' (toolkit decrypt analyse lift spu build launcher)" >&2; exit 2 ;;
     esac
 done
 say "done"

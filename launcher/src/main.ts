@@ -1,0 +1,1453 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { ask, open } from "@tauri-apps/plugin-dialog";
+import { CONSOLE_LANGS, Key, Lang, lang, setLang, t, translateDom } from "./i18n";
+import { initControls, renderControls, showControls } from "./controls";
+import { RebuildProgress, STEP_IDS } from "./progress";
+import { initSaves, refresh as refreshSaves, render as renderSaves } from "./saves";
+import { initUpdates, refreshUpdates, renderUpdates } from "./update";
+import { initLog, renderLog, showLog } from "./gamelog";
+import { flashSaved, human } from "./ui";
+
+// ---- types shared with src-tauri/src/lib.rs (camelCase) ----------------------
+export interface Settings {
+  uiLang: string;
+  portDir: string;
+  discPath: string;
+  discImage: string;
+  autoMount: boolean;
+  playDir: string;
+  campaign: string;
+  gameLang: string;
+  windowSize: string;
+  gameIcon: boolean;
+  aa: string;
+  sharpen: number;
+  aniso: number;
+  gammaOverride: boolean;
+  gamma: number;
+  showFps: boolean;
+  vertexCache: boolean;
+  vertexCacheSplit: boolean;
+  bindChangedOnly: boolean;
+  shaderCache: boolean;
+  shaderAsync: boolean;
+  frameClockUs: number;
+  keepAwake: boolean;
+  video: boolean;
+  ffmpegAvcodec: string;
+  ffmpegAvutil: string;
+  quietLog: boolean;
+  extraEnv: string;
+  rebuildSteps: string[];
+  jobs: number;
+  saveBackupsKeep: number;
+  autoUpdateCheck: boolean;
+}
+interface Builds {
+  root: string;
+  host: string | null;
+  eboot: string | null;
+  game: string | null;
+  gameV17: string | null;
+  ok: boolean;
+  v17: boolean;
+  legacy: boolean;
+  missing: string[];
+  rebuildSh: string | null;
+  builtAt: number;
+}
+interface DiscInfo {
+  root: string | null;
+  title: string;
+  titleId: string;
+  appVer: string;
+  image: string | null;
+  ours: boolean;
+  mounted: string[];
+}
+interface SaveInfo {
+  name: string;
+  title: string;
+  subtitle: string;
+  modified: number;
+  folder: string;
+}
+interface Status {
+  builds: Builds | null;
+  disc: DiscInfo;
+  icon: string | null;
+  background: string | null;
+  lastSave: SaveInfo | null;
+  gameRunning: boolean;
+  otherGameRunning: boolean;
+  rebuildRunning: boolean;
+  playDir: string;
+  dataRoot: string;
+  firstBoot: boolean;
+  updateFiles: string[];
+  hostSupported: boolean;
+  os: string;
+  appBundle: string | null;
+  finderIcon: boolean;
+  version: string;
+}
+interface CheckItem {
+  level: "ok" | "warn" | "fail";
+  name: string;
+  message: string;
+}
+interface Prereqs {
+  supported: boolean;
+  clt: boolean;
+  homebrew: string | null;
+  checks: CheckItem[];
+  brewMissing: string[];
+  ok: boolean;
+}
+interface ReportInfo {
+  dir: string;
+  id: string;
+  live: boolean;
+  debug: boolean;
+  captures: number;
+  pending: boolean;
+  passes: number;
+  bytes: number;
+  logBytes: number;
+  duration: number | null;
+  exit: string | null;
+  stopped: boolean;
+  crashReport: boolean;
+  zip: string | null;
+  zipBytes: number;
+  triage: Triage | null;
+}
+interface Triage {
+  errors: number;
+  warnings: number;
+  lines: number;
+  fpsAvg: number | null;
+  fpsMin: number | null;
+  stale: boolean;
+  md: string;
+  top: { severity: string; title: string; count: number; firstLine: number }[];
+}
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+const show = (el: HTMLElement, on: boolean) => el.classList.toggle("hidden", !on);
+const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, "~");
+
+let settings: Settings;
+let status: Status | null = null;
+let gameRunning = false;
+let rebuildRunning = false;
+const progress = new RebuildProgress();
+
+// ---- navigation ----------------------------------------------------------------
+let advancedTab = "install";
+
+function showView(view: string, tab?: string) {
+  document.querySelectorAll<HTMLElement>(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
+  document.querySelectorAll<HTMLElement>(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  document.querySelector("main")!.scrollTop = 0;
+  if (view === "home") refreshStatus();
+  if (view === "performance") refreshShaderCache();
+  if (view === "game") {
+    refreshDisc();
+    refreshSaves();
+  }
+  showControls(view === "controls");
+  if (view === "advanced") showTab(tab ?? advancedTab);
+}
+
+function showTab(tab: string) {
+  advancedTab = tab;
+  document.querySelectorAll<HTMLElement>(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll<HTMLElement>(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+  if (tab === "env") updatePreview();
+  if (tab === "log") showLog();
+  if (tab === "updates") renderUpdates();
+  if (tab === "diagnostics") refreshReport();
+  if (tab === "install") {
+    refreshPrereqs();
+    renderPort();
+  }
+}
+
+document.querySelectorAll<HTMLElement>(".nav").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view!)));
+document.querySelectorAll<HTMLElement>(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab!)));
+document.querySelectorAll<HTMLElement>("[data-go]").forEach((b) =>
+  b.addEventListener("click", () => {
+    const [view, tab] = b.dataset.go!.split(":");
+    showView(view, tab);
+  }));
+document.querySelectorAll<HTMLElement>("[data-url]").forEach((b) =>
+  b.addEventListener("click", () => invoke("open_url", { url: b.dataset.url })));
+
+// ---- settings persistence --------------------------------------------------------
+let saveTimer = 0;
+function persist(after?: () => void) {
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(async () => {
+    await invoke("save_settings", { settings });
+    flashSaved();
+    updatePreview();
+    after?.();
+  }, 250);
+}
+
+async function updatePreview() {
+  try {
+    $("preview").textContent = await invoke<string>("launch_preview", { settings });
+  } catch (e) {
+    $("preview").textContent = String(e);
+  }
+}
+
+// ---- shader cache ----------------------------------------------------------------
+interface ShaderCacheInfo {
+  path: string | null;
+  bytes: number;
+  files: number;
+}
+async function refreshShaderCache(msg = "") {
+  try {
+    const c = await invoke<ShaderCacheInfo>("shader_cache_info");
+    $("sc-info").textContent =
+      (c.path ? t("sc.size", { size: human(c.bytes), files: c.files, path: tilde(c.path) }) : t("sc.off")) + (msg ? ` — ${msg}` : "");
+    $<HTMLButtonElement>("sc-clear").disabled = !c.path || c.files === 0;
+  } catch (e) {
+    $("sc-info").textContent = String(e);
+  }
+}
+$("sc-clear").addEventListener("click", async () => {
+  try {
+    await invoke("shader_cache_clear");
+    refreshShaderCache(t("sc.cleared"));
+  } catch (e) {
+    refreshShaderCache(String(e));
+  }
+});
+
+/** A setting can have more than one control (Home's quick settings repeat a
+ * few of the pages'): after every change each control is set again. */
+const syncers: (() => void)[] = [];
+function syncAll() {
+  for (const f of syncers) f();
+  syncDependent();
+}
+
+const WINDOW_SIZES = ["", "1600x900", "1920x1080", "2560x1440", "3840x2160"];
+
+function fillFixedSelects() {
+  document.querySelectorAll<HTMLSelectElement>("select.size-select").forEach((sel) => {
+    sel.innerHTML = "";
+    for (const v of WINDOW_SIZES) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v ? v.replace("x", " × ") : t("settings.windowSizeDefault");
+      sel.appendChild(o);
+    }
+  });
+  document.querySelectorAll<HTMLSelectElement>("select.campaign-select").forEach((sel) => {
+    sel.innerHTML = "";
+    for (const [v, k] of [["auto", "settings.campaignV17"], ["100", "settings.campaign100"]] as const) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = t(k);
+      sel.appendChild(o);
+    }
+  });
+  const gl = $<HTMLSelectElement>("game-lang");
+  gl.innerHTML = "";
+  const def = document.createElement("option");
+  def.value = "";
+  def.textContent = t("settings.langMac");
+  gl.appendChild(def);
+  for (const l of CONSOLE_LANGS) {
+    const o = document.createElement("option");
+    o.value = l.code;
+    o.textContent = lang() === "en" ? l.en : l.pt;
+    gl.appendChild(o);
+  }
+}
+
+type BoolKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
+type NumKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
+type StrKey = { [K in keyof Settings]: Settings[K] extends string ? K : never }[keyof Settings];
+
+function bindCheck(id: string, key: BoolKey) {
+  const el = $<HTMLInputElement>(id);
+  const sync = () => (el.checked = settings[key]);
+  syncers.push(sync);
+  sync();
+  el.addEventListener("change", () => {
+    settings[key] = el.checked;
+    syncAll();
+    persist(key === "gameIcon" ? () => refreshStatus() : undefined);
+  });
+}
+
+function bindRange(id: string, key: NumKey, fmt: (v: number) => string) {
+  const el = $<HTMLInputElement>(id);
+  const out = $(`${id}-out`);
+  const sync = () => {
+    el.value = String(settings[key]);
+    out.textContent = fmt(Number(el.value));
+  };
+  syncers.push(sync);
+  sync();
+  el.addEventListener("input", () => {
+    settings[key] = Number(el.value);
+    out.textContent = fmt(Number(el.value));
+    syncPreset();
+    persist();
+  });
+}
+
+function bindSelect(id: string, key: StrKey | "aniso" | "frameClockUs") {
+  const el = $<HTMLSelectElement>(id);
+  const sync = () => {
+    el.value = String(settings[key]);
+    if (el.value !== String(settings[key])) el.selectedIndex = 0;
+  };
+  syncers.push(sync);
+  sync();
+  el.addEventListener("change", () => {
+    if (key === "aniso" || key === "frameClockUs") settings[key] = Number(el.value);
+    else settings[key] = el.value;
+    syncAll();
+    persist(key === "campaign" ? () => renderHome() : undefined);
+  });
+}
+
+function bindText(id: string, key: StrKey, after?: () => void) {
+  const el = $<HTMLInputElement | HTMLTextAreaElement>(id);
+  const sync = () => (el.value = settings[key]);
+  syncers.push(sync);
+  sync();
+  el.addEventListener("change", () => {
+    settings[key] = el.value.trim();
+    persist(after);
+  });
+}
+
+/** Image-quality profiles over the three image options (the PS3 look,
+ * a light clean-up, everything on). The list shows the one the values match. */
+const PRESETS: Record<string, Pick<Settings, "aniso" | "aa" | "sharpen">> = {
+  native: { aniso: 0, aa: "", sharpen: 0 },
+  balanced: { aniso: 4, aa: "fxaa", sharpen: 0.2 },
+  quality: { aniso: 16, aa: "fxaa", sharpen: 0.35 },
+};
+function currentPreset(): string {
+  for (const [name, p] of Object.entries(PRESETS)) {
+    if (settings.aniso === p.aniso && settings.aa === p.aa && Math.abs(settings.sharpen - p.sharpen) < 0.005) return name;
+  }
+  return "custom";
+}
+function syncPreset() {
+  $<HTMLSelectElement>("preset").value = currentPreset();
+}
+
+function bindSettings() {
+  fillFixedSelects();
+  bindCheck("game-icon", "gameIcon");
+  bindCheck("gamma-on", "gammaOverride");
+  bindCheck("show-fps", "showFps");
+  bindCheck("q-fps", "showFps");
+  bindCheck("keep-awake", "keepAwake");
+  bindCheck("q-awake", "keepAwake");
+  bindCheck("vcache", "vertexCache");
+  bindCheck("vcache-split", "vertexCacheSplit");
+  bindCheck("bind-changed", "bindChangedOnly");
+  bindCheck("shader-cache", "shaderCache");
+  bindCheck("shader-async", "shaderAsync");
+  bindCheck("video", "video");
+  bindCheck("auto-mount", "autoMount");
+  bindCheck("quiet-log", "quietLog");
+  bindCheck("update-auto", "autoUpdateCheck");
+  bindSelect("window-size", "windowSize");
+  bindSelect("q-window-size", "windowSize");
+  bindSelect("campaign", "campaign");
+  bindSelect("q-campaign", "campaign");
+  bindSelect("game-lang", "gameLang");
+  bindSelect("aa", "aa");
+  bindSelect("aniso", "aniso");
+  bindSelect("frame-clock", "frameClockUs");
+  bindRange("sharpen", "sharpen", (v) => (v > 0 ? `${Math.round(v * 100)}%` : t("settings.off")));
+  bindRange("gamma", "gamma", (v) => v.toFixed(2));
+  bindText("ffmpeg-avcodec", "ffmpegAvcodec");
+  bindText("ffmpeg-avutil", "ffmpegAvutil");
+  bindText("play-dir", "playDir", () => refreshStatus());
+  bindText("extra-env", "extraEnv");
+  syncers.push(syncPreset);
+  syncPreset();
+  $("preset").addEventListener("change", () => {
+    const p = PRESETS[$<HTMLSelectElement>("preset").value];
+    if (!p) return;
+    Object.assign(settings, p);
+    syncAll();
+    persist();
+  });
+  // the extra variables are saved as they are typed
+  $("extra-env").addEventListener("input", () => {
+    settings.extraEnv = $<HTMLTextAreaElement>("extra-env").value;
+    persist();
+  });
+  for (const [btn, key, name] of [["pick-avcodec", "ffmpegAvcodec", "libavcodec"], ["pick-avutil", "ffmpegAvutil", "libavutil"]] as const) {
+    $(btn).addEventListener("click", async () => {
+      const p = await open({ title: name, defaultPath: "/opt/homebrew/lib", filters: [{ name: "dylib", extensions: ["dylib"] }] });
+      if (typeof p === "string") {
+        settings[key] = p;
+        syncAll();
+        persist();
+      }
+    });
+  }
+  $("pick-play-dir").addEventListener("click", async () => {
+    const p = await open({ directory: true, defaultPath: status?.playDir });
+    if (typeof p === "string") {
+      settings.playDir = p;
+      syncAll();
+      persist(() => refreshStatus());
+    }
+  });
+  $("open-play-dir").addEventListener("click", () => status && invoke("reveal", { path: status.playDir }));
+  $("finder-icon").addEventListener("click", toggleFinderIcon);
+  const ui = $<HTMLSelectElement>("ui-lang");
+  ui.value = settings.uiLang;
+  ui.addEventListener("change", () => {
+    settings.uiLang = ui.value;
+    applyLang(ui.value as Lang);
+    persist();
+  });
+  $("reset").addEventListener("click", async () => {
+    const yes = await ask(t("settings.resetAsk"), { title: t("settings.reset"), kind: "warning" });
+    if (!yes) return;
+    const keep: Partial<Settings> = {
+      uiLang: settings.uiLang,
+      portDir: settings.portDir,
+      discPath: settings.discPath,
+      discImage: settings.discImage,
+      playDir: settings.playDir,
+      saveBackupsKeep: settings.saveBackupsKeep,
+    };
+    Object.assign(settings, DEFAULTS, keep);
+    await invoke("save_settings", { settings });
+    location.reload();
+  });
+  syncDependent();
+}
+
+/** lib.rs Settings::default() for the options the Restore button resets. */
+const DEFAULTS: Partial<Settings> = {
+  autoMount: true,
+  campaign: "auto",
+  gameLang: "",
+  windowSize: "",
+  gameIcon: false,
+  aa: "",
+  sharpen: 0,
+  aniso: 0,
+  gammaOverride: false,
+  gamma: 1,
+  showFps: true,
+  vertexCache: true,
+  vertexCacheSplit: true,
+  bindChangedOnly: true,
+  shaderCache: true,
+  shaderAsync: false,
+  frameClockUs: 1000,
+  keepAwake: true,
+  video: true,
+  ffmpegAvcodec: "",
+  ffmpegAvutil: "",
+  quietLog: true,
+  extraEnv: "",
+  rebuildSteps: [],
+  jobs: 0,
+  autoUpdateCheck: true,
+};
+
+function syncDependent() {
+  $<HTMLInputElement>("gamma").disabled = !settings.gammaOverride;
+  $<HTMLInputElement>("vcache-split").disabled = !settings.vertexCache;
+  for (const id of ["ffmpeg-avcodec", "ffmpeg-avutil", "pick-avcodec", "pick-avutil"]) ($(id) as HTMLInputElement).disabled = !settings.video;
+}
+
+function applyLang(l: Lang) {
+  setLang(l);
+  translateDom();
+  fillFixedSelects();
+  syncAll();
+  renderHome();
+  renderFinderIcon();
+  renderProgress();
+  renderPrereqs();
+  renderPort();
+  renderDisc();
+  renderControls();
+  renderSaves();
+  renderReport();
+  renderSessions();
+  renderLog();
+  renderUpdates();
+}
+
+// ---- the Dock / Finder icon from the disc ----------------------------------------
+function renderFinderIcon(msg?: string) {
+  const can = !!status?.appBundle && status.os === "macos" && (!!status.icon || status.finderIcon);
+  show($("finder-icon-row"), can);
+  $("finder-icon").textContent = t(status?.finderIcon ? "settings.finderIconUnset" : "settings.finderIconSet");
+  $("finder-icon-msg").textContent = msg ?? t("settings.finderIconHint");
+}
+
+async function toggleFinderIcon() {
+  if (!status) return;
+  const btn = $<HTMLButtonElement>("finder-icon");
+  btn.disabled = true;
+  try {
+    status.finderIcon = await invoke<boolean>("finder_icon", { set: !status.finderIcon });
+    renderFinderIcon(t("settings.finderIconDone"));
+  } catch (e) {
+    renderFinderIcon(t("settings.finderIconFailed", { e: String(e) }));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---- home ---------------------------------------------------------------------
+let statusSeq = 0;
+async function refreshStatus() {
+  const seq = ++statusSeq;
+  const s = await invoke<Status>("get_status");
+  if (seq !== statusSeq) return;
+  status = s;
+  gameRunning = s.gameRunning;
+  rebuildRunning = s.rebuildRunning || rebuildRunning;
+  $("app-version").textContent = `v${s.version}`;
+  renderHome();
+  renderFinderIcon();
+  renderPort();
+  renderDisc();
+  refreshSteam();
+}
+
+const TITLE_ID = "BCUS98107";
+
+/** What keeps Play from working, the first one only. */
+function blocker(): { title: Key; text: string; act: Key; run: () => void; act2?: Key; run2?: () => void } | null {
+  if (!status || !status.hostSupported) return null;
+  const b = status.builds;
+  if (!b || !b.ok) {
+    return {
+      title: "block.builds",
+      text: b ? t("block.buildsText", { dir: tilde(b.root), missing: b.missing.join(", ") }) : t("block.noPort"),
+      act: "block.buildsAct",
+      run: () => showView("advanced", "install"),
+    };
+  }
+  if (!status.disc.root && !(settings.autoMount && settings.discImage)) {
+    return { title: "block.disc", text: t("block.discText"), act: "disc.mount", run: mountImage, act2: "disc.folder", run2: pickDiscFolder };
+  }
+  if (status.disc.root && !status.disc.ours) {
+    return { title: "block.notOurs", text: t("block.notOursText", { id: status.disc.titleId || "?", dir: status.disc.root }), act: "disc.mount", run: mountImage };
+  }
+  if (status.updateFiles.length) {
+    return {
+      title: "upd.title",
+      text: t("upd.text", { n: status.updateFiles.length, dir: tilde(status.playDir) }),
+      act: "upd.move",
+      run: moveUpdateFiles,
+    };
+  }
+  return null;
+}
+
+function renderHome() {
+  if (!status) return;
+  const d = status.disc;
+  const b = status.builds;
+  const cover = $<HTMLImageElement>("cover");
+  if (status.icon) cover.src = status.icon;
+  show(cover, !!status.icon);
+  $("hero-art").style.backgroundImage = status.background ? `url(${status.background})` : "";
+  $("hero").classList.toggle("no-art", !status.background);
+  $("game-title").textContent = d.title || "Resistance: Fall of Man";
+  $("game-id").textContent = d.root ? `${d.titleId || TITLE_ID}${d.appVer ? ` · ${t("home.version")} ${d.appVer}` : ""}` : TITLE_ID;
+  const meta: string[] = [];
+  if (b?.builtAt) meta.push(`${t("home.builtAt")} ${new Date(b.builtAt * 1000).toLocaleString(lang())}`);
+  if (b?.ok) meta.push(t("home.campaignMeta", { v: campaignLabel() }));
+  $("game-meta").textContent = meta.join(" · ");
+
+  const block = blocker();
+  show($("home-blocker"), !!block && !gameRunning);
+  if (block) {
+    $("home-blocker-title").textContent = t(block.title);
+    $("home-blocker-text").textContent = block.text;
+    $("home-blocker-act").textContent = t(block.act);
+    $("home-blocker-act").onclick = block.run;
+    const a2 = $("home-blocker-act2");
+    show(a2, !!block.act2);
+    if (block.act2) {
+      a2.textContent = t(block.act2);
+      a2.onclick = block.run2 ?? null;
+    }
+  }
+  show($("home-first"), !gameRunning && !block && status.firstBoot);
+
+  const play = $<HTMLButtonElement>("play");
+  $("play-label").textContent = t(gameRunning ? "home.stop" : "home.play");
+  play.classList.toggle("stop", gameRunning);
+  play.disabled = !gameRunning && (rebuildRunning || !status.hostSupported || !b?.ok);
+  show($("run-state"), gameRunning || status.otherGameRunning);
+  $("run-state-text").textContent = t(gameRunning ? "home.running" : "home.otherRunning");
+  show($("make-shortcut"), !!status.appBundle && status.os === "macos" && !!b?.ok);
+  show($("home-unsupported"), !status.hostSupported);
+  renderSteam();
+  renderStatusList();
+  renderReport();
+  renderUpdates();
+
+  const s = status.lastSave;
+  const box = $("save-info");
+  box.innerHTML = "";
+  if (!s) {
+    box.textContent = t("home.noSave");
+  } else {
+    const st = document.createElement("strong");
+    st.textContent = s.name === "quick.sav" ? t("saves.checkpoint") : s.subtitle || s.title || s.name;
+    const w = document.createElement("div");
+    w.className = "small";
+    w.textContent = s.modified ? new Date(s.modified * 1000).toLocaleString(lang()) : "";
+    box.append(st, w);
+  }
+}
+
+function campaignLabel(): string {
+  const v17 = !!status?.builds?.v17;
+  if (settings.campaign === "100") return "01.00";
+  return v17 ? "v1.7" : t("home.campaign100Only");
+}
+
+function renderStatusList() {
+  if (!status) return;
+  const b = status.builds;
+  const d = status.disc;
+  const live = !!report?.live && gameRunning;
+  const rows: [Key, string, string?][] = [];
+  rows.push([
+    "home.st.state",
+    rebuildRunning
+      ? t("home.st.rebuilding")
+      : gameRunning
+        ? t(live ? "home.st.diag" : "home.st.running")
+        : b?.ok
+          ? t("home.st.ready")
+          : t("home.st.notBuilt"),
+    gameRunning || b?.ok ? "ok-text" : "warn-text",
+  ]);
+  rows.push(["home.st.disc", d.root ? tilde(d.image ?? d.root) : t("home.st.noDisc"), d.root ? undefined : "warn-text"]);
+  if (b) rows.push(["home.st.campaign", campaignLabel()]);
+  if (b) rows.push(["home.st.port", tilde(b.root)]);
+  rows.push(["home.st.play", tilde(status.playDir)]);
+  const dl = $("status-list");
+  dl.replaceChildren();
+  for (const [k, v, cls] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = t(k);
+    const dd = document.createElement("dd");
+    dd.textContent = v;
+    if (cls) dd.className = cls;
+    dl.append(dt, dd);
+  }
+}
+
+async function startGame(diagnostic: boolean) {
+  const msg = $("home-msg");
+  try {
+    const r = await invoke<{ log: string; backup: string | null; backupError: string | null; report: string | null; mounted: string | null; firstBoot: boolean; campaign: string }>("play", { diagnostic });
+    gameRunning = true;
+    msg.textContent =
+      (r.report ? t("home.startedDiag", { dir: tilde(r.report) }) : t("home.started", { log: tilde(r.log) })) +
+      (r.mounted ? " " + t("home.mounted", { dir: r.mounted }) : "") +
+      (r.firstBoot ? " " + t("home.firstBootShort") : "") +
+      (r.backup ? t("home.backedUp", { id: r.backup }) : "") +
+      (r.backupError ? t("home.backupFailed", { e: r.backupError }) : "");
+    $("report-msg").textContent = "";
+  } catch (e) {
+    const err = String(e);
+    if (err === "update-files") msg.textContent = t("upd.blocked");
+    else if (err === "no-disc") msg.textContent = t("block.discText");
+    else msg.textContent = err;
+    if (err === "update-files") await moveUpdateFiles();
+  }
+  await refreshStatus();
+  refreshReport();
+}
+
+$("play").addEventListener("click", async () => {
+  if (gameRunning) {
+    await invoke("stop_game").catch((e) => ($("home-msg").textContent = String(e)));
+    return;
+  }
+  await startGame(false);
+});
+
+$("make-shortcut").addEventListener("click", async () => {
+  const btn = $<HTMLButtonElement>("make-shortcut");
+  const msg = $("home-msg");
+  btn.disabled = true;
+  try {
+    const path = await invoke<string>("create_play_shortcut");
+    msg.textContent = t("home.shortcutDone", { path: tilde(path) });
+  } catch (e) {
+    msg.textContent = t("home.shortcutFailed", { e: String(e) });
+  } finally {
+    btn.disabled = false;
+  }
+});
+$("go-saves").addEventListener("click", () => {
+  showView("game");
+  $("saves-section").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("open-saves").addEventListener("click", async () => {
+  const p = await invoke<Record<string, string>>("log_paths");
+  invoke("reveal", { path: status?.lastSave?.folder ?? p.saves });
+});
+$("open-log").addEventListener("click", async () => {
+  const p = await invoke<Record<string, string>>("log_paths");
+  invoke("reveal", { path: p.game });
+});
+
+// ---- the update's patch files in the play folder --------------------------------
+async function moveUpdateFiles() {
+  const n = status?.updateFiles.length ?? 0;
+  if (!n) return;
+  const yes = await ask(t("upd.ask", { n, dir: tilde(status!.playDir) }), { title: t("upd.move"), kind: "warning", okLabel: t("upd.move"), cancelLabel: t("install.cancel") });
+  if (!yes) return;
+  try {
+    const dest = await invoke<string>("move_update_files");
+    $("home-msg").textContent = t("upd.moved", { dir: tilde(dest) });
+  } catch (e) {
+    $("home-msg").textContent = String(e);
+  }
+  await refreshStatus();
+}
+$("update-files-move").addEventListener("click", moveUpdateFiles);
+
+// ---- the disc ------------------------------------------------------------------
+async function refreshDisc() {
+  try {
+    const d = await invoke<DiscInfo>("disc_status");
+    if (status) status.disc = d;
+  } catch {
+    /* keep the last one */
+  }
+  renderDisc();
+}
+
+function renderDisc() {
+  if (!status) return;
+  const d = status.disc;
+  $("disc-path").textContent = d.root ?? t("disc.none");
+  const st = $("disc-state");
+  st.className = "pill " + (d.root ? (d.ours ? "" : "bad") : "warn");
+  st.textContent = d.root ? (d.ours ? `${d.titleId} ${d.appVer}`.trim() : t("disc.notOurs")) : t("disc.notMounted");
+  $("disc-image").textContent = d.image
+    ? t("disc.fromImage", { img: tilde(d.image) })
+    : settings.discImage
+      ? t("disc.imageRemembered", { img: tilde(settings.discImage) })
+      : "";
+  show($("disc-eject"), !!d.image);
+  const files = status.updateFiles;
+  show($("update-files-row"), files.length > 0);
+  $("update-files-text").textContent = t("upd.text", { n: files.length, dir: tilde(status.playDir) });
+  $("campaign-state").textContent = status.builds
+    ? t(status.builds.v17 ? "settings.campaignHasV17" : "settings.campaignNoV17")
+    : "";
+}
+
+async function mountImage() {
+  const p = await open({ title: t("disc.mount"), filters: [{ name: t("disc.imageFilter"), extensions: ["iso", "ISO", "dmg", "cdr"] }] });
+  if (typeof p !== "string") return;
+  const msg = $("disc-msg");
+  msg.textContent = t("disc.mounting");
+  $("home-msg").textContent = t("disc.mounting");
+  try {
+    const d = await invoke<DiscInfo>("mount_image", { path: p });
+    settings.discImage = p;
+    settings.discPath = d.root ?? "";
+    msg.textContent = t("disc.mounted", { dir: d.root ?? "" });
+    $("home-msg").textContent = msg.textContent;
+  } catch (e) {
+    msg.textContent = String(e);
+    $("home-msg").textContent = String(e);
+  }
+  await refreshStatus();
+}
+
+async function pickDiscFolder() {
+  const p = await open({ directory: true, title: t("disc.folder") });
+  if (typeof p !== "string") return;
+  settings.discPath = p;
+  persist(async () => {
+    await refreshStatus();
+    $("disc-msg").textContent = status?.disc.root ? "" : t("disc.notADisc", { dir: p });
+  });
+}
+
+$("disc-mount").addEventListener("click", mountImage);
+$("disc-folder").addEventListener("click", pickDiscFolder);
+$("disc-auto").addEventListener("click", () => {
+  settings.discPath = "";
+  persist(async () => {
+    await refreshStatus();
+    $("disc-msg").textContent = status?.disc.root ? t("disc.found", { dir: status.disc.root }) : t("disc.notFound");
+  });
+});
+$("disc-eject").addEventListener("click", async () => {
+  const yes = await ask(t("disc.ejectAsk"), { title: t("disc.eject"), kind: "info" });
+  if (!yes) return;
+  try {
+    await invoke("eject_disc");
+    $("disc-msg").textContent = t("disc.ejected");
+  } catch (e) {
+    $("disc-msg").textContent = String(e);
+  }
+  await refreshStatus();
+});
+
+// ---- Add to Steam ----------------------------------------------------------------
+interface SteamStatus {
+  available: boolean;
+  installed: boolean;
+  running: boolean;
+  users: number;
+  added: number;
+}
+let steam: SteamStatus | null = null;
+let steamBusy = false;
+
+async function refreshSteam() {
+  steam = await invoke<SteamStatus>("steam_status").catch(() => null);
+  renderSteam();
+}
+
+function renderSteam() {
+  const ok = !!steam?.available && steam.installed && status?.os === "macos" && !!status?.builds?.ok;
+  const add = $<HTMLButtonElement>("steam-add");
+  const remove = $<HTMLButtonElement>("steam-remove");
+  show(add, ok && steam!.added < steam!.users);
+  show(remove, ok && steam!.added > 0);
+  add.disabled = remove.disabled = steamBusy;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function steamClosed(msg: HTMLElement): Promise<boolean> {
+  const st = await invoke<SteamStatus>("steam_status").catch(() => null);
+  if (!st?.running) return true;
+  const quit = await ask(t("steam.quitAsk"), { title: "Steam", kind: "warning", okLabel: t("steam.quit"), cancelLabel: t("install.cancel") });
+  if (!quit) {
+    msg.textContent = t("steam.running");
+    return false;
+  }
+  msg.textContent = t("steam.quitting");
+  await invoke("steam_quit").catch(() => {});
+  for (let i = 0; i < 40; i++) {
+    await sleep(500);
+    const s = await invoke<SteamStatus>("steam_status").catch(() => null);
+    if (!s?.running) {
+      await sleep(1000);
+      return true;
+    }
+  }
+  msg.textContent = t("steam.quitFailed");
+  return false;
+}
+
+async function steamAction(kind: "add" | "remove") {
+  const msg = $("home-msg");
+  if (steamBusy) return;
+  if (kind === "add") {
+    const yes = await ask(t("steam.confirmAdd"), { title: t("steam.add"), kind: "info", okLabel: t("steam.add"), cancelLabel: t("install.cancel") });
+    if (!yes) return;
+  }
+  steamBusy = true;
+  renderSteam();
+  try {
+    if (!(await steamClosed(msg))) return;
+    if (kind === "add") {
+      const r = await invoke<{ users: number; art: boolean }>("steam_add");
+      msg.textContent = t("steam.added", { n: r.users }) + (r.art ? "" : " " + t("steam.noArt"));
+    } else {
+      const n = await invoke<number>("steam_remove");
+      msg.textContent = t(n ? "steam.removed" : "steam.notThere");
+    }
+  } catch (e) {
+    msg.textContent = String(e) === "steam-running" ? t("steam.running") : t("steam.failed", { e: String(e) });
+  } finally {
+    steamBusy = false;
+    await refreshSteam();
+  }
+}
+$("steam-add").addEventListener("click", () => steamAction("add"));
+$("steam-remove").addEventListener("click", () => steamAction("remove"));
+
+// ---- debug mode (report.rs) --------------------------------------------------------
+let report: ReportInfo | null = null;
+let reportPoll = 0;
+let sessions: ReportInfo[] = [];
+const busy = new Map<string, string>();
+const URL_ISSUE = "https://github.com/erikomis/resistance-recomp/issues/new";
+
+async function refreshReport() {
+  try {
+    report = await invoke<ReportInfo | null>("report_info");
+  } catch {
+    report = null;
+  }
+  renderReport();
+  const live = !!report?.live && gameRunning;
+  if (live && !reportPoll) reportPoll = window.setInterval(refreshReport, 2000);
+  if (!live && reportPoll) {
+    window.clearInterval(reportPoll);
+    reportPoll = 0;
+  }
+  if (advancedTab === "diagnostics") refreshSessions();
+}
+
+function renderReport() {
+  const r = report;
+  const live = !!r?.live && gameRunning;
+  $("report-hint").textContent = t(live ? "report.hintLive" : gameRunning ? "report.hintNotDiag" : "report.hintIdle");
+  show($("report-play"), !gameRunning);
+  $<HTMLButtonElement>("report-play").disabled = rebuildRunning || !status?.hostSupported || !status?.builds?.ok;
+  show($("report-capture"), live);
+  show($("hero-capture"), live);
+  $("report-state").textContent =
+    r && live ? t("report.state", { id: r.id, captures: r.captures, passes: r.passes, size: human(r.bytes) }) + (r.pending ? t("report.pending") : "") : "";
+}
+
+$("report-play").addEventListener("click", () => startGame(true));
+async function captureFrame() {
+  let text: string;
+  try {
+    report = await invoke<ReportInfo>("report_capture");
+    text = t("report.captured", { n: report.captures });
+  } catch (e) {
+    text = String(e);
+  }
+  $("report-msg").textContent = text;
+  $("home-msg").textContent = text;
+  renderReport();
+}
+$("report-capture").addEventListener("click", captureFrame);
+$("hero-capture").addEventListener("click", captureFrame);
+$("report-issue").addEventListener("click", () => invoke("open_url", { url: URL_ISSUE }));
+$("report-refresh").addEventListener("click", () => refreshSessions());
+listen("report-changed", () => refreshSessions());
+
+async function refreshSessions() {
+  try {
+    sessions = await invoke<ReportInfo[]>("report_list");
+  } catch (e) {
+    $("report-msg").textContent = String(e);
+  }
+  renderSessions();
+}
+
+function sessionTime(id: string): string {
+  const m = id.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/);
+  if (!m) return id;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+  return d.toLocaleString(lang(), { dateStyle: "medium", timeStyle: "short" });
+}
+
+function clock(secs: number | null): string {
+  if (secs == null) return "-";
+  const s = Math.round(secs);
+  const h = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(h ? 2 : 1, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function sessionEnd(r: ReportInfo): [string, string] {
+  if (r.live && gameRunning) return [t("report.live"), "accent"];
+  if (!r.debug) return [t("report.oldReport"), "muted-pill"];
+  if (r.stopped) return [t("report.stopped"), "muted-pill"];
+  if (r.exit && r.exit !== "code=0") return [t("report.crashed", { exit: r.exit }), "bad"];
+  return [t("report.ended"), "muted-pill"];
+}
+
+function renderSessions() {
+  const ul = $("report-sessions");
+  ul.replaceChildren();
+  show($("report-none"), sessions.length === 0);
+  for (const r of sessions) {
+    const li = el("li", "session");
+    const head = el("div", "row session-head");
+    head.append(el("strong", "", sessionTime(r.id)));
+    if (r.duration != null) head.append(el("span", "small muted", clock(r.duration)));
+    const [end, cls] = sessionEnd(r);
+    head.append(el("span", `pill ${cls}`, end));
+    if (r.crashReport) head.append(el("span", "pill bad", t("report.crashReport")));
+    li.append(head);
+    li.append(el("div", "small muted", t("report.rowMeta", { captures: r.captures, passes: r.passes, log: human(r.logBytes), size: human(r.bytes) })));
+    const tr = r.triage;
+    const sum = el("div", "session-triage");
+    if (!tr) {
+      sum.append(el("span", "small muted", t("report.triageNone")));
+    } else {
+      const counts = el("div", "row");
+      counts.append(el("span", tr.errors ? "pill bad" : "pill muted-pill", t("report.triageCounts", { errors: tr.errors, warnings: tr.warnings, lines: tr.lines })));
+      if (tr.fpsAvg != null) counts.append(el("span", "pill muted-pill", t("report.fps", { avg: tr.fpsAvg.toFixed(1), min: (tr.fpsMin ?? 0).toFixed(1) })));
+      if (tr.stale) counts.append(el("span", "small warn-text", t("report.stale")));
+      sum.append(counts);
+      if (!tr.top.length) sum.append(el("p", "small muted", t("report.clean")));
+      else {
+        const ol = el("ol", "issues");
+        for (const g of tr.top.slice(0, 8)) {
+          const item = el("li", `sev-${g.severity === "error" ? "error" : "warn"}`);
+          item.append(el("span", "issue-title", g.title));
+          item.append(el("span", "small muted", ` ×${g.count} · ${t("report.line", { n: g.firstLine })}`));
+          ol.append(item);
+        }
+        sum.append(ol);
+      }
+    }
+    li.append(sum);
+    const act = el("div", "row");
+    const work = busy.get(r.id);
+    const analyse = el("button", "", t(work === "triage" ? "report.analysing" : "report.analyse"));
+    analyse.disabled = !!work;
+    analyse.addEventListener("click", () => sessionAction(r, "triage"));
+    const zip = el("button", "", t("report.zip") + (work === "zip" ? "…" : ""));
+    zip.disabled = !!work || (r.live && gameRunning);
+    zip.addEventListener("click", () => sessionAction(r, "zip"));
+    const openB = el("button", "link", t("report.open"));
+    openB.addEventListener("click", () => invoke("reveal", { path: r.dir }));
+    act.append(analyse, zip, openB);
+    if (tr) {
+      const md = el("button", "link", t("report.openTriage"));
+      md.addEventListener("click", () => invoke("reveal", { path: tr.md }));
+      act.append(md);
+    }
+    if (r.zip) {
+      const z = el("button", "link", t("report.showZip"));
+      z.addEventListener("click", () => invoke("reveal", { path: r.zip! }));
+      act.append(z);
+    }
+    if (!(r.live && gameRunning)) {
+      const del = el("button", "link danger-link", t("report.delete"));
+      del.addEventListener("click", async () => {
+        if (!(await ask(t("report.deleteAsk"), { title: t("report.delete"), kind: "warning" }))) return;
+        await invoke("report_delete", { id: r.id }).catch((e) => ($("report-msg").textContent = String(e)));
+        refreshSessions();
+      });
+      act.append(del);
+    }
+    li.append(act);
+    ul.append(li);
+  }
+}
+
+async function sessionAction(r: ReportInfo, what: "triage" | "zip") {
+  const msg = $("report-msg");
+  busy.set(r.id, what);
+  msg.textContent = t(what === "zip" ? "report.zipping" : "report.analysing");
+  renderSessions();
+  try {
+    const got =
+      what === "zip"
+        ? await invoke<ReportInfo>("report_zip", { id: r.id, notes: $<HTMLTextAreaElement>("report-notes").value })
+        : await invoke<ReportInfo>("report_triage", { id: r.id });
+    sessions = sessions.map((s) => (s.id === got.id ? got : s));
+    msg.textContent = what === "zip" ? t("report.zipped", { file: tilde(got.zip ?? ""), size: human(got.zipBytes) }) : "";
+    if (what === "zip" && got.zip) invoke("reveal", { path: got.zip });
+  } catch (e) {
+    msg.textContent = String(e);
+  }
+  busy.delete(r.id);
+  renderSessions();
+}
+
+// ---- install: 1. requirements ------------------------------------------------------
+const URL_RPCS3 = "https://rpcs3.net/download";
+let prereqs: Prereqs | null = null;
+let setupRunning = false;
+let cltPoll = 0;
+const ICON: Record<string, string> = { ok: "✓", warn: "!", fail: "✕" };
+
+function checkLabel(name: string): string {
+  const k = `prereq.name.${name}` as Key;
+  const v = t(k);
+  return v === k ? name : v;
+}
+
+let prereqSeq = 0;
+async function refreshPrereqs() {
+  $("prereq-msg").textContent = t("prereq.checking");
+  const seq = ++prereqSeq;
+  const p = await invoke<Prereqs>("check_prereqs");
+  if (seq !== prereqSeq) return;
+  prereqs = p;
+  $("prereq-msg").textContent = "";
+  renderPrereqs();
+  if (cltPoll && prereqs.clt) {
+    window.clearInterval(cltPoll);
+    cltPoll = 0;
+  }
+}
+
+function prereqActions(c: CheckItem): HTMLButtonElement[] {
+  if (c.level === "ok") return [];
+  const button = (label: Key, run: () => unknown) => {
+    const b = document.createElement("button");
+    b.textContent = t(label);
+    b.addEventListener("click", () => run());
+    return b;
+  };
+  switch (c.name) {
+    case "xcode-clt":
+      return [button("prereq.installClt", installClt)];
+    case "rpcs3":
+      return [button("prereq.getRpcs3", () => invoke("open_url", { url: URL_RPCS3 }))];
+    case "disc":
+      return [button("disc.mount", mountImage)];
+    case "rebuild":
+    case "builds":
+      return [button("port.pickShort", pickPortDir)];
+    default:
+      return [];
+  }
+}
+
+function renderPrereqs() {
+  const p = prereqs;
+  const list = $("prereqs");
+  list.innerHTML = "";
+  const supported = status?.hostSupported ?? p?.supported ?? true;
+  show($("install-unsupported"), !supported);
+  for (const id of ["card-prereqs", "card-port", "card-run"]) $(id).classList.toggle("disabled", !supported);
+  if (!p || !p.supported) {
+    $("prereq-summary").textContent = "";
+    show($("prereq-fix"), false);
+    show($("prereq-brew-missing"), false);
+    return;
+  }
+  const fails = p.checks.filter((c) => c.level === "fail");
+  for (const c of [...fails, ...p.checks.filter((c) => c.level !== "fail")]) {
+    const li = document.createElement("li");
+    li.className = `check-${c.level}`;
+    li.innerHTML = `<span class="ico"></span><span class="what"><b></b><span class="msg"></span></span>`;
+    li.querySelector(".ico")!.textContent = ICON[c.level] ?? "·";
+    li.querySelector("b")!.textContent = checkLabel(c.name);
+    li.querySelector(".msg")!.textContent = c.message.replace(/^\/Users\/[^/]+/, "~");
+    li.append(...prereqActions(c));
+    list.appendChild(li);
+  }
+  const sum = $("prereq-summary");
+  sum.className = "pill " + (p.ok ? "" : "bad");
+  sum.textContent = p.ok ? t("prereq.allOk") : t("prereq.missingN", { n: fails.length || 1 });
+  $("card-prereqs").classList.toggle("done", p.ok);
+  const brewable = p.brewMissing.length > 0;
+  show($("prereq-fix"), !p.clt || (brewable && !!p.homebrew));
+  $<HTMLButtonElement>("prereq-fix").disabled = setupRunning;
+  $("prereq-fix").textContent = p.clt ? t("prereq.fixBrew", { pkgs: p.brewMissing.join(" ") }) : t("prereq.installClt");
+  show($("prereq-brew-missing"), brewable && !p.homebrew);
+  show($("setup-cancel"), setupRunning);
+}
+
+async function installClt() {
+  const yes = await ask(t("prereq.askClt"), { title: t("prereq.installClt"), kind: "info" });
+  if (!yes) return;
+  try {
+    await invoke("install_clt");
+    $("prereq-msg").textContent = t("prereq.cltStarted");
+    if (!cltPoll) cltPoll = window.setInterval(refreshPrereqs, 15000);
+  } catch (e) {
+    $("prereq-msg").textContent = String(e);
+  }
+}
+
+$("prereq-fix").addEventListener("click", async () => {
+  if (!prereqs) return;
+  if (!prereqs.clt) return installClt();
+  if (!prereqs.homebrew || !prereqs.brewMissing.length) return;
+  const pkgs = prereqs.brewMissing;
+  const yes = await ask(t("prereq.askBrew", { pkgs: pkgs.join(" ") }), { title: t("prereq.fix"), kind: "info" });
+  if (!yes) return;
+  const pre = $("setup-log");
+  pre.textContent = "";
+  show(pre, true);
+  try {
+    await invoke("install_brew", { packages: pkgs });
+    setupRunning = true;
+    $("prereq-msg").textContent = t("prereq.brewRunning");
+  } catch (e) {
+    $("prereq-msg").textContent = String(e);
+  }
+  renderPrereqs();
+});
+$("prereq-recheck").addEventListener("click", refreshPrereqs);
+$("setup-cancel").addEventListener("click", () => invoke("cancel_setup"));
+$("copy-brew").addEventListener("click", () => navigator.clipboard.writeText(document.querySelector("#prereq-brew-missing code")!.textContent ?? ""));
+listen<string>("setup-line", (ev) => {
+  const pre = $("setup-log");
+  pre.textContent += ev.payload + "\n";
+  pre.scrollTop = pre.scrollHeight;
+});
+listen<number>("setup-exit", (ev) => {
+  setupRunning = false;
+  $("prereq-msg").textContent = ev.payload === 0 ? t("prereq.brewDone") : t("prereq.brewFailed", { code: ev.payload });
+  refreshPrereqs();
+});
+
+// ---- install: 2. the port folder --------------------------------------------------
+let found: Builds[] = [];
+
+function buildsSummary(b: Builds): string {
+  if (b.ok) {
+    return t("port.ok", { date: b.builtAt ? new Date(b.builtAt * 1000).toLocaleString(lang()) : "?" }) + (b.v17 ? " " + t("port.v17") : "") + (b.legacy ? " " + t("port.legacy") : "");
+  }
+  return t("port.missing", { missing: b.missing.join(", ") });
+}
+
+function renderPort() {
+  const input = $<HTMLInputElement>("port-dir");
+  if (document.activeElement !== input) input.value = settings.portDir;
+  const b = status?.builds ?? null;
+  const box = $("port-builds");
+  show(box, !!b);
+  const sum = $("port-summary");
+  if (b) {
+    box.replaceChildren(
+      el("div", "", (settings.portDir ? "" : t("port.autoFound") + " ") + tilde(b.root)),
+      el("div", b.ok ? "ok-text small" : "warn-text small", buildsSummary(b)),
+      el("div", "small muted", b.rebuildSh ? t("port.canRebuild") : t("port.noRebuild")),
+    );
+    sum.className = "pill " + (b.ok ? "" : "warn");
+    sum.textContent = b.ok ? t("port.ready") : t("port.notReady");
+  } else {
+    sum.className = "pill warn";
+    sum.textContent = t("port.none");
+  }
+  $("port-builds").closest(".card")!.classList.toggle("done", !!b?.ok);
+  const ul = $("port-list");
+  ul.replaceChildren();
+  for (const f of found) {
+    if (b && f.root === b.root) continue;
+    const li = el("li");
+    const what = el("div", "grow");
+    what.append(el("div", "", tilde(f.root)), el("div", f.ok ? "ok-text small" : "small muted", buildsSummary(f)));
+    const use = el("button", "", t("port.use"));
+    use.addEventListener("click", () => setPortDir(f.root));
+    li.append(what, use);
+    ul.append(li);
+  }
+  // the rebuild card: only for the repository that has tools/rebuild.sh
+  const canRebuild = !!b?.rebuildSh;
+  $<HTMLButtonElement>("start").disabled = rebuildRunning || !canRebuild || gameRunning;
+  $("run-lead-extra")?.remove();
+  if (!canRebuild) {
+    const p = el("p", "hint warn-text", t("run.needRepo"));
+    p.id = "run-lead-extra";
+    $("steps-pick").before(p);
+  }
+}
+
+function setPortDir(p: string) {
+  settings.portDir = p;
+  $<HTMLInputElement>("port-dir").value = p;
+  persist(async () => {
+    await refreshStatus();
+    refreshPrereqs();
+  });
+}
+
+async function pickPortDir() {
+  showView("advanced", "install");
+  const p = await open({ directory: true, title: t("port.title"), defaultPath: settings.portDir || undefined });
+  if (typeof p === "string") setPortDir(p);
+}
+
+async function findPortDirs() {
+  $("port-summary").textContent = t("port.searching");
+  found = await invoke<Builds[]>("find_port_dirs").catch(() => []);
+  renderPort();
+  if (!found.length) $("port-summary").textContent = t("port.none");
+}
+
+$("pick-port-dir").addEventListener("click", pickPortDir);
+$("find-port-dirs").addEventListener("click", findPortDirs);
+$("port-dir").addEventListener("change", () => setPortDir($<HTMLInputElement>("port-dir").value.trim()));
+
+// ---- install: 3. the rebuild -----------------------------------------------------
+function renderStepsPick() {
+  const box = $("steps-pick");
+  box.replaceChildren();
+  const chosen = settings.rebuildSteps?.length ? settings.rebuildSteps : STEP_IDS.filter((s) => s !== "venv");
+  for (const s of STEP_IDS) {
+    if (s === "venv") continue;
+    const l = el("label", "check");
+    const c = el("input");
+    c.type = "checkbox";
+    c.checked = chosen.includes(s);
+    c.addEventListener("change", () => {
+      const all = Array.from(box.querySelectorAll<HTMLInputElement>("input")).map((i, n) => [i.checked, STEP_IDS.filter((x) => x !== "venv")[n]] as const);
+      const on = all.filter(([v]) => v).map(([, n]) => n);
+      settings.rebuildSteps = on.length === all.length ? [] : on;
+      persist();
+    });
+    l.append(c, el("span", "", t(`step.${s}` as Key)));
+    box.append(l);
+  }
+  const jobs = $<HTMLInputElement>("jobs");
+  jobs.value = String(settings.jobs || 0);
+}
+$("jobs").addEventListener("change", () => {
+  settings.jobs = Math.max(0, Math.min(64, Number($<HTMLInputElement>("jobs").value) || 0));
+  persist();
+});
+
+async function startRebuild() {
+  const steps = settings.rebuildSteps?.length ? settings.rebuildSteps : [];
+  if (!steps.length && !(await ask(t("run.askAll"), { title: t("run.start"), kind: "info" }))) return;
+  if (prereqs && !prereqs.ok && !(await ask(t("install.askMissing"), { title: t("run.start"), kind: "warning" }))) return;
+  progress.reset(steps);
+  $("log").textContent = "";
+  $("install-msg").textContent = "";
+  try {
+    await invoke("start_rebuild", { req: { steps, jobs: settings.jobs || null } });
+    rebuildRunning = true;
+  } catch (e) {
+    $("install-msg").textContent = String(e);
+  }
+  renderProgress();
+  renderHome();
+}
+$("start").addEventListener("click", startRebuild);
+$("cancel").addEventListener("click", () => {
+  progress.cancelled = true;
+  invoke("cancel_rebuild");
+});
+$("copy-log").addEventListener("click", () => navigator.clipboard.writeText(progress.log.join("\n")));
+
+function renderProgress() {
+  show($("cancel"), rebuildRunning);
+  $<HTMLButtonElement>("start").disabled = rebuildRunning || !status?.builds?.rebuildSh || gameRunning;
+  const steps = $("steps");
+  steps.innerHTML = "";
+  for (const s of progress.steps) {
+    const li = document.createElement("li");
+    li.className = `step-${s.state}`;
+    li.innerHTML = `<span class="name"></span><span class="state"></span>`;
+    li.querySelector(".name")!.textContent = t(`step.${s.id}` as Key);
+    li.querySelector(".state")!.textContent = t(`state.${s.state}` as Key) + (s.secs ? ` · ${clock(s.secs)}` : "");
+    steps.appendChild(li);
+  }
+  const frac = progress.fraction();
+  $("bar").style.width = `${(frac * 100).toFixed(1)}%`;
+  const eta = progress.etaMinutes();
+  $("progress-text").textContent = rebuildRunning
+    ? `${Math.floor(frac * 100)}%` + (eta !== null ? ` · ${t("install.eta", { min: Math.max(1, Math.round(eta)) })}` : "")
+    : "";
+}
+
+let frame = 0;
+function flushLog() {
+  frame = 0;
+  const pre = $("log");
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+  pre.textContent = progress.log.slice(-2000).join("\n");
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+  renderProgress();
+}
+listen<string>("rebuild-line", (ev) => {
+  progress.feed(ev.payload);
+  if (!frame) frame = requestAnimationFrame(flushLog);
+});
+listen<number>("rebuild-exit", (ev) => {
+  rebuildRunning = false;
+  const code = ev.payload;
+  const msg = $("install-msg");
+  if (progress.cancelled) msg.textContent = t("install.cancelled");
+  else if (code === 0) msg.textContent = t(progress.kind === "pull" ? "update.pulled" : "install.done");
+  else msg.textContent = t("install.failed", { code });
+  msg.className = code === 0 ? "ok" : "bad";
+  progress.finish(code === 0);
+  flushLog();
+  refreshStatus();
+  refreshUpdates(false);
+});
+
+const gameExitWaiters: (() => void)[] = [];
+listen<number>("game-exit", (ev) => {
+  gameRunning = false;
+  gameExitWaiters.splice(0).forEach((f) => f());
+  $("home-msg").textContent = t("home.exited", { code: ev.payload });
+  refreshStatus();
+  refreshReport();
+  if ($("tab-log").classList.contains("active")) showLog();
+});
+
+// ---- start ---------------------------------------------------------------------
+async function main() {
+  settings = await invoke<Settings>("get_settings");
+  setLang(settings.uiLang as Lang);
+  translateDom();
+  bindSettings();
+  renderStepsPick();
+  initControls();
+  initLog();
+  initSaves({
+    keep: () => settings.saveBackupsKeep ?? 10,
+    setKeep: (n) => {
+      settings.saveBackupsKeep = n;
+      persist();
+    },
+  });
+  initUpdates({
+    auto: () => settings.autoUpdateCheck ?? true,
+    busy: () => rebuildRunning || gameRunning,
+    canRebuild: () => !rebuildRunning && !gameRunning && !!status?.builds?.rebuildSh,
+    rebuild: () => {
+      showView("advanced", "install");
+      startRebuild();
+    },
+    pull: async () => {
+      showView("advanced", "install");
+      progress.reset([], "pull");
+      $("log").textContent = "";
+      try {
+        await invoke("pull_sources");
+        rebuildRunning = true;
+      } catch (e) {
+        $("install-msg").textContent = String(e);
+      }
+      renderProgress();
+    },
+  });
+  applyLang(settings.uiLang as Lang);
+  await refreshStatus();
+  refreshReport();
+  refreshShaderCache();
+  void refreshUpdates(settings.autoUpdateCheck ?? true);
+  if (status && !status.builds) void findPortDirs();
+  // opened by the Play shortcut (--play): start the game as the Play button would
+  const playNow = await invoke<boolean>("take_play_request").catch(() => false);
+  if (playNow && status?.builds?.ok && status.hostSupported && !gameRunning && !rebuildRunning) await startGame(false);
+  else if (status && !status.builds?.ok) showView("advanced", "install");
+}
+main();

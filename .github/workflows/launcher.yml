@@ -1,0 +1,55 @@
+# Builds the desktop launcher (launcher/, Tauri 2) for Apple-silicon macOS,
+# runs its tests, checks that nothing from the game is in the bundle
+# (launcher/scripts/check_bundle.py) and uploads the .app (zipped) and the
+# .dmg as artifacts. The launcher carries no part of the port: it runs the
+# builds the player made from their own disc (tools/rebuild.sh).
+name: launcher
+
+on:
+  push:
+    branches: [main]
+    paths: ['launcher/**', '.github/workflows/launcher.yml']
+  pull_request:
+    paths: ['launcher/**', '.github/workflows/launcher.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: launcher/src-tauri
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: cargo test
+        working-directory: launcher/src-tauri
+      - run: npx tauri build --bundles app,dmg
+      - name: Check the bundles
+        run: python3 scripts/check_bundle.py src-tauri/target/release/bundle/macos/*.app src-tauri/target/release/bundle/dmg/*.dmg
+      - name: Zip the app
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          ditto -c -k --keepParent "Resistance Launcher.app" "../resistance-launcher_aarch64.app.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resistance-launcher-macos-arm64
+          path: |
+            launcher/src-tauri/target/release/bundle/resistance-launcher_aarch64.app.zip
+            launcher/src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 30

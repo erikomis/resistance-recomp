@@ -22,9 +22,10 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
 > **Trabalho em andamento, bem no começo.** O capítulo 1 dá para jogar, ainda
-> com erros de renderização em aberto. Não há release nem app: você mesmo
-> compila a partir do seu disco. Só macOS com Apple silicon, e é preciso um
-> controle. O que falta está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
+> com erros de renderização em aberto. Não há release: você mesmo compila a
+> partir do seu disco (o [launcher](#launcher) roda a compilação e o jogo
+> por você). Só macOS com Apple silicon, e é preciso um controle. O que falta
+> está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
 > **Este repositório não contém dados do jogo, firmware, chaves da Sony nem
 > nada traduzido a partir deles.** Cada um gera tudo isso localmente a partir
@@ -184,6 +185,7 @@ exemplo `tools/rebuild.sh lift build`):
 | `lift` | o `ppu_lifter.py` do toolkit, 16 pedaços para o EBOOT e 12 para o `game.self` | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: o policy module do job manager, extraído do seu EBOOT, embrulhado e traduzido | `port/spu/captured/` |
 | `build` | CMake + Ninja, Metal, FFmpeg em runtime; também o launcher da janela, `Resistance` | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
+| `launcher` | só quando pedida: o app de desktop [launcher](#launcher) (`npm ci`, `tauri build`; Node 20+ e Rust) | `build/launcher/Resistance Launcher.app` |
 
 Tudo na última coluna é gerado a partir da sua cópia e está no `.gitignore`.
 Mantenha essa organização: quando o EBOOT passa para a campanha, o
@@ -253,6 +255,52 @@ uma vez só). Saves, o cache da instalação e o log (`last.log`) ficam em
 título da janela mostra a taxa de quadros. Feche a janela, ou aperte Ctrl+C no
 terminal, para sair. Se faltar um build, o `play.sh` avisa: rode o
 `tools/rebuild.sh`.
+
+## Launcher
+
+[`launcher/`](launcher/) é um app de desktop (Tauri) que faz o que o
+`tools/play.sh` faz sem terminal, no molde do launcher do port do inFAMOUS 2:
+ele acha os seus builds e o seu disco, monta a imagem do disco por você
+(`hdiutil`, só leitura) e a lembra, guarda os ajustes, e o **Jogar** abre a
+janela `Resistance` com o build do EBOOT, a pasta de jogo
+(`PS3_HDD0_ROOT`/`PS3_HDD1_ROOT`, `last.log`), o FFmpeg e o `caffeinate`, como
+o `play.sh`. Ele não leva nada do jogo: a capa da tela inicial é lida do seu
+disco montado.
+
+- **Início**: Jogar/Parar, o que ainda impede o Jogar (sem build, sem disco,
+  os `patch_*.bin` da atualização v1.7 na pasta de jogo, com os quais o EBOOT
+  01.00 não roda; um clique os tira de lá), o aviso do primeiro boot (dois
+  STARTs), ajustes rápidos, o último save, o status, um atalho Jogar na Mesa e
+  Adicionar à Steam.
+- **Gráficos**: tamanho da janela (o `--size` da janela), o ícone do seu
+  disco no Dock, FXAA, nitidez, filtragem anisotrópica, gama forçado, perfis.
+- **Desempenho**: o cache de vértices e a divisão por fluxo, ligar só o
+  estado que mudou, o cache de shaders (com o tamanho e Limpar) e os shaders
+  em segundo plano, o relógio de quadros, o contador de fps, manter o Mac
+  acordado.
+- **Jogo**: o disco (imagem ou pasta, montar/ejetar), a versão da campanha
+  (**v1.7** quando o build dela existe, ou **01.00**: `RES_GAME_VERSION=100`),
+  o idioma do console (`PS3_LANG`), os vídeos (caminhos do FFmpeg), a pasta de
+  jogo e um gerenciador de saves (o perfil e o `quick.sav`, aqui e no RPCS3:
+  backup antes de cada Jogar, restaurar, copiar nos dois sentidos,
+  exportar/importar .zip).
+- **Controles**: um teste do controle (no macOS o jogo precisa de controle).
+- **Avançado**: Instalar / recompilar (requisitos com instalação pelo
+  Homebrew, a pasta do port, o `tools/rebuild.sh` com as etapas escolhidas e
+  barra de progresso), Atualizações (`git fetch` do checkout, "builds mais
+  velhos que as fontes", o release mais novo do launcher), o visualizador do
+  log, o modo de depuração (uma pasta por sessão com capturas, um resumo do
+  log e um .zip para anexar numa issue) e o ambiente com a linha de comando
+  equivalente.
+
+Interface em português do Brasil e inglês. Compile com Node 20+ e Rust:
+
+```sh
+tools/rebuild.sh launcher        # -> build/launcher/Resistance Launcher.app
+```
+
+Detalhes, capturas de tela e os comandos de desenvolvimento estão em
+[launcher/README.md](launcher/README.md) (em inglês).
 
 ## Jogando pelo terminal
 
@@ -328,6 +376,7 @@ própria janela).
 | [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn e a passagem do estado da janela, `RES_PEEK`), `CMakeLists.txt` (com o alvo do launcher `Resistance`), `config.toml`, `spu/spu_workloads.c` (registro das SPUs) |
 | [`patches/`](patches/) | O patch do toolkit sobre o ps3recomp v0.17.0 |
 | [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` e os scripts de execução |
+| [`launcher/`](launcher/) | O launcher de desktop (Tauri): ajustes, disco, saves, recompilação e Jogar |
 | [`ROADMAP.pt-BR.md`](ROADMAP.pt-BR.md) | Estado e próximos passos |
 
 ## Licença
