@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MyGameRecomp
+project(ResistanceRecomp
     VERSION 0.1.0
     LANGUAGES C CXX
     DESCRIPTION "Recompiled PS3 game project (ps3recomp)"
@@ -249,6 +249,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         # The lift spells PPC arithmetic as signed C arithmetic, which must wrap;
         # without this, clang exploits overflow UB (e.g. folds "x*x < 0" to false).
         -fwrapv
+        # The target-wide -O1 the SPU note above relies on. Without it a build
+        # configured with no CMAKE_BUILD_TYPE compiled every lifted PPU TU at
+        # -O0: each static inline helper (ppc_rlw64, vmx_w, vm_read32_inl) is
+        # a real call that spills to the stack, and those calls were most of
+        # the PPU thread's profile. -O1 keeps the huge TUs' build time sane.
+        $<$<NOT:$<CONFIG:Debug>>:-O1>
     )
 elseif(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE

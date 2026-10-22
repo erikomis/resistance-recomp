@@ -23,6 +23,7 @@
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>   /* _NSGetExecutablePath */
+extern "C" void rsx_metal_backend_export_window_state(void);
 #endif
 #include <cerrno>
 #include <climits>
@@ -203,6 +204,9 @@ static void hle_sys_game_process_exitspawn(ppu_context* ctx)
     setenv("PS3_BOOT_PATH", path.c_str(), 1);
     if (args.empty()) unsetenv("PS3_ARGV"); else setenv("PS3_ARGV", args.c_str(), 1);
     if (data_file.empty()) unsetenv("RES_SPAWN_DATA"); else setenv("RES_SPAWN_DATA", data_file.c_str(), 1);
+#ifdef __APPLE__
+    rsx_metal_backend_export_window_state();   /* the next window opens where this one is */
+#endif
     fprintf(stderr, "[exitspawn] exec %s %s\n", bin.c_str(), elf.c_str());
     fflush(stdout); fflush(stderr);
     char* const av[] = { (char*)bin.c_str(), (char*)elf.c_str(), nullptr };

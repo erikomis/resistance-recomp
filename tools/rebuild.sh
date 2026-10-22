@@ -18,8 +18,8 @@
 #   spu      tools/regen_spu_pm.sh -> port/spu/captured/,
 #            tools/regen_jobmods.sh -> port/spu/jobmod_*/, and
 #            tools/regen_rawspu.sh when a raw-SPU capture exists
-#   build    cmake + ninja -> build/BCUS98107/MyGameRecomp (EBOOT) and
-#            build/BCUS98107_game/MyGameRecomp (game.self), Metal, FFmpeg video
+#   build    cmake + ninja -> build/BCUS98107/ResistanceRecomp (EBOOT) and
+#            build/BCUS98107_game/ResistanceRecomp (game.self), Metal, FFmpeg video
 #
 # Everything it writes (game/, analysis/, recompiled/, build/, out/,
 # port/spu/captured/) is game-derived and .gitignore'd.

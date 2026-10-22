@@ -12,8 +12,9 @@ The front end runs from the legal screens through the first-run install, the
 title screen and the main menu to a new campaign. The campaign executable then
 plays the level-1 intro movie and loads "The Gauntlet" (York). In a window,
 with a DualSense, York plays in first person with the HUD: enemies and allies,
-shooting, dying and respawning. It runs at 7–8 fps, buildings render bright
-blue and the player can end up above the map (see [Status](#status)).
+shooting, dying and respawning. The town renders with its proper colours. It
+is still slow (~14 fps measured before the latest optimisations), and after
+dying the player respawns far above the map (see [Status](#status)).
 
 Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), following the
 author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
@@ -32,7 +33,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 ## Status
 
-As of 2026-10-22 (chapter 1 played with a controller), every item verified in runs on an Apple-silicon Mac with Metal.
+As of 2026-10-22 (correct world colours, vertex cache, RPCS3-comparison fixes), every item verified in runs on an Apple-silicon Mac with Metal.
 
 | | |
 | --- | --- |
@@ -47,14 +48,16 @@ As of 2026-10-22 (chapter 1 played with a controller), every item verified in ru
 | Raw SPUs (two programs `game.self` starts after the intro) | ✅ lifted and running |
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
-| Frame rate | 🚧 7–8 fps windowed (frames of ~130–146 ms): the RSX thread is ~100% busy decoding vertices on the CPU (`dc_fetch` ~41%, `rsx_vertex_remap_build` ~13%) and the rest of the game waits on it; a cross-frame vertex cache (from the inFAMOUS 2 port) is in progress |
-| Buildings and roofs | 🚧 drawn solid bright blue (under investigation with per-pass dumps) |
-| Shadows | 🚧 dark/black rectangles on the ground (not investigated yet) |
-| Player position | 🚧 after dying and respawning the view is from above the town (seen from the sky, inside-out); in a headless run walking forward also ended on the rooftops (not investigated yet) |
+| Frame rate | 🚧 ~14 fps in gameplay with the cross-frame vertex cache from the inFAMOUS 2 port (5.9 fps without it, same build), measured before the optimised build and the inFAMOUS 2 performance stack; new measurements in progress |
+| World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
+| Shadows and smoke | 🚧 dark rectangles on the ground; the shadow depth comparison ran in the wrong direction and depth textures now feed every lane (soft particles, smoke); both fixed after a comparison with RPCS3, the in-game check is pending |
+| Player position | 🚧 after dying and respawning from the checkpoint the player comes back far above the map (only sky, far terrain and water are drawn); the checkpoint save matches RPCS3's, the respawn placement is wrong (under investigation) |
+| Window across the campaign hand-off | ✅ the `game.self` window opens where the menu's was (position, size, fullscreen); one persistent window is in development |
 | SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
 | After the intro movie | ✅ the old intermittent hang is fixed (shared callback stack) |
 | Controller | ✅ DualSense, DualShock or Xbox through SDL2 |
 | Keyboard and mouse | ⏳ not on macOS (the toolkit's keyboard fallback is Windows-only): a controller is required |
+| Game update v1.7 | ⏳ the port targets the disc's 01.00; porting the last update is planned (see [ROADMAP.md](ROADMAP.md)) |
 | Linux and Windows | ⏳ not supported |
 | Online multiplayer | ❌ out of scope (the official servers are gone) |
 
@@ -86,12 +89,30 @@ The fixes that got it this far:
   which sent `game.self` looking for its exitspawn block at 0xFFFFF000.
 - **Video:** the toolkit's cellVdec with FFmpeg loaded at runtime
   (`-DPS3RECOMP_FFMPEG_RUNTIME=ON`, Homebrew FFmpeg).
+- **The blue world:** the RSX adds `VERTEX_DATA_BASE_OFFSET` to each vertex
+  array's offset and wraps the sum at 28 bits, as RPCS3 does and Insomniac's
+  engines rely on. Resistance's per-frame world lighting stream sits at
+  base + offset = 0x1Fxxxxxx, which is local memory 0x0Fxxxxxx; without the
+  wrap the port read past VRAM, got zeros and lit the world blue
+  (`rsx_dsp_resolve_vertex_offset`, toolkit patch, with a regression test).
+- **Speed:** a cross-frame vertex cache (5.9 → 14 fps), an optimised build
+  (the port had been compiled at -O0; now the runtime is -O2 and the lifted
+  code -O1 in every configuration but Debug) and the inFAMOUS 2 port's
+  performance work (per-stream vertex cache, Metal staging ring, binding only
+  changed state, program memo, MSL shader cache, a 1 ms frame clock with one
+  present per flip).
 
 The toolkit changes are one patch over ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
 the main-thread stack information, the SPURS kernel context the policy module
-reads, and a few diagnostics (`VDEC_PICLOG`, `PPU_STACKINFO_LOG`,
-`SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`, `RSX_ENGINE_PASS_DUMP_TRIGGER`,
+reads, the 28-bit vertex offset, the vertex cache and the rest of the
+performance work, the fixes from a comparison with RPCS3 (shadow comparison
+direction, depth snapshots cropped and released, depth replicated to every
+lane, compressed textures never resolved from render targets, PPU threads
+starting with VSCR[NJ]=1, no `getenv` on every SPU MFC channel write), the
+window-state hand-off across exitspawn, and diagnostics (`VDEC_PICLOG`,
+`PPU_STACKINFO_LOG`, `SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`,
+`RSX_ENGINE_PASS_DUMP_TRIGGER`, `RSX_ENGINE_PASS_DUMP_DRAWS`, `RSX_VPC_LOG`,
 `PAD_FILE` stick commands, a fuller `AddWorkload` log line).
 
 ## Building from source
@@ -131,13 +152,19 @@ PY=.venv/bin/python PS3_VFS_ROOT=/Volumes/<your disc> tools/rebuild.sh
 | `analyse` | the toolkit's `ppu_loader.py` (functions, imports, TOC) | `analysis/BCUS98107/` |
 | `lift` | the toolkit's `ppu_lifter.py`, 16 chunks for the EBOOT and 12 for `game.self` | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: the job-manager policy module, extracted from your EBOOT, wrapped and lifted | `port/spu/captured/` |
-| `build` | CMake + Ninja, Metal, FFmpeg runtime | `build/BCUS98107/MyGameRecomp`, `build/BCUS98107_game/MyGameRecomp` |
+| `build` | CMake + Ninja, Metal, FFmpeg runtime | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp` |
 
 Everything in that last column is generated from your copy and is
 `.gitignore`d. Keep the layout: when the EBOOT hands off to the campaign,
-`port/stubs.cpp` runs `build/BCUS98107_game/MyGameRecomp` with
+`port/stubs.cpp` runs `build/BCUS98107_game/ResistanceRecomp` with
 `game/BCUS98107/modules/game.elf` next to the EBOOT build
 (`RES_SPAWN_BIN` / `RES_SPAWN_ELF` override that).
+
+The executable was called `MyGameRecomp` until 2026-10-22, and builds made
+before then were compiled unoptimised: rebuild. `tools/setup_toolkit.sh` never
+resets a checkout that carries an older patch, so delete `ps3recomp/` first,
+then run `tools/rebuild.sh toolkit build`. Until you do, the scripts still run
+an old `MyGameRecomp` build when it is the only one there.
 
 #### The SPU policy module
 
@@ -228,7 +255,7 @@ for chords).
 ### Environment
 
 The scripts set these for you ([tools/env.sh](tools/env.sh)); to run a build
-directly: `build/BCUS98107/MyGameRecomp game/BCUS98107/EBOOT.elf`.
+directly: `build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf`.
 
 | Variable | What it does |
 | --- | --- |
@@ -241,9 +268,16 @@ directly: `build/BCUS98107/MyGameRecomp game/BCUS98107/EBOOT.elf`.
 | `PS3RECOMP_METAL_HEADLESS=1` | no window (off-screen rendering) |
 | `PS3RECOMP_METAL_FPS=1` | frame rate and frame times in the window title (and `[RSX FPS]` log lines) |
 | `RSX_ENGINE_PASS_DUMP_TRIGGER=<file>` | with the draw engine's per-pass dump (`RSX_ENGINE_PASS_DUMP=<dir>`), start capturing when that file appears, so a script can dump the frame it has steered the game to |
+| `RSX_ENGINE_PASS_DUMP_DRAWS=1` | with the per-pass dump, one line per draw in `draws.txt`, now with each vertex attribute's format and first bytes |
+| `RSX_VPC_LOG=<constant>[,<draw>]` | every 30 frames, log a vertex-program constant as it stood at that draw (default draw 40) with the frame's draw count; `c16` is the camera position in Resistance's world shaders |
+| `PS3RECOMP_ENG_VCACHE=0`, `PS3RECOMP_ENG_VCACHE_SPLIT=0` | turn off the cross-frame vertex cache / its per-stream split (static mesh streams cached apart from the per-frame lighting stream) |
+| `PS3RECOMP_METAL_BIND_ALL=1` | rebind every Metal state on every draw instead of only what changed |
+| `PS3_SHADER_CACHE=<dir>` | keep the translated MSL shaders across runs; `PS3_SHADER_ASYNC=1` (opt-in) builds new pipelines on a background queue and skips their draws until ready |
+| `PS3_FRAMECLOCK_US=<µs>` | the host frame loop's tick (default 1000; 4000 is the old pacing) |
 | `SPURS_PM_TRACE=1` | log the job manager's policy-module polls (`[spurs-pm]`; off by default, it costs frame rate) |
 | `PS3_TITLE` | window title |
 | `RES_SPAWN_BIN`, `RES_SPAWN_ELF` | the build and ELF the exitspawn hand-off runs (default: the sibling build directory and `game/BCUS98107/…`) |
+| `PS3RECOMP_WINDOW_STATE` | set by the port across exitspawn so the next window opens where the last one was; not meant to be set by hand |
 | `RES_SPAWN_KEEP=1` | keep the exitspawn data file (to rerun `game.self` by hand with `RES_SPAWN_DATA=<file>`) |
 | `RES_PEEK=<secs>:<addr>[,*<addr>...]` | every `<secs>`, print 32 bytes of guest memory at each address (`*` dereferences first) |
 | `SPU_DUMP_MISS=<dir>` | write every SPU image/policy module that has no lifted code to `<dir>` |
@@ -253,7 +287,7 @@ directly: `build/BCUS98107/MyGameRecomp game/BCUS98107/EBOOT.elf`.
 
 | Path | What it is |
 | --- | --- |
-| [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn, `RES_PEEK`), `CMakeLists.txt`, `config.toml`, `spu/spu_workloads.c` (SPU registration) |
+| [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn and the window-state hand-off, `RES_PEEK`), `CMakeLists.txt`, `config.toml`, `spu/spu_workloads.c` (SPU registration) |
 | [`patches/`](patches/) | The toolkit patch over ps3recomp v0.17.0 |
 | [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` and the run scripts |
 | [`ROADMAP.md`](ROADMAP.md) | Status and next steps |

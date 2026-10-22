@@ -3,8 +3,10 @@
 #
 #   RES_ROOT      this repository (default: the parent of tools/)
 #   RES_BUILD     build directories (default: $RES_ROOT/build)
-#                 $RES_BUILD/BCUS98107/MyGameRecomp       the EBOOT build
-#                 $RES_BUILD/BCUS98107_game/MyGameRecomp  the game.self build
+#                 $RES_BUILD/BCUS98107/ResistanceRecomp       the EBOOT build
+#                 $RES_BUILD/BCUS98107_game/ResistanceRecomp  the game.self build
+#                 (a build from before the rename, still named MyGameRecomp,
+#                 is used when it is the only one there; rebuild to update it)
 #   RES_GAME      decrypted executables (default: $RES_ROOT/game/BCUS98107)
 #                 $RES_GAME/EBOOT.elf, $RES_GAME/modules/game.elf
 #   RES_OUT       logs, frames, run directories (default: $RES_ROOT/out)
@@ -30,10 +32,12 @@ export RES_OUT; mkdir -p "$RES_OUT"
 # res_target eboot|game -> $B (binary) and $E (ELF)
 res_target() {
     case ${1:-eboot} in
-        eboot) B=$RES_BUILD/BCUS98107/MyGameRecomp;      E=$RES_GAME/EBOOT.elf ;;
-        game)  B=$RES_BUILD/BCUS98107_game/MyGameRecomp; E=$RES_GAME/modules/game.elf ;;
+        eboot) B=$RES_BUILD/BCUS98107/ResistanceRecomp;      E=$RES_GAME/EBOOT.elf ;;
+        game)  B=$RES_BUILD/BCUS98107_game/ResistanceRecomp; E=$RES_GAME/modules/game.elf ;;
         *) echo "unknown target '$1' (eboot or game)" >&2; return 1 ;;
     esac
+    # An old build, from before the executable was renamed.
+    [ ! -x "$B" ] && [ -x "${B:h}/MyGameRecomp" ] && B=${B:h}/MyGameRecomp
     [ -x "$B" ] || { echo "no build at $B (tools/rebuild.sh)" >&2; return 1; }
     [ -r "$E" ] || { echo "no $E (decrypt your disc's executables, see README)" >&2; return 1; }
 }

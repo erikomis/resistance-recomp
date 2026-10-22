@@ -9,10 +9,11 @@ to macOS/arm64 and what comes next. Same layout as the inFAMOUS 2 roadmap.
 ## Status at a glance (2026-10-22)
 
 - **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
-- **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning.
+- **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning. The town renders with its proper colours (the blue world is fixed).
+- **Faster:** the cross-frame vertex cache took gameplay from 5.9 to ~14 fps (same unoptimised build). Since then the build is optimised (runtime -O2, lifted code -O1) and the inFAMOUS 2 performance stack is in; new measurements in progress.
 - **Released:** nothing yet.
-- **Open:** 7–8 fps windowed (frames of ~130–146 ms; the RSX thread's CPU vertex decode is the bottleneck); buildings and roofs drawn solid bright blue; dark/black rectangles on the ground (shadows); the player ends up above the map after respawning; text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); no Windows or Linux.
-- **Next:** the cross-frame vertex cache from the inFAMOUS 2 port (in progress), then the blue buildings (in progress) and the player position.
+- **Open:** after dying, the player respawns far above the map; dark rectangles on the ground (shadows) and the smoke, to check in game after the RPCS3-comparison fixes; text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); no rumble; no Windows or Linux.
+- **Next:** the respawn position (top priority), the in-game check of shadows and smoke, an fps measurement with every change, then the single-window launcher and the v1.7 update.
 
 ## Current state (2026-10-22)
 
@@ -49,6 +50,20 @@ What got it this far:
   first one's program. All three are fixed (toolkit patch, `port/main.cpp`).
   Both programs are captured with `SPU_RAW_DUMP_DIR` and lifted
   (`tools/regen_rawspu.sh`).
+- **The blue world:** the RSX adds `VERTEX_DATA_BASE_OFFSET` to each vertex
+  array's offset and wraps the sum at 28 bits (RPCS3's
+  `get_vertex_offset_from_base`; Insomniac's engines rely on it).
+  Resistance's per-frame world lighting stream (attribute 4, UB256, local
+  memory) sits at base + offset = 0x1Fxxxxxx, local 0x0Fxxxxxx. Without the
+  wrap the port read past VRAM, got zeros, the lighting weights came out
+  (0,0,1) and the world was blue. `rsx_dsp_resolve_vertex_offset` (toolkit
+  patch) is used by both vertex fetch paths, with a regression test in
+  `test_vertex_fetch_plan.c` that fails without it.
+- **Speed:** the cross-frame vertex cache from the inFAMOUS 2 port (5.9 →
+  14 fps in gameplay, same build, cache on vs off). The port had been compiled
+  at -O0 (no `CMAKE_BUILD_TYPE`, and the toolkit's -O2 only applied to
+  Release/RelWithDebInfo); now the runtime is -O2 and the lifted PPU code -O1
+  in every configuration but Debug.
 
 ---
 
@@ -58,10 +73,10 @@ What got it this far:
 
 - [x] **SPU jobs time out in gameplay.** Fixed 2026-10-22: the 15 WWS job modules lifted, SPURS kernel-style selection and atomic SPU events (see "Gameplay" under Done). The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
 - [x] **Hang after the intro movie (intermittent).** Fixed 2026-10-22: a shared HLE→guest callback stack (see "Gameplay" under Done). A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
-- [ ] **Frame rate: 7–8 fps windowed** (in progress). Frames take ~130–146 ms. A host profile shows the RSX thread ~100% busy in the draw engine's CPU vertex fetch/decode (`dc_fetch` ~41%, `rsx_vertex_remap_build` ~13%); the rest of the game waits on it. Porting the cross-frame vertex cache from the inFAMOUS 2 port (not landed yet).
-- [ ] **Buildings and roofs render solid bright blue** (in progress). Under investigation with per-pass dumps (`RSX_ENGINE_PASS_DUMP`, `RSX_ENGINE_PASS_DUMP_TRIGGER`).
-- [ ] **Dark/black rectangles on the ground** (the shadows). Not investigated yet.
-- [ ] **The player ends up above the map.** After dying and respawning the view is from above the town (the town seen from the sky, inside-out); in a headless run walking forward also ended on the rooftops. Player position or collision goes wrong. Not investigated yet.
+- [ ] **The player respawns above the map** (top priority, in progress). After dying and respawning from the checkpoint the player comes back far above the map: the draw count drops from ~250–500 to ~30–40 (only sky, far terrain and water). The checkpoint save (`USRDIR/quick.sav`, 52,832 bytes) matches RPCS3's to within 166 bytes, so the save is fine and the respawn placement is wrong. Hypotheses: PPU/SPU physics on reload; frame-time (dt) sensitivity after a long load (RPCS3's own 60 fps patch needs a minimum timestep). `RSX_VPC_LOG=16` follows the camera position.
+- [ ] **Dark rectangles on the ground (shadows) and the smoke** (in progress). The texture shadow comparison was in ARB order; the console and RPCS3 compare stored depth OP reference (RPCS3 issue #19391 shows the same rectangles). Fixed with the other RPCS3-comparison fixes (depth textures replicate depth to every lane, for soft particles and smoke); all video tests pass, the in-game check is pending.
+- [ ] **Frame rate** (in progress). ~14 fps in gameplay with the vertex cache, measured before the optimised build and the inFAMOUS 2 stack; measure again with every change.
+- [x] **Buildings and roofs render solid bright blue.** Fixed 2026-10-22: the 28-bit vertex offset wrap (see "Current state"); the town renders with its proper colours.
 - [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
 - [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
 
@@ -107,8 +122,10 @@ What got it this far:
 
 ### Performance
 
-- [ ] 30 fps (the game's own target) in gameplay. Now 7–8 fps windowed; the first host profile puts the RSX thread's CPU vertex decode on the critical path (see Blockers).
-- [ ] The cross-frame vertex cache from the inFAMOUS 2 port (in progress).
+- [ ] 30 fps (the game's own target) in gameplay. ~14 fps measured before the optimised build and the inFAMOUS 2 stack; new measurements in progress.
+- [x] The cross-frame vertex cache from the inFAMOUS 2 port: 5.9 → 14 fps (2026-10-22; `PS3RECOMP_ENG_VCACHE=0` turns it off).
+- [x] Optimised builds: runtime -O2 and lifted PPU code -O1 in every configuration but Debug (it had been -O0) (2026-10-22).
+- [ ] An fps A/B of the inFAMOUS 2 performance stack (applied, tests pass; see "Rendering and performance" under Done) and a measurement with every change (in progress).
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
@@ -119,8 +136,16 @@ What got it this far:
 
 - [ ] Keyboard and mouse on macOS (the toolkit's keyboard fallback in `cellPad` is Windows-only), configurable mapping (`PS3_INPUT_MAP`).
 - [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
-- [ ] Rumble.
+- [ ] Rumble (DualShock 3; the v1.7 update added it, also in the campaign).
 - [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode`; find what it uses motion for and map it to a button.
+
+### Game update (v1.7)
+
+Sony's update server lists no packages for any Resistance title ID: the game patched itself through its multiplayer servers (shut down 2014-04-08). The last version is v1.7 (Patch 7), `patch_01`…`patch_07.psarc` in `USRDIR/data`; `patch_06` carries a new `game.self` (`/data/new_game.self`, ~8.7 MB), new collision data for levels 200–320, menus, fonts, translations, rumble and map-pack support. The patch notes are almost all multiplayer. The PSRewired revival server (psrewired.com) serves Resistance online and, per the RPCS3 wiki, the v1.7 update.
+
+- [ ] Finish stabilising 01.00 first.
+- [ ] Get v1.7 by letting the game update itself through PSRewired in RPCS3.
+- [ ] Re-lift the new `game.self`, revalidate the address-specific code, port the patched data path. Estimated 1–3 days to get back to playable.
 
 ### Rebuild
 
@@ -139,6 +164,8 @@ What got it this far:
 
 ### App to install and play (launcher)
 
+- [x] The window keeps its position, size and fullscreen across the menu → campaign exitspawn (`PS3RECOMP_WINDOW_STATE`, 2026-10-22).
+- [ ] One persistent window: a launcher process that owns the window and a shared IOSurface the menu and campaign executables draw into (in development).
 - [ ] The inFAMOUS 2 launcher (Tauri) adapted: install/rebuild from the disc image, settings, controls, saves, report a problem, updates.
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
 
@@ -189,12 +216,23 @@ What got it this far:
 - [x] Host profile of a windowed session: the RSX thread's CPU vertex decode is the bottleneck.
 - [x] The job manager's per-poll `[spurs-pm]` log only under `SPURS_PM_TRACE` (it wrote 1.9 million lines in a short session, enough to cost frame rate).
 
+### Rendering and performance (2026-10-22)
+
+- [x] The blue world: vertex array offsets plus `VERTEX_DATA_BASE_OFFSET` wrap at 28 bits (`rsx_dsp_resolve_vertex_offset`, both fetch paths, regression test). The town renders with its proper colours.
+- [x] Cross-frame vertex cache from the inFAMOUS 2 port: 5.9 → 14 fps in gameplay (same -O0 build, cache on vs off).
+- [x] Optimised builds: the port had been compiled at -O0; now the runtime is -O2 and the lifted PPU code -O1 for every configuration but Debug.
+- [x] Fixes from a comparison with RPCS3 (all video tests pass; in-game effect being evaluated): shadow comparison direction (stored depth OP reference), depth snapshots cropped to the texture size and released (they leaked every frame), depth textures replicate depth to every lane, compressed textures never resolve from render targets, PPU threads start with VSCR[NJ]=1, no `getenv` on every SPU MFC channel write.
+- [x] The inFAMOUS 2 performance and fix stack (tests pass; fps A/B in progress): per-stream vertex cache (static mesh streams cached apart from the per-frame lighting stream; `PS3RECOMP_ENG_VCACHE_SPLIT=0` turns it off), Metal staging ring, binding only changed state (`PS3RECOMP_METAL_BIND_ALL=1` turns it off), VP/FP program memo and pipeline hash index, index decode, SPU `mfc_for` cache, lock-line TTAS lock, NEON `cflts`/`cfltu`, SPU event queue full wait, texture border colour, X32_FLOAT depth lanes, depth snapshots retired by depth writes, MSL shader cache (`PS3_SHADER_CACHE=<dir>`, `PS3_SHADER_ASYNC=1` opt-in), a 1 ms frame clock and one present per flip (`PS3_FRAMECLOCK_US=4000` is the old pacing).
+- [x] The executable is named `ResistanceRecomp` (it was `MyGameRecomp`), and the window keeps its position, size and fullscreen across exitspawn.
+- [x] Respawn diagnosis: the checkpoint save matches RPCS3's to within 166 bytes; the bug is in the respawn placement, not the save (still open, see Blockers).
+
 ### Tools
 
 - [x] `RES_PEEK` (guest memory peeks from `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
 - [x] Headless runs with frame dumps and scripted input (`tools/run.sh`, `start.sh`, `press.sh`, `snap.sh`, `to_campaign.sh`).
 - [x] `RSX_ENGINE_PASS_DUMP_TRIGGER=<file>`: the per-pass dump starts when that file appears, so a script captures the frame it has steered the game to (2026-10-22).
 - [x] `PAD_FILE` stick commands, `S lx ly rx ry polls`: hold the sticks from a script to walk or turn the camera (2026-10-22).
+- [x] `RSX_ENGINE_PASS_DUMP_DRAWS` logs each draw's vertex attribute formats and first bytes; `RSX_VPC_LOG=<constant>[,<draw>]` logs a vertex-program constant every 30 frames (`c16` = camera position in the world shaders) (2026-10-22).
 
 ---
 

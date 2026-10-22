@@ -195,11 +195,22 @@ static DWORD WINAPI frame_clock(LPVOID)
     fflush(stderr);
     int rsx_ok = g_rsx_ready;
 
-    unsigned  last_flip = 0;
+    /* PS3_FRAMECLOCK_US=<us>: the sleep between two passes of this loop.
+     * The FIFO has no doorbell: a put the guest writes, a flip it asks for,
+     * waits here until the next pass, so this is also the latency of every
+     * one of those. It was a fixed 4 ms, which left the RSX thread idle up to
+     * 4 ms after each flip request. Default 1000; 4000 is the old pacing. */
+    int clock_us = 1000;
+    { const char* e = getenv("PS3_FRAMECLOCK_US"); if (e && atoi(e) > 0) clock_us = atoi(e); }
     ULONGLONG next_tick = GetTickCount64();
+    ULONGLONG last_pump = 0;
 
     for (;;) {
-        Sleep(4);
+#ifdef _WIN32
+        Sleep((DWORD)((clock_us + 999) / 1000));
+#else
+        usleep((useconds_t)clock_us);
+#endif
         ULONGLONG now = GetTickCount64();
 
         int fired = 0;
@@ -211,10 +222,8 @@ static DWORD WINAPI frame_clock(LPVOID)
              * batch held right now is exactly the completed frame; presenting
              * after the drain races the guest's next-frame writes and shows a
              * mixed one. */
-            if (rsx_ok && cellGcm_take_flip_pending()) {
+            if (rsx_ok && cellGcm_take_flip_pending())
                 present_guest_frame();
-                last_flip = cellGcm_flip_request_count();
-            }
             /* Drain the FIFO every tick. This is what writes the RSX sync-fence
              * labels the game's per-frame logic blocks on, so it has to keep
              * advancing at 60 Hz even while present() throttles. */
@@ -229,26 +238,32 @@ static DWORD WINAPI frame_clock(LPVOID)
          * those at 16 ms apiece paces the guest into single-figure frame rates.
          * The real RSX writes them in microseconds. */
         if (rsx_ok) {
-            if (cellGcm_take_flip_pending()) {
+            if (cellGcm_take_flip_pending())
                 present_guest_frame();
-                last_flip = cellGcm_flip_request_count();
-            }
             cellGcm_rsx_process_fifo();
 
-            if (rsx_backend_pump() != 0) {
-                rsx_ok = 0;              /* window closed */
-                continue;
+            /* Window events at most every 4 ms, as before PS3_FRAMECLOCK_US:
+             * a windowed pump is a dispatch_sync to the main thread, and this
+             * loop now runs every 1 ms. */
+            const int pump_due = now - last_pump >= 4 || now < last_pump;
+            if (pump_due) {
+                last_pump = now;
+                if (rsx_backend_pump() != 0) {
+                    rsx_ok = 0;              /* window closed */
+                    continue;
+                }
             }
-            /* Present on a guest flip. A present on a fixed clock can catch the
-             * drain mid-frame and flash a partial one. Before the first flip
-             * present freely, so the window is not blank during boot. */
-            unsigned fc = cellGcm_flip_request_count();
-            if (fc != last_flip) {
+            /* Present a flip the drain just reached, now: the drain stops at
+             * the flip, so the batch is exactly the finished frame. Consuming
+             * the pending flag here matters -- this used to present on the
+             * flip count changing and leave the flag set, so the check above
+             * re-showed the same frame on the next pass with no draws: every
+             * frame was presented twice. Before the first flip present at the
+             * pump's cadence, so the window is not blank during boot. */
+            if (cellGcm_take_flip_pending())
                 present_guest_frame();
-                last_flip = fc;
-            } else if (fc == 0) {
+            else if (pump_due && cellGcm_flip_request_count() == 0)
                 rsx_backend_present();
-            }
         }
     }
     return 0;
