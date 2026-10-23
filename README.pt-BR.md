@@ -52,15 +52,15 @@ nem jogado no Windows, então trate-o como experimental e não testado (o
 SmartScreen pode avisar; "Mais informações" > "Executar assim mesmo").
 Detalhes em [launcher/README.md](launcher/README.md#windows-preview).
 
-O primeiro release, **v0.1.0** (2026-10-23, um pré-release), saiu: o launcher
-para macOS e a prévia para Windows. Os ajustes adicionados depois (controles,
-modos de janela, filtros, pacotes de texturas, 60 fps e campo de visão, áudio) estão no código e vêm no
-próximo release; compile o launcher você mesmo para tê-los agora
-(`tools/rebuild.sh launcher`).
+O release mais recente é a **v0.2.0** (2026-10-23, um pré-release): o
+launcher para macOS e a prévia para Windows com os ajustes adicionados desde a
+v0.1.0 (controles, modos de janela, filtros, pacotes de texturas, 60 fps e
+campo de visão, áudio). Para compilar o launcher a partir do código:
+`tools/rebuild.sh launcher`.
 
 ## Estado
 
-Em 2026-10-23 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
+Em 2026-10-23 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; depois o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
 
 | | |
 | --- | --- |
@@ -71,17 +71,19 @@ Em 2026-10-23 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Perguntas de dificuldade da campanha e de inverter o eixo Y | ✅ |
 | Saves e perfil (`quick.sav`, `PROFILE.SAV`) gravados e lidos | ✅ |
 | Passagem do EBOOT para o `game.self` (`sys_game_process_exitspawn`) até o vídeo de abertura da fase 1 | ✅ |
-| Vídeos (cellVdec pelo FFmpeg, desenhados como quad em modo imediato) | ✅ a abertura da fase 1 toca até o fim |
-| SPUs raw (dois programas que o `game.self` inicia depois da abertura) | ✅ traduzidas e rodando |
+| Vídeos (cellVdec pelo FFmpeg, desenhados como quad em modo imediato) | ✅ a abertura da fase 1 toca até o fim, com som: o cellAdec decodifica as faixas AC3 5.1 pelo FFmpeg (era um stub que devolvia silêncio, então todo vídeo era mudo) |
+| SPUs raw (dois programas que o `game.self` inicia quando uma fase carrega) | ✅ recortados do ELF (sem run de captura) e traduzidos; Continuar a partir de um checkpoint carrega e joga (travava: o programa tem uma área de parâmetros que muda com a fase e o checkpoint, agora mascarada na fingerprint dele) |
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
 | Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
 | Taxa de quadros | ✅ a campanha chega ao limite do próprio jogo, ~30–33 fps (o Resistance roda a 30 fps no PS3); o tempo "ocupado" que resta na PPU é em boa parte o limitador de quadros do jogo. Desde 2026-10-22: o buffer de profundidade de 2560×720, que o jogo amostra como A8R8G8B8 a cada quadro, é resolvido na GPU (era uma leitura GPU→CPU e um reenvio de 7,4 MB por quadro): thread do RSX de 54% → 12% ocupada, reenvios de textura a cada 120 quadros de ~100 → 0; veja [Como funciona](#como-funciona) |
 | 60 fps e campo de visão maior | ✅ opcionais, os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` ~56 fps na campanha (01.00 e v1.7, medido com a máquina ociosa) na velocidade normal do jogo (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s), `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7), `PS3_VBLANK_HZ=120` ~100 fps; morrer e renascer com o destravamento ligado ainda não foi exercitado |
-| Áudio | ✅ o mixer do macOS agora segue o tempo real (alternava entre 2,4× e 0,95×); 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` (também no launcher) |
+| Áudio | ✅ o mixer do macOS segue o tempo real (alternava entre 2,4× e 0,95×; agora mistura um bloco a cada 5,333 ms pelo relógio e reduz 7.1 para estéreo sem clipping); o som dos vídeos (veja Vídeos); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB), que vem do sintetizador do jogo e varia de uma execução para outra; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` (também no launcher) |
 | Cores do mundo (prédios, telhados, ruas) | ✅ corretas: o mundo azul era um wrap do offset de vértice que o RSX faz e o port não fazia (veja [Como funciona](#como-funciona)) |
-| Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica |
+| Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica; os soldados distantes não ficam mais sobre retângulos escuros (os shadow maps de profundidade de 16 bits em ordem swizzled agora são gravados de volta na memória do guest) |
+| Água, névoa no chão e fumaça | ✅ a fase do rio mostra o leito seco do riacho com névoa suave em vez de um "reflexo" falso com listras verticais: o `WPOS` dos fragment shaders ignorava a origem embaixo à esquerda da janela, então os shaders de névoa e fumaça liam o buffer de profundidade de cabeça para baixo (verificado nas duas campanhas) |
+| Folhagem | ⚠️ pontos escuros e bordas pretas nas folhas; ainda não confirmado se o original é igual |
 | Renascimento | ✅ depois de morrer o jogador volta no chão, onde fica o checkpoint (antes ia parar no céu; um reinício de SPU raw que o runtime descartava, veja [Como funciona](#como-funciona)); verificado em 12 mortes |
-| Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título conta os flips do jogo |
+| Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título conta os flips do jogo. Uma janela em tela cheia no próprio Space para de apresentar enquanto outro app está na frente (é o macOS, não um travamento): o log avisa ("window off screen", `hidden=1` no `[RSX FPS]`) e o quadro mais novo aparece na volta |
 | Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
 | Depois do vídeo de abertura | ✅ o travamento intermitente foi corrigido (pilha de callback compartilhada) |
 | Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 (a entrada com o processo do jogo em segundo plano está ligada para o launcher; ainda não testada assim com um controle físico); 🧪 vibração (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) portada, precisa de um teste jogando |
@@ -137,7 +139,7 @@ As correções que trouxeram o port até aqui:
   gameplay com ele contra 6,0 fps com as chaves dele desligadas, 30,5 fps na
   cidade com todas as correções.
 - **Renascimento:** a cada recarga do checkpoint o jogo escreve
-  `SPU_RunCntl`=0 na SPU raw 1 (programa `5A10969E466A2298`), traz o programa
+  `SPU_RunCntl`=0 na SPU raw 1 (o segundo programa de SPU raw), traz o programa
   de volta para o local store por DMA proxy e escreve `SPU_RunCntl`=1. O
   runtime ignorava a parada enquanto a SPU estava parada esperando num canal e
   descartava o reinício, então o programa antigo continuava rodando sobre a
@@ -180,6 +182,36 @@ As correções que trouxeram o port até aqui:
   e o ELF dele existem. 13 dos 15 módulos de job WWS e os dois programas das
   SPUs raw mudaram e são traduzidos a partir do ELF v1.7; o policy module é
   o mesmo.
+- **Continuar a partir de um checkpoint** (travava ao carregar): o segundo
+  programa de SPU raw tem uma área de parâmetros de 0x50 bytes que o PPU
+  preenche antes de cada carga (ponteiros do heap, valores da fase, a janela
+  MMIO da própria SPU raw), então os bytes com que ele é carregado, e a
+  fingerprint deles, mudam com a fase, o checkpoint e o número da SPU; um
+  Continuar carregava uma que nenhum build tinha registrado. O runtime agora
+  reconhece o programa com essa área mascarada
+  (`spu_workload_register_img_masked`, patch do toolkit), e os dois programas
+  são recortados do ELF pelo cabeçalho `0xDEADDEAD` que o carregador usa
+  (`tools/extract_rawspu_elf.py`), então não é preciso um run de captura.
+- **Som dos vídeos:** o cellAdec era um stub que não decodificava nada, então
+  todo vídeo era mudo. Agora ele decodifica o AC3 5.1 dos vídeos pelo mesmo
+  FFmpeg carregado em tempo de execução que o vídeo usa
+  (`libs/codec/adec_ffmpeg.c`, com a fila, as informações do bitstream e os
+  timestamps), e o mixer POSIX se cadencia pelo relógio (um bloco a cada
+  5,333 ms, ajustes de no máximo um quarto de período, 4 ms de tolerância
+  para um produtor atrasado, 7.1 reduzido para estéreo sem clipping, o nível
+  inicial de cada porta respeitado). O vídeo de abertura agora toca a
+  −25…−34 dBFS nos seis canais.
+- **Névoa, fumaça e a água falsa:** o `WPOS` do RSX segue o
+  `SET_SHADER_WINDOW`, cuja origem aqui é embaixo à esquerda; o
+  descompilador de fragment programs o ignorava, então a névoa no chão, a
+  fumaça e mais um shader, que consultam o buffer de profundidade em
+  720 − `WPOS.y`, o liam de cabeça para baixo, e a fase do rio mostrava um
+  "reflexo" com listras verticais sobre o leito seco de um riacho (e sobre um
+  corpo e uma caixa de munição). Agora a janela é aplicada ao `WPOS` nos
+  programas que o leem e faz parte da chave do pipeline deles. Os shadow maps
+  de profundidade de 16 bits em ordem swizzled (Morton) são gravados de volta
+  na memória do guest, então os soldados distantes não ficam mais sobre
+  retângulos escuros.
 
 As mudanças no toolkit são um único patch sobre o ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -190,7 +222,10 @@ resto do trabalho de desempenho, as correções de uma comparação com o RPCS3
 liberados, profundidade replicada em todas as lanes, texturas comprimidas
 nunca resolvidas a partir de render targets, threads PPU começando com
 VSCR[NJ]=1, sem `getenv` a cada escrita em canal MFC da SPU), a parada e o
-reinício das SPUs raw pelo `SPU_RunCntl`, a janela por IOSurface compartilhada
+reinício das SPUs raw pelo `SPU_RunCntl` e a fingerprint mascarada das SPUs
+raw, a decodificação AC3 do cellAdec e a cadência do mixer, o `WPOS` com a
+janela do shader e a gravação de volta da profundidade swizzled, a janela por
+IOSurface compartilhada
 (`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; a
 janela recolhe o jogo com um `waitpid` bloqueante, então sai quando o jogo
 sai, que é do que o Parar do launcher depende; o "guest FPS" do título conta
@@ -243,7 +278,7 @@ exemplo `tools/rebuild.sh lift build`):
 | `decrypt` | copia o `EBOOT.BIN` e o `game.self` do disco e roda `rpcs3 --decrypt` (`RPCS3=<caminho>` se ele não estiver em `/Applications`); pulada quando o `.elf` já existe; confere o SHA-256 do resultado com o dos executáveis v01.00 testados | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
 | `analyse` | o `ppu_loader.py` do toolkit (funções, imports, TOC) | `analysis/BCUS98107/` |
 | `lift` | o `ppu_lifter.py` do toolkit, 16 pedaços para o EBOOT e 12 para o `game.self`, com as instruções comutáveis dos patches de 60 fps (`port/patches/*.insn.json`) | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
-| `spu` | `tools/regen_spu_pm.sh`: o policy module do job manager, extraído do seu EBOOT, embrulhado e traduzido | `port/spu/captured/` |
+| `spu` | `tools/regen_spu_pm.sh`: o policy module do job manager, extraído do seu EBOOT, embrulhado e traduzido; `tools/regen_jobmods.sh`: os 15 módulos de job WWS; `tools/regen_rawspu.sh`: os dois programas das SPUs raw, recortados do `game.elf` | `port/spu/captured/`, `port/spu/jobmod_*/`, `port/spu/rawspu0/`, `port/spu/rawspu1/` |
 | `build` | CMake + Ninja, Metal, FFmpeg em runtime; também o launcher da janela, `Resistance` | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
 | `v17` | só quando pedida: a campanha v1.7 a partir do seu `patch_06.psarc` (`tools/v17/regen_v17.sh`, veja [A campanha v1.7](#a-campanha-v17)); o `build` também a recompila depois de traduzida | `game/BCUS98107/modules_v17/`, `recompiled/BCUS98107/game_module_v17/`, `port/spu_v17/`, `build/BCUS98107_game_v17/` |
 | `launcher` | só quando pedida: o app de desktop [launcher](#launcher) (`npm ci`, `tauri build`; Node 20+ e Rust) | `build/launcher/Resistance Launcher.app` |
@@ -269,6 +304,13 @@ e `RES_MENU_60FPS` então não fazem nada): depois de atualizar o toolkit, rode
 `tools/relift.sh` (ele traduz de novo o EBOOT e as campanhas 01.00 e v1.7 com
 `--insn-patches` e recompila; só um ou dois pedaços mudam).
 
+As correções do Continuar, do som dos vídeos e da névoa estão no patch do
+toolkit e no registro das SPUs: depois do `git pull`, apague `ps3recomp/` e
+rode `tools/rebuild.sh toolkit spu build`, mais
+`tools/v17/regen_v17.sh spu build` para a campanha v1.7 (ele copia o registro
+mascarado para `port/spu_v17/`). O run de captura das SPUs raw
+(`SPU_RAW_DUMP_DIR`) não é mais necessário.
+
 #### O policy module de SPU
 
 O policy module do job manager é código do jogo traduzido, então é gerado de
@@ -293,18 +335,26 @@ imagem SPU 1.
 
 #### Os programas das SPUs raw
 
-Depois da abertura da fase 1, o `game.self` carrega dois programas em SPUs raw
-por DMA proxy (local store a partir de 0x60, entrada em 0x90). Eles são
-capturados num run e traduzidos na base 0x60:
+Quando uma fase começa, o `game.self` carrega dois programas em SPUs raw por
+DMA proxy (local store a partir de 0x60, entrada em 0x90). Os dois estão
+linkados no segmento de dados dele, e o carregador do PPU só recebe esses dois
+(pares {ponteiro, tamanho} constantes no GOT), então nenhuma fase carrega
+outro. O `tools/extract_rawspu_elf.py` os recorta do ELF e eles são traduzidos
+na base 0x60 (a etapa `spu` do `tools/rebuild.sh` faz isso):
 
 ```sh
-SPU_RAW_DUMP_DIR=$PWD/out/rawspu tools/to_campaign.sh rawspu   # depois espere ~5 min por "[spu-raw] dumped -> ..." duas vezes
-tools/regen_rawspu.sh out/rawspu                          # -> port/spu/rawspu0, port/spu/rawspu1
+tools/regen_rawspu.sh game/BCUS98107/modules/game.elf   # -> port/spu/rawspu0, port/spu/rawspu1
 ```
 
 O `port/spu/spu_workloads.c` registra os dois como imagens SPU 2
-(`1894F66385AFD052`) e 3 (`5A10969E466A2298`). Como o policy module, o C
-traduzido é código do jogo e fica fora do git.
+(`1894F66385AFD052`) e 3 (`2B2DB6A5DE233A5F`). O segundo tem uma área de
+parâmetros de 0x50 bytes que o PPU preenche antes de cada carga (ponteiros do
+heap, valores da fase, a janela MMIO da própria SPU raw), então os bytes com
+que ele é carregado, e a fingerprint deles, mudam com a fase, o checkpoint e o
+número da SPU. Ele é registrado com essa área mascarada
+(`spu_workload_register_img_masked`): a fingerprint é a do programa com a área
+zerada, como está no ELF. Como o policy module, o C traduzido é código do jogo
+e fica fora do git.
 
 #### A campanha v1.7
 
@@ -315,7 +365,8 @@ novo (`/data/new_game.self`). O port o roda. O ELF descriptografado dele
 PPU-a08a187d…) é traduzido como o do disco (19.706 funções contra 19.219), e
 13 dos 15 módulos de job WWS e os dois programas das SPUs raw mudaram e são
 traduzidos a partir dele (fingerprints novas `6D03497950639952` e
-`47C9CB480016D493`; o policy module é idêntico byte a byte). Ele importa
+`F9726FDA4A599084`, esta com a área de parâmetros mascarada como na 01.00; o
+policy module é idêntico byte a byte). Ele importa
 `cellSaveDataAutoSave2`/`AutoLoad2`, `_sys_process_atexitspawn` e
 `cellPadSetActDirect` (vibração), que a 01.00 não importa.
 
@@ -328,8 +379,6 @@ RPCS3; copie os `patch_01`…`patch_07.psarc` do
 
 ```sh
 tools/rebuild.sh v17                                  # tools/v17/regen_v17.sh
-SPU_RAW_DUMP_DIR=$PWD/out/rawspu_v17 tools/play.sh    # uma vez: campanha nova, deixe o vídeo de abertura acabar, feche a janela
-tools/v17/regen_v17.sh spu build                      # traduz os dois programas das SPUs raw recém-capturados
 ```
 
 O `regen_v17.sh` extrai o `new_game.self` do `patch_06`
@@ -337,9 +386,8 @@ O `regen_v17.sh` extrai o `new_game.self` do `patch_06`
 `game/BCUS98107/modules_v17/game.elf` (conferindo o SHA-256), traduz para
 `recompiled/BCUS98107/game_module_v17/`, traduz o código de SPU dele para
 `port/spu_v17/` (o policy module é copiado de `port/spu/captured/`, então
-rode antes a etapa `spu`) e compila `build/BCUS98107_game_v17/`. Os programas
-das SPUs raw são capturados num run, como na 01.00; até serem traduzidos, a
-campanha v1.7 para depois do vídeo de abertura.
+rode antes a etapa `spu`; os programas das SPUs raw são recortados do ELF
+v1.7, como na 01.00) e compila `build/BCUS98107_game_v17/`.
 
 Os menus continuam os da 01.00. O `EBOOT.BIN` da atualização só existe na
 forma NPDRM (edição digital), e o EBOOT 01.00 do disco não roda com os dados
@@ -511,6 +559,7 @@ própria janela).
 | `PS3_VBLANK_HZ=<10..1000>` | a taxa do vblank sintetizado (padrão 62,5); com `RES_UNLOCK_FPS=1`, 120 deixa a campanha rodar a ~100 fps |
 | `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | os patches opcionais do jogo ([`port/patches.cpp`](port/patches.cpp)): o limitador de quadros da campanha desligado (passo mínimo 1/30 → 1/240 s), os menus e o multiplayer a um vblank por quadro, o fator de campo de visão (1,0 = o do jogo; menor é mais aberto). Cada um só se aplica quando o ELF em execução tem as palavras que ele espera |
 | `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` | volume geral (100), a saída cujo nome contém `<nome>` (as saídas são listadas no log quando nenhuma corresponde; macOS/Linux), sem som (qualquer valor silencia) |
+| `PS3_AUDIO_DUMP=<arquivo.wav>`, `PS3_AUDIO_STATS=1` | grava a mistura final (48 kHz estéreo float; antes do mudo e do volume; os menus e a campanha vão para um arquivo só) / a cada ~5 s, registra no log o nível de cada porta de áudio e da mistura, os blocos em silêncio e as amostras cortadas |
 | `PS3_LICENSE_AREA=<n>` | a área de licença que o console informa (`CELL_SYSUTIL_LICENSE_AREA_*`; padrão América do Norte, a região do disco) |
 | `PS3_USLEEP_SPIN_US=<µs>` | um `sys_timer_usleep` de até tantos µs gira (cedendo a vez) em vez de dormir (opcional; threads girando gastam núcleos de que as SPUs podem precisar) |
 | `PS3_INPUT_MAP=<arquivo>` | associações de teclado, botões do mouse e controle e os ajustes `[mouse]` (`input.toml`; formato no `libs/input/pad_input_map.h` do toolkit) |
@@ -540,7 +589,7 @@ própria janela).
 | --- | --- |
 | [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn e a passagem do estado da janela, `RES_PEEK`), `patches.cpp` e `patches/*.insn.json` (os patches opcionais de 60 fps / FOV), `CMakeLists.txt` (com o alvo do launcher `Resistance`), `config.toml`, `spu/spu_workloads.c` (registro das SPUs); `spu_v17/` é gerado pelo `tools/v17/regen_v17.sh` |
 | [`patches/`](patches/) | O patch do toolkit sobre o ps3recomp v0.17.0 |
-| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `relift.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` e os scripts de execução; `v17/` (a campanha v1.7: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
+| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `relift.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `regen_rawspu.sh`, `extract_rawspu_elf.py`, `play.sh` e os scripts de execução; `v17/` (a campanha v1.7: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
 | [`launcher/`](launcher/) | O launcher de desktop (Tauri): ajustes, disco, saves, recompilação e Jogar |
 | [`ROADMAP.pt-BR.md`](ROADMAP.pt-BR.md) | Estado e próximos passos |
 

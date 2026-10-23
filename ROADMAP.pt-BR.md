@@ -20,10 +20,13 @@ formato do roadmap do inFAMOUS 2.
 - **60 fps e campo de visão (2026-10-23):** os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`, `port/patches/*.insn.json`), todos opcionais: `RES_UNLOCK_FPS=1` ~56 fps na campanha (01.00 e v1.7) na velocidade normal do jogo, `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV`; o botão "60 fps" do launcher liga os dois.
 - **Telas legais corrigidas (2026-10-23):** o boot vai dos logos ao título "Press the START button" sem texto sobreposto; o runtime dizia ao jogo que ele estava num console japonês (área de licença).
 - **Áudio (2026-10-23):** o mixer do macOS segue o tempo real (alternava 2,4× / 0,95×); volume, sem som e saída de áudio (`PS3_AUDIO_*`, também no launcher).
+- **Continuar corrigido (2026-10-23):** Continuar a partir de um checkpoint travava ao carregar (v1.7 e 01.00): o segundo programa de SPU raw tem uma área de parâmetros que muda com a fase e o checkpoint, então ele chegava com uma fingerprint que nenhum build tinha registrado. Agora ele é reconhecido com essa área mascarada, e os dois programas das SPUs raw são recortados do ELF (sem run de captura). Continuar a partir de um checkpoint salvo, campanha nova e renascimento verificados nas duas campanhas.
+- **Som dos vídeos (2026-10-23):** todo vídeo era mudo (o cellAdec não decodificava nada); as faixas AC3 5.1 agora são decodificadas pelo FFmpeg e o mixer POSIX se cadencia pelo relógio. O vídeo de abertura toca a −25…−34 dBFS nos seis canais, 0–0,2% de blocos em silêncio.
+- **Névoa, fumaça e a água falsa (2026-10-23):** a fase do rio mostrava um "reflexo" com listras verticais: o `WPOS` dos fragment shaders ignorava a origem embaixo à esquerda da janela, então os shaders de névoa no chão e de fumaça liam o buffer de profundidade de cabeça para baixo. A fase agora mostra o leito seco do riacho com névoa suave (nas duas campanhas). Os soldados distantes não ficam mais sobre retângulos escuros (shadow maps de profundidade de 16 bits swizzled gravados de volta na memória do guest).
 - **Toolkit:** 18 correções de pull requests do ps3recomp upstream e do trabalho no inFAMOUS 2 (veja CREDITS); um run de regressão com todas elas renderiza sem erros, renascer OK.
-- **Lançado:** v0.1.0 (2026-10-23, pré-release): o launcher para macOS e uma prévia para Windows.
-- **Em aberto:** os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado, sem Linux; um NID desconhecido do cellSysutil (`0x76948BFC`) chamado ao sair; morrer e renascer a 60 fps ainda não exercitado.
-- **Próximo:** uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; uma morte e um renascimento com `RES_UNLOCK_FPS=1`; um controle físico com o launcher; uma sessão longa; o NID chamado ao sair.
+- **Lançado:** v0.1.0 e v0.2.0 (2026-10-23, pré-releases): o launcher para macOS e uma prévia para Windows.
+- **Em aberto:** pontos escuros e bordas pretas nas folhas da vegetação (ainda não confirmado se o original é igual); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB, do sintetizador do jogo, varia a cada execução); os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado (o jogo, e o novo mixer de áudio), sem Linux; um NID desconhecido do cellSysutil (`0x76948BFC`) chamado ao sair; morrer e renascer a 60 fps ainda não exercitado.
+- **Próximo:** comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; uma morte e um renascimento com `RES_UNLOCK_FPS=1`; um controle físico com o launcher; uma sessão longa; o NID chamado ao sair.
 
 ## Estado atual (2026-10-23)
 
@@ -59,8 +62,10 @@ O que trouxe até aqui:
   raw. As SPUs raw só eram iniciadas no Windows. A arena do guest também
   parava abaixo das janelas delas em `0xE0000000`, e toda SPU raw depois da
   primeira rodava o programa da primeira. As três coisas foram corrigidas
-  (patch do toolkit, `port/main.cpp`). Os dois programas são capturados com
-  `SPU_RAW_DUMP_DIR` e traduzidos (`tools/regen_rawspu.sh`).
+  (patch do toolkit, `port/main.cpp`). Os dois programas estão linkados no
+  ELF; o `tools/extract_rawspu_elf.py` os recorta pelo cabeçalho `0xDEADDEAD`
+  que o carregador usa e o `tools/regen_rawspu.sh` os traduz (antes eram
+  capturados num run com `SPU_RAW_DUMP_DIR`).
 - **O mundo azul:** o RSX soma o `VERTEX_DATA_BASE_OFFSET` ao offset de cada
   array de vértices e faz o wrap da soma em 28 bits (o
   `get_vertex_offset_from_base` do RPCS3; as engines da Insomniac dependem
@@ -81,7 +86,7 @@ O que trouxe até aqui:
   `PS3RECOMP_METAL_BIND_ALL=1`, `PS3_FRAMECLOCK_US=4000`), e 30,5 fps na
   cidade com todas as correções.
 - **Renascimento:** a cada recarga do checkpoint o jogo escreve
-  `SPU_RunCntl`=0 na SPU raw 1 (imagem `5A10969E466A2298`), traz o programa de
+  `SPU_RunCntl`=0 na SPU raw 1 (o segundo programa de SPU raw), traz o programa de
   volta para o local store por DMA proxy e escreve `SPU_RunCntl`=1. O runtime
   ignorava a parada enquanto a SPU estava parada esperando num canal e
   descartava o reinício sem avisar, então o programa antigo continuava rodando
@@ -110,14 +115,14 @@ O que trouxe até aqui:
   traduzido de novo (19.706 funções contra 19.219 da 01.00) e é compilado como
   `build/BCUS98107_game_v17`; 13 dos 15 módulos de job WWS e os dois
   programas das SPUs raw mudaram e foram traduzidos de novo (fingerprints
-  novas `6D03497950639952` e `47C9CB480016D493`; o policy module é idêntico
-  byte a byte). Imports novos: `cellSaveDataAutoSave2`/`AutoLoad2`,
+  novas `6D03497950639952` e `F9726FDA4A599084`, esta com a área de
+  parâmetros mascarada; o policy module é idêntico byte a byte). Imports novos: `cellSaveDataAutoSave2`/`AutoLoad2`,
   `_sys_process_atexitspawn`, `cellPadSetActDirect` (vibração). No exitspawn
   o `port/stubs.cpp` roda o build v1.7 quando ele e o ELF dele existem
   (`RES_GAME_VERSION=100` mantém a 01.00). O `tools/v17/regen_v17.sh`
   (`tools/rebuild.sh v17`) extrai o `patch_06`, descriptografa o
   `new_game.self` com `rpcs3 --decrypt`, traduz, traduz os programas de SPU
-  (os das SPUs raw depois de um run de captura) e compila. Verificado: menus
+  (os das SPUs raw recortados do ELF) e compila. Verificado: menus
   (EBOOT 01.00) → Nova campanha → o log mostra `campaign = v1.7 game.self` →
   a abertura de York, "The Gauntlet"; gameplay e renascimento funcionam com a
   correção do `SPU_RunCntl`.
@@ -165,6 +170,49 @@ O que trouxe até aqui:
   (`PS3_RES_SCALE`, experimental). Os testes do toolkit passam; nada disso
   foi verificado numa sessão de jogo ainda. O launcher os expõe nas páginas
   Controles e Gráficos e passa cada um só quando é diferente do padrão.
+- **Continuar a partir de um checkpoint (2026-10-23):** travava ao carregar,
+  na v1.7 e na 01.00. O segundo programa de SPU raw tem uma área de
+  parâmetros de 0x50 bytes (01.00: imagem+0x5680 de 0x56D0 bytes; v1.7:
+  imagem+0x5780 de 0x57D0) que o PPU preenche antes de cada carga (ponteiros
+  do heap, valores da fase, a janela MMIO da própria SPU raw), então a
+  sequência de GETs que o `spu_raw.c` identifica pela fingerprint muda com a
+  fase, o checkpoint e o número da SPU: um Continuar a partir do checkpoint
+  do jogador chegava como `5771C48D28664765` (v1.7) / `78DE17DD3D838B86`
+  (01.00), que não estava registrado. Agora o runtime também reconhece a
+  sequência com a área de parâmetros de uma imagem registrada zerada
+  (`spu_workload_register_img_masked`, patch do toolkit, upstream #538); o
+  port registra `1894F66385AFD052` simples e `2B2DB6A5DE233A5F` mascarado
+  (01.00), `6D03497950639952` simples e `F9726FDA4A599084` mascarado (v1.7).
+  Verificado: o Continuar carrega e joga nas duas; campanha nova e
+  renascimento continuam funcionando.
+- **Som dos vídeos (2026-10-23):** o cellAdec era um stub que devolvia
+  silêncio, então todo vídeo era mudo. Agora ele decodifica AC3 5.1 pelo
+  FFmpeg carregado em tempo de execução (`libs/codec/adec_ffmpeg.c`; a fila de
+  PCM, as informações do bitstream e os timestamps no `cellAdec.c`;
+  `test_adec_decode.c`). O mixer POSIX se cadencia pelo relógio: um bloco a
+  cada 5,333 ms, ajustes de no máximo um quarto de período, 4 ms de
+  tolerância para um produtor atrasado, 7.1 reduzido para estéreo sem
+  clipping, o nível inicial de cada porta respeitado. `PS3_AUDIO_DUMP=<wav>`
+  grava a mistura e `PS3_AUDIO_STATS=1` registra o nível de cada porta.
+  Verificado: a porta do vídeo de abertura a −25…−34 dBFS nos seis canais,
+  0–0,2% de blocos em silêncio (era mudo); som presente no gameplay.
+- **Névoa, fumaça e a água falsa (2026-10-23):** o `WPOS` segue o
+  `SET_SHADER_WINDOW`, cuja origem aqui é embaixo à esquerda, e o
+  descompilador de fragment programs o ignorava. A névoa no chão, a fumaça e
+  mais um shader consultam o buffer de profundidade em 720 − `WPOS.y`, então
+  o liam de cabeça para baixo, e a fase do rio mostrava um "reflexo" falso com
+  listras verticais sobre o leito seco do riacho (cobrindo um corpo e uma
+  caixa de munição). `rsx_fp_reads_wpos` / `rsx_fp_apply_wpos_window` aplicam
+  a janela nos programas que leem o `WPOS`, e a janela do shader entra na
+  chave do pipeline deles (`test_fp_decompiler`, 112 passam;
+  `test_rsx_draw_engine`). Os shadow maps de profundidade de 16 bits em ordem
+  swizzled (Morton) agora são gravados de volta na memória do guest, então os
+  soldados distantes não ficam mais sobre retângulos escuros. Verificado nas
+  duas campanhas.
+- **Uma janela escondida (2026-10-23):** uma janela em tela cheia no próprio
+  Space para de apresentar enquanto outro app está na frente; é o macOS, não
+  um travamento. A janela agora registra isso no log ("window off screen…",
+  `hidden=1` no `[RSX FPS]`) e mostra o quadro mais novo na volta.
 
 ---
 
@@ -179,6 +227,10 @@ O que trouxe até aqui:
 - [x] **Taxa de quadros.** ~30 fps no gameplay (2026-10-22): 32,5 fps com o pacote do inFAMOUS 2 contra 6,0 fps com as chaves dele desligadas; 30,5 fps na cidade com todas as correções.
 - [x] **Prédios e telhados aparecem em azul forte chapado.** Corrigido em 2026-10-22: o wrap de 28 bits do offset de vértice (veja "Estado atual"); a cidade aparece com as cores certas.
 - [x] **Texto das telas legais sobreposto.** Corrigido em 2026-10-23: o runtime informava a área de licença de um console japonês, então o jogo desenhava as telas legais da região errada umas sobre as outras. Agora informa América do Norte (upstream [#429](https://github.com/sp00nznet/ps3recomp/pull/429); `PS3_LICENSE_AREA` a troca); o boot vai dos logos ao título "Press the START button".
+- [x] **Continuar a partir de um checkpoint travava ao carregar** (v1.7 e 01.00). Corrigido em 2026-10-23: a área de parâmetros do segundo programa de SPU raw é mascarada na fingerprint dele (veja "Estado atual"); o Continuar a partir do checkpoint do jogador carrega e joga nas duas campanhas.
+- [x] **Todo vídeo era mudo.** Corrigido em 2026-10-23: o cellAdec decodifica AC3 5.1 pelo FFmpeg e o mixer POSIX se cadencia pelo relógio; o vídeo de abertura a −25…−34 dBFS nos seis canais.
+- [x] **Água falsa, névoa e fumaça na fase do rio.** Corrigido em 2026-10-23: o `WPOS` com a origem embaixo à esquerda da janela do shader; a fase mostra o leito seco do riacho com névoa suave (nas duas campanhas).
+- [x] **Soldados distantes sobre retângulos escuros.** Corrigido em 2026-10-23: shadow maps de profundidade de 16 bits swizzled gravados de volta na memória do guest.
 - [ ] As lanes ociosas do job manager são paradas depois de 30 s fazendo polling da mesma linha da fila (`SPU_DMA_REPEAT_SECS`); conferir se elas voltam quando chega trabalho.
 
 ### Rumo ao primeiro capítulo
@@ -198,6 +250,8 @@ O que trouxe até aqui:
 ### Vídeo e áudio
 
 - [ ] Sincronia de áudio e vídeo num vídeo longo.
+- [x] Som dos vídeos: o cellAdec decodifica as faixas AC3 5.1 pelo FFmpeg (devolvia silêncio) (2026-10-23).
+- [ ] A música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB); vem do sintetizador do jogo e varia de uma execução para outra.
 - [x] Ritmo do áudio no macOS: o mixer alternava entre 2,4× e 0,95× do tempo real; agora segue o tempo real (do trabalho no inFAMOUS 2, 2026-10-23). Volume, sem som e saída: `PS3_AUDIO_VOLUME`, `PS3_AUDIO_MUTE`, `PS3_AUDIO_DEVICE`.
 - [ ] Conferir o áudio de ouvido numa sessão longa em janela (`AUDIO_WAV` para gravar).
 
@@ -221,6 +275,8 @@ O que trouxe até aqui:
 ### Gráficos
 
 - [ ] Comparar com o original (RPCS3 ou o console) capítulo por capítulo; abrir um item por bug com captura, como no inFAMOUS 2.
+- [x] A água falsa, a névoa no chão e a fumaça da fase do rio (`WPOS` e a janela do shader) e as sombras dos soldados distantes (2026-10-23).
+- [ ] Pontos escuros e bordas pretas nas folhas da vegetação: ainda não confirmado se o original é igual.
 
 ### Desempenho
 
@@ -261,7 +317,7 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 ### Rebuild
 
 - [x] Um script para o rebuild inteiro a partir do disco do próprio jogador (`tools/rebuild.sh`).
-- [ ] Os programas das SPUs raw e os jobs de SPU a partir do disco, sem um run de captura.
+- [x] Os programas das SPUs raw e os jobs de SPU a partir do disco, sem um run de captura: os módulos de job e os programas das SPUs raw são recortados dos ELFs (`tools/regen_jobmods.sh`, `tools/extract_rawspu_elf.py`, 2026-10-23).
 - [ ] Descriptografia sem RPCS3 (o `decrypt_self.py` do inFAMOUS 2, com o arquivo de chaves do próprio jogador).
 
 ---
@@ -281,13 +337,14 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] O app launcher (`launcher/`, Tauri, 2026-10-22): escolher e montar o ISO, pasta de jogo, detecção da pasta do port, versão da campanha (v1.7/01.00), ajustes (gráficos, desempenho, jogo), um gerenciador de saves (aqui e no RPCS3), o log do jogo, modo de depuração, verificação de atualizações, atalho na Mesa e na Steam, português do Brasil e inglês. O Parar funciona: a janela agora sai quando o jogo sai.
 - [x] Página Controles (associações de teclado, mouse e controle gravadas em `input.toml`, o teste do controle, o modo de entrada, mouse, vibração) e ajustes de Gráficos (modo de janela, tela, vsync, MetalFX, resolução interna, SMAA, filtros e LUT, pacotes de texturas e a extração deles), em português do Brasil e inglês; cada ajuste passado só quando é diferente do padrão (2026-10-23; o lado do jogo precisa de um teste jogando).
 - [x] Release v0.1.0 (2026-10-23, pré-release): o launcher para macOS e uma prévia para Windows.
+- [x] Release v0.2.0 (2026-10-23, pré-release): o launcher com os ajustes de Controles, Gráficos e Áudio, 60 fps e FOV.
 - [x] Ajustes de áudio (volume, sem som, saída) e um botão "60 fps" só (2026-10-23).
 - [ ] Um controle físico com o launcher (veja Controles).
 - [ ] Ícone a partir do `ICON0.PNG` do próprio jogador, app bundle com Game Mode no macOS.
 
 ### Outras plataformas
 
-- [ ] Linux (Vulkan) e Windows (D3D12), com o launcher e o rebuild rodando nativamente. O carregamento do XInput em tempo de execução no Windows (upstream #494) está no patch do toolkit, sem teste no Windows.
+- [ ] Linux (Vulkan) e Windows (D3D12), com o launcher e o rebuild rodando nativamente. O carregamento do XInput em tempo de execução no Windows (upstream #494) está no patch do toolkit, sem teste no Windows; a nova cadência do mixer de áudio também.
 
 ### Fora do escopo por enquanto
 
@@ -302,7 +359,7 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] Dump do disco `BCUS98107` v01.00, montado como raiz do VFS.
 - [x] `EBOOT.BIN` e `game.self` descriptografados, analisados (EBOOT com 25.022 funções e 183 imports; `game.self` com 18.994 funções e 134 imports) e traduzidos; os dois compilam no macOS/arm64 com Metal.
 - [x] Policy module do job manager traduzido na base LS 0xA00 (imagem SPU 1).
-- [x] Programas das SPUs raw `1894F66385AFD052` e `5A10969E466A2298` traduzidos na base LS 0x60 (imagens SPU 2 e 3).
+- [x] Programas das SPUs raw `1894F66385AFD052` e `2B2DB6A5DE233A5F` (área de parâmetros mascarada) traduzidos na base LS 0x60 (imagens SPU 2 e 3).
 
 ### Front end
 
@@ -346,7 +403,7 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 
 ### A campanha v1.7 e o launcher (2026-10-22)
 
-- [x] O `game.self` da v1.7 (`/data/new_game.self` do `patch_06`) traduzido de novo e compilado como `build/BCUS98107_game_v17`; 13 dos 15 módulos de job e os dois programas das SPUs raw traduzidos de novo (`6D03497950639952`, `47C9CB480016D493`); o policy module não mudou.
+- [x] O `game.self` da v1.7 (`/data/new_game.self` do `patch_06`) traduzido de novo e compilado como `build/BCUS98107_game_v17`; 13 dos 15 módulos de job e os dois programas das SPUs raw traduzidos de novo (`6D03497950639952`, `F9726FDA4A599084` mascarado); o policy module não mudou.
 - [x] O exitspawn roda o build v1.7 quando ele e o ELF dele existem (`RES_GAME_VERSION=100` mantém a 01.00); menus → Nova campanha → abertura de York, gameplay e renascimento verificados.
 - [x] `tools/v17/regen_v17.sh` (`tools/rebuild.sh v17`), `tools/v17/psarc_extract.py`; o `tools/play.sh` diz qual campanha roda e se recusa a começar com os `patch_NN.bin` da atualização na pasta de jogo.
 - [x] Sombras e fumaça corrigidas no jogo (conferido visualmente).
@@ -366,6 +423,13 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] A sobreposição das telas legais (área de licença, #429).
 - [x] De pull requests do upstream: os bits de desvio dos vertex programs (#485, mais uma correção do slot inicial do programa; 19 dos 343 vertex programs do Resistance desviam), `WPOS` em alvos com AA 2× (#446, com a resolução interna), a condição de corrida da tabela de fds e a troca leitura/escrita (#430, #456), a nova checagem do `stwcx.` (#522), decodificação rápida de ARGB linear (#432), a memória dos slots de textura (#438), o decrementador da SPU no relógio bruto (#451), ceder a vez em DMA de SPU repetido (#448), pequenas economias de DMA de SPU (#453–#455), `getenv` uma vez por ponto de chamada (#515), XInput carregado em tempo de execução no Windows (#494). Do trabalho no inFAMOUS 2: ritmo, volume e saída do áudio, o giro opcional do `usleep` (`PS3_USLEEP_SPIN_US`). Um run de regressão de gameplay com todas elas: renderiza, sem erros, renascer OK.
 
+### Continuar, som dos vídeos, névoa e água (2026-10-23)
+
+- [x] Programas de SPU raw com área de parâmetros: a fingerprint mascarada (`spu_workload_register_img_masked`, `test_spu_workload_masked.c`), os registros mascarados da 01.00 e da v1.7, o `tools/extract_rawspu_elf.py` (sem run de captura). O Continuar a partir de um checkpoint carrega e joga nas duas campanhas.
+- [x] Som dos vídeos: a decodificação AC3 5.1 do cellAdec pelo FFmpeg (`libs/codec/adec_ffmpeg.c`, `test_adec_decode.c`) e a cadência do mixer POSIX (um bloco a cada 5,333 ms pelo relógio, 7.1 → estéreo sem clipping, o nível inicial de cada porta).
+- [x] `WPOS` com a origem da janela do shader (a água falsa, a névoa no chão e a fumaça da fase do rio) e shadow maps de profundidade de 16 bits swizzled gravados na memória do guest (as sombras dos soldados distantes); verificado nas duas campanhas.
+- [x] A janela avisa quando está escondida ou fora da tela e mostra o quadro mais novo na volta.
+
 ### Ferramentas
 
 - [x] `RES_PEEK` (leitura de memória do guest pelo `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
@@ -373,6 +437,8 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] `RSX_ENGINE_PASS_DUMP_TRIGGER=<arquivo>`: o dump por passada começa quando esse arquivo aparece, para um script capturar o frame até onde levou o jogo (2026-10-22).
 - [x] Comandos de analógico no `PAD_FILE`, `S lx ly rx ry polls`: segurar os analógicos por script para andar ou virar a câmera (2026-10-22).
 - [x] O `RSX_ENGINE_PASS_DUMP_DRAWS` registra o formato e os primeiros bytes dos atributos de vértice de cada draw; `RSX_VPC_LOG=<constante>[,<draw>]` registra uma constante do vertex program a cada 30 frames (`c16` = posição da câmera nos shaders do mundo) (2026-10-22).
+- [x] `PS3_AUDIO_DUMP=<arquivo.wav>` grava a mistura final de uma sessão inteira; `PS3_AUDIO_STATS=1` registra a cada ~5 s o nível de cada porta de áudio e da mistura, os blocos em silêncio e o clipping (2026-10-23).
+- [x] `tools/extract_rawspu_elf.py`: os programas das SPUs raw recortados do `game.elf`, com a área de parâmetros zerada e um manifesto JSON (2026-10-23).
 
 ---
 
@@ -398,5 +464,8 @@ Pull requests para o [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recom
 - [ ] [#506](https://github.com/sp00nznet/ps3recomp/pull/506) Otimizar um build configurado sem `CMAKE_BUILD_TYPE`.
 - [ ] [#507](https://github.com/sp00nznet/ps3recomp/pull/507) Um snapshot de profundidade é a região que a textura indica (em cima do #502).
 - [ ] [#508](https://github.com/sp00nznet/ps3recomp/pull/508) Uma textura comprimida nunca é a saída de um render target.
-- [ ] [#509](https://github.com/sp00nznet/ps3recomp/pull/509) macOS: uma janela só através do exitspawn (`tools/host_window`, modo host-surface do Metal).
+- [ ] [#509](https://github.com/sp00nznet/ps3recomp/pull/509) macOS: uma janela só através do exitspawn (`tools/host_window`, modo host-surface do Metal); complemento: a janela avisa quando está fora da tela e mostra o quadro mais novo na volta.
+- [ ] [#538](https://github.com/sp00nznet/ps3recomp/pull/538) spu_workload: imagens de SPU raw com uma área de parâmetros que o carregador preenche (o travamento do Continuar; empilhado sobre o #473).
+- [ ] [#539](https://github.com/sp00nznet/ps3recomp/pull/539) ppu_lifter: `--insn-patches` traduz instruções com patch como chaves em tempo de execução (os patches de 60 fps).
+- [ ] [#540](https://github.com/sp00nznet/ps3recomp/pull/540) sys_timer: um relógio do host só para `mftb`, hora do sistema e timers (`mach_absolute_time` no macOS).
 - [x] Repositório próprio (`resistance-recomp`): fontes do port, um patch do toolkit, `tools/setup_toolkit.sh`, README, créditos e um `.gitignore` que bloqueia dados do jogo, firmware e saves.

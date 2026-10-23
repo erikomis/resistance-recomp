@@ -51,15 +51,15 @@ built or played on Windows, so treat it as experimental and untested
 (SmartScreen may warn; "More info" > "Run anyway"). Details in
 [launcher/README.md](launcher/README.md#windows-preview).
 
-The first release, **v0.1.0** (2026-10-23, a pre-release), is out: the macOS
-launcher and the Windows preview. The settings added since (controls, window
-modes, filters, texture packs, 60 fps and field of view, audio) are in the sources and come with the next
-release; build the launcher yourself to get them now
-(`tools/rebuild.sh launcher`).
+The latest release is **v0.2.0** (2026-10-23, a pre-release): the macOS
+launcher and the Windows preview with the settings added since v0.1.0
+(controls, window modes, filters, texture packs, 60 fps and field of view,
+audio). To build the launcher from the sources instead:
+`tools/rebuild.sh launcher`.
 
 ## Status
 
-As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
+As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; then Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
 
 | | |
 | --- | --- |
@@ -70,17 +70,19 @@ As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fix
 | Campaign difficulty and invert-Y prompts | ✅ |
 | Saves and profile (`quick.sav`, `PROFILE.SAV`) written and read | ✅ |
 | EBOOT → `game.self` hand-off (`sys_game_process_exitspawn`) into the level-1 intro movie | ✅ |
-| Movies (cellVdec through FFmpeg, drawn as an immediate-mode quad) | ✅ the level-1 intro plays to the end |
-| Raw SPUs (two programs `game.self` starts after the intro) | ✅ lifted and running |
+| Movies (cellVdec through FFmpeg, drawn as an immediate-mode quad) | ✅ the level-1 intro plays to the end, with its sound: cellAdec decodes the AC3 5.1 tracks through FFmpeg (it had been a stub that returned silence, so every movie was mute) |
+| Raw SPUs (two programs `game.self` starts when a level loads) | ✅ cut out of the ELF (no capture run) and lifted; Continue from a checkpoint loads and plays (it froze: the program carries a parameter area that changes with the level and checkpoint, now masked out of its fingerprint) |
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
 | Frame rate | ✅ the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
 | 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` ~56 fps in the campaign (01.00 and v1.7, measured on an idle machine) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7), `PS3_VBLANK_HZ=120` ~100 fps; dying and respawning with the unlock on not exercised yet |
-| Audio | ✅ the macOS mixer now keeps real time (it alternated between 2.4× and 0.95×); 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` (also in the launcher) |
+| Audio | ✅ the macOS mixer keeps real time (it alternated between 2.4× and 0.95×; it now mixes one block per 5.333 ms on the clock and folds 7.1 to stereo without clipping); movie sound (see Movies); the menu music sometimes has extra centre/LFE content (+4–6 dB), which comes from the game's synth and varies from run to run; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` (also in the launcher) |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
-| Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names |
+| Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names; distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps are now written back to guest memory) |
+| Water, ground fog and smoke | ✅ the river level shows the dry creek bed with soft fog instead of a vertically streaked fake "reflection": the fragment shaders' `WPOS` ignored the window's bottom-left origin, so the fog and smoke shaders read the depth buffer upside down (verified on both campaigns) |
+| Foliage | ⚠️ dark speckles and black leaf edges; not yet confirmed whether the original looks the same |
 | Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths |
-| Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's guest FPS counts the game's flips |
+| Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's guest FPS counts the game's flips. A fullscreen window in its own Space stops presenting while another app is in front (that is macOS, not a freeze): the log says so ("window off screen", `hidden=1` in `[RSX FPS]`) and the newest frame is shown on return |
 | SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
 | After the intro movie | ✅ the old intermittent hang is fixed (shared callback stack) |
 | Controller | ✅ DualSense, DualShock or Xbox through SDL2 (input with the game process in the background is enabled for the launcher; not yet tested with a physical controller that way); 🧪 rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported, needs a play test |
@@ -133,7 +135,7 @@ The fixes that got it this far:
   present per flip): 32.5 fps in gameplay with it vs 6.0 fps with its knobs
   off, 30.5 fps in the town with every fix in.
 - **Respawn:** on every checkpoint reload the game writes `SPU_RunCntl`=0 to
-  raw SPU 1 (program `5A10969E466A2298`), proxy-DMAs the program back into
+  raw SPU 1 (the second raw-SPU program), proxy-DMAs the program back into
   local store and writes `SPU_RunCntl`=1. The runtime ignored the stop while
   the SPU was parked in a channel wait and dropped the restart, so the old
   program kept running over the reloaded image and the player was sent into
@@ -173,6 +175,31 @@ The fixes that got it this far:
   the exitspawn `port/stubs.cpp` runs it instead of the 01.00 build when it
   and its ELF exist. 13 of the 15 WWS job modules and both raw-SPU programs
   changed and are lifted from the v1.7 ELF; the policy module is the same.
+- **Continue from a checkpoint** (it froze on loading): the second raw-SPU
+  program carries a 0x50-byte parameter area the PPU fills in before every
+  load (heap pointers, per-level values, its raw SPU's MMIO window), so the
+  bytes it is loaded with, and their fingerprint, change with the level, the
+  checkpoint and the SPU number; a Continue loaded one no build had
+  registered. The runtime now matches a program with that area masked out
+  (`spu_workload_register_img_masked`, toolkit patch), and both programs are
+  cut out of the ELF by the `0xDEADDEAD` header the loader uses
+  (`tools/extract_rawspu_elf.py`), so no capture run is needed.
+- **Movie sound:** cellAdec was a stub that decoded nothing, so every movie
+  was silent. It now decodes the movies' AC3 5.1 through the same run-time
+  FFmpeg as the video (`libs/codec/adec_ffmpeg.c`, with its queue, bitstream
+  info and timestamps), and the POSIX mixer paces itself on the clock (one
+  block per 5.333 ms, at most quarter-period nudges, 4 ms of grace for a late
+  producer, 7.1 folded to stereo without clipping, each port's initial level
+  honoured). The intro movie now plays at −25…−34 dBFS on all six channels.
+- **Fog, smoke and the fake water:** the RSX's `WPOS` follows
+  `SET_SHADER_WINDOW`, whose origin is bottom-left here; the fragment
+  decompiler ignored it, so the ground-fog, smoke and one more shader, which
+  look the depth buffer up at 720 − `WPOS.y`, read it upside down, and the
+  river level showed a vertically streaked "reflection" over a dry creek bed
+  (and over a body and an ammo crate). The window is now applied to `WPOS` in
+  the programs that read it, and is part of their pipeline key. Swizzled
+  (Morton-order) 16-bit depth shadow maps are written back to guest memory,
+  so distant soldiers no longer stand on dark rectangles.
 
 The toolkit changes are one patch over ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -182,7 +209,9 @@ performance work, the fixes from a comparison with RPCS3 (shadow comparison
 direction, depth snapshots cropped and released, depth replicated to every
 lane, compressed textures never resolved from render targets, PPU threads
 starting with VSCR[NJ]=1, no `getenv` on every SPU MFC channel write), the
-raw-SPU stop and restart through `SPU_RunCntl`, the shared-IOSurface window
+raw-SPU stop and restart through `SPU_RunCntl` and the masked raw-SPU
+fingerprint, cellAdec's AC3 decode and the mixer's pacing, `WPOS` with the
+shader window and the swizzled depth write-back, the shared-IOSurface window
 (`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; the
 host reaps the game with a blocking `waitpid`, so it exits when the game
 does, which the launcher's Stop relies on; the title's guest FPS counts each
@@ -232,7 +261,7 @@ PY=.venv/bin/python PS3_VFS_ROOT=/Volumes/<your disc> tools/rebuild.sh
 | `decrypt` | copies `EBOOT.BIN` and `game.self` from the disc and runs `rpcs3 --decrypt` (`RPCS3=<path>` if it is not in `/Applications`); skipped when the `.elf` is already there; checks the SHA-256 of the result against the tested v01.00 executables | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
 | `analyse` | the toolkit's `ppu_loader.py` (functions, imports, TOC) | `analysis/BCUS98107/` |
 | `lift` | the toolkit's `ppu_lifter.py`, 16 chunks for the EBOOT and 12 for `game.self`, with the switchable instructions of the 60 fps patches (`port/patches/*.insn.json`) | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
-| `spu` | `tools/regen_spu_pm.sh`: the job-manager policy module, extracted from your EBOOT, wrapped and lifted | `port/spu/captured/` |
+| `spu` | `tools/regen_spu_pm.sh`: the job-manager policy module, extracted from your EBOOT, wrapped and lifted; `tools/regen_jobmods.sh`: the 15 WWS job modules; `tools/regen_rawspu.sh`: the two raw-SPU programs, cut out of `game.elf` | `port/spu/captured/`, `port/spu/jobmod_*/`, `port/spu/rawspu0/`, `port/spu/rawspu1/` |
 | `build` | CMake + Ninja, Metal, FFmpeg runtime; also the `Resistance` window launcher | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
 | `v17` | only when named: the v1.7 campaign from your `patch_06.psarc` (`tools/v17/regen_v17.sh`, see [The v1.7 campaign](#the-v17-campaign)); `build` also rebuilds it once it is lifted | `game/BCUS98107/modules_v17/`, `recompiled/BCUS98107/game_module_v17/`, `port/spu_v17/`, `build/BCUS98107_game_v17/` |
 | `launcher` | only when named: the desktop [launcher](#launcher) app (`npm ci`, `tauri build`; Node 20+ and Rust) | `build/launcher/Resistance Launcher.app` |
@@ -256,6 +285,13 @@ A lift made before 2026-10-23 has no 60 fps patch in it (`RES_UNLOCK_FPS` and
 `tools/relift.sh` (it re-lifts the EBOOT, the 01.00 and the v1.7 campaign with
 `--insn-patches` and rebuilds; only one or two chunks change).
 
+The Continue, movie-sound and fog fixes are in the toolkit patch and in the
+SPU registration: after `git pull`, delete `ps3recomp/` and run
+`tools/rebuild.sh toolkit spu build`, plus `tools/v17/regen_v17.sh spu build`
+for the v1.7 campaign (it copies the masked registration into
+`port/spu_v17/`). The raw-SPU capture run (`SPU_RAW_DUMP_DIR`) is no longer
+needed.
+
 #### The SPU policy module
 
 The job-manager policy module is translated game code, so it is regenerated
@@ -276,18 +312,26 @@ with `SPU_DUMP_MISS=<dir>`, and pass the resulting
 
 #### The raw-SPU programs
 
-After the level-1 intro, `game.self` streams two programs into raw SPUs by
-proxy DMA (local store 0x60 onward, entry 0x90). They are captured from a run,
-then lifted at base 0x60:
+When a level starts, `game.self` streams two programs into raw SPUs by proxy
+DMA (local store 0x60 onward, entry 0x90). Both are linked into its data
+segment, and its PPU loader is only ever handed those two (constant
+{pointer, size} pairs in the GOT), so no level loads anything else.
+`tools/extract_rawspu_elf.py` cuts them out of the ELF and they are lifted at
+base 0x60 (the `spu` step of `tools/rebuild.sh` does this):
 
 ```sh
-SPU_RAW_DUMP_DIR=$PWD/out/rawspu tools/to_campaign.sh rawspu   # then wait ~5 min for "[spu-raw] dumped -> ..." twice
-tools/regen_rawspu.sh out/rawspu                          # -> port/spu/rawspu0, port/spu/rawspu1
+tools/regen_rawspu.sh game/BCUS98107/modules/game.elf   # -> port/spu/rawspu0, port/spu/rawspu1
 ```
 
 `port/spu/spu_workloads.c` registers them as SPU images 2
-(`1894F66385AFD052`) and 3 (`5A10969E466A2298`). Like the policy module, the
-lifted C is translated game code and stays out of git.
+(`1894F66385AFD052`) and 3 (`2B2DB6A5DE233A5F`). The second carries a
+0x50-byte parameter area that the PPU fills in before every load (heap
+pointers, per-level values, its raw SPU's MMIO window), so the bytes it is
+loaded with, and their fingerprint, change with the level, the checkpoint and
+the SPU number. It is registered with that area masked
+(`spu_workload_register_img_masked`): the fingerprint is that of the program
+with the area zero, as it is in the ELF. Like the policy module, the lifted C
+is translated game code and stays out of git.
 `port/spu/spu_workloads.c` registers the lifted entry
 (`resistance_spu_spu_func_00000A00`) under that fingerprint as SPU image 1.
 
@@ -299,7 +343,8 @@ port runs it. Its decrypted ELF (SHA-256 `e1d75e6d4afe…144f`, RPCS3's
 "game.self Updated", PPU-a08a187d…) is lifted like the disc's (19,706
 functions against 19,219), and 13 of the 15 WWS job modules and both raw-SPU
 programs changed and are lifted from it (new fingerprints `6D03497950639952`
-and `47C9CB480016D493`; the policy module is byte-identical). It imports
+and `F9726FDA4A599084`, the latter with its parameter area masked as for
+01.00; the policy module is byte-identical). It imports
 `cellSaveDataAutoSave2`/`AutoLoad2`, `_sys_process_atexitspawn` and
 `cellPadSetActDirect` (rumble), which 01.00 does not.
 
@@ -311,8 +356,6 @@ RPCS3's `dev_hdd0/game/BCUS98107/USRDIR/data` to `update/` in this checkout
 
 ```sh
 tools/rebuild.sh v17                                  # tools/v17/regen_v17.sh
-SPU_RAW_DUMP_DIR=$PWD/out/rawspu_v17 tools/play.sh    # once: new campaign, let the intro movie end, close the window
-tools/v17/regen_v17.sh spu build                      # lifts the two raw-SPU programs just captured
 ```
 
 `regen_v17.sh` extracts `new_game.self` from `patch_06`
@@ -320,9 +363,8 @@ tools/v17/regen_v17.sh spu build                      # lifts the two raw-SPU pr
 `game/BCUS98107/modules_v17/game.elf` (checking the SHA-256), lifts it to
 `recompiled/BCUS98107/game_module_v17/`, lifts its SPU code into
 `port/spu_v17/` (the policy module is copied from `port/spu/captured/`, so
-run the `spu` step first) and builds `build/BCUS98107_game_v17/`. The raw-SPU
-programs are captured from one run, as for 01.00; until they are lifted the
-v1.7 campaign stops after the intro movie.
+run the `spu` step first; the raw-SPU programs are cut out of the v1.7 ELF
+as for 01.00) and builds `build/BCUS98107_game_v17/`.
 
 The menus stay 01.00. The update's `EBOOT.BIN` is only available in NPDRM
 (digital-edition) form, and the disc's 01.00 EBOOT cannot run with the
@@ -489,6 +531,7 @@ its own window).
 | `PS3_VBLANK_HZ=<10..1000>` | the synthesized vblank rate (default 62.5); with `RES_UNLOCK_FPS=1`, 120 lets the campaign run at ~100 fps |
 | `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | the optional game patches ([`port/patches.cpp`](port/patches.cpp)): the campaign's frame limiter off (minimum timestep 1/30 → 1/240 s), the menus and multiplayer at one vblank per frame, the field-of-view factor (1.0 = the game's; smaller is wider). Each applies only when the running ELF holds the words it expects |
 | `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` | master volume (100), the output whose name contains `<name>` (the outputs are listed in the log when none matches; macOS/Linux), no sound (any value mutes) |
+| `PS3_AUDIO_DUMP=<file.wav>`, `PS3_AUDIO_STATS=1` | record the final mix (48 kHz stereo float; before mute and volume; the menus and the campaign go into one file) / every ~5 s, log each audio port's and the mix's level, silent blocks and clipped samples |
 | `PS3_LICENSE_AREA=<n>` | the licence area the console reports (`CELL_SYSUTIL_LICENSE_AREA_*`; default North America, the disc's region) |
 | `PS3_USLEEP_SPIN_US=<µs>` | a `sys_timer_usleep` of that many µs or less spins (yielding) instead of sleeping (opt-in; spinning threads cost cores the SPUs may need) |
 | `PS3_INPUT_MAP=<file>` | keyboard, mouse-button and controller bindings and the `[mouse]` settings (`input.toml`; format in the toolkit's `libs/input/pad_input_map.h`) |
@@ -518,7 +561,7 @@ its own window).
 | --- | --- |
 | [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn and the window-state hand-off, `RES_PEEK`), `patches.cpp` and `patches/*.insn.json` (the optional 60 fps / FOV patches), `CMakeLists.txt` (with the `Resistance` launcher target), `config.toml`, `spu/spu_workloads.c` (SPU registration); `spu_v17/` is generated by `tools/v17/regen_v17.sh` |
 | [`patches/`](patches/) | The toolkit patch over ps3recomp v0.17.0 |
-| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `relift.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` and the run scripts; `v17/` (the v1.7 campaign: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
+| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `relift.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `regen_rawspu.sh`, `extract_rawspu_elf.py`, `play.sh` and the run scripts; `v17/` (the v1.7 campaign: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
 | [`launcher/`](launcher/) | The desktop launcher (Tauri): settings, disc, saves, rebuild and Play |
 | [`ROADMAP.md`](ROADMAP.md) | Status and next steps |
 
