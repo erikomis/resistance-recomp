@@ -20,7 +20,8 @@
 #            (RES_UNLOCK_FPS, RES_MENU_60FPS; port/patches.cpp)
 #   spu      tools/regen_spu_pm.sh -> port/spu/captured/,
 #            tools/regen_jobmods.sh -> port/spu/jobmod_*/, and
-#            tools/regen_rawspu.sh when a raw-SPU capture exists
+#            tools/regen_rawspu.sh -> port/spu/rawspu0, rawspu1 (the raw-SPU
+#            programs, cut out of game.elf)
 #   build    cmake + ninja -> build/BCUS98107/ResistanceRecomp (EBOOT) and
 #            build/BCUS98107_game/ResistanceRecomp (game.self), Metal, FFmpeg video,
 #            and build/BCUS98107/Resistance, the window launcher tools/play.sh runs;
@@ -103,14 +104,10 @@ for s in $steps; do
             --functions "$AN/game_module/game.functions.json" --hle-stubs "$AN/game_module/game.imports.json" \
             --insn-patches "$RES_ROOT/port/patches/game_100.insn.json" --output "$RC/game_module" ;;
     spu)
-        say "spu (job-manager policy module, WWS job modules)"
+        say "spu (job-manager policy module, WWS job modules, raw-SPU programs)"
         PS3RECOMP_DIR=$TK SPU_PM_OUT=${SPU_PM_OUT:-$RES_ROOT/port/spu/captured} "$here/regen_spu_pm.sh" "$RES_GAME/EBOOT.elf"
         PS3RECOMP_DIR=$TK "$here/regen_jobmods.sh" "$RES_GAME/modules/game.elf"
-        if [ -f "$RES_OUT/rawspu/rawspu_1894F66385AFD052_00060.bin" ]; then
-            PS3RECOMP_DIR=$TK "$here/regen_rawspu.sh" "$RES_OUT/rawspu"
-        else
-            say "  (no raw-SPU capture in $RES_OUT/rawspu yet: see README, \"The raw-SPU programs\")"
-        fi ;;
+        PS3RECOMP_DIR=$TK "$here/regen_rawspu.sh" "$RES_GAME/modules/game.elf" ;;
     build)
         say "build"
         configure_build "$RES_BUILD/BCUS98107" "$RC"

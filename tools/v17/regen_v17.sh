@@ -19,7 +19,7 @@
 #   spu      port/spu_v17: the job-manager policy module (the same bytes as
 #            01.00: port/spu/captured is copied, so run tools/rebuild.sh spu
 #            first), the 15 WWS job modules of the v1.7 ELF (13 changed), and
-#            the two raw-SPU programs once they have been captured (below)
+#            the two raw-SPU programs (below)
 #   build    cmake + ninja -> build/BCUS98107_game_v17/ResistanceRecomp
 #
 # When build/BCUS98107_game_v17/ResistanceRecomp and modules_v17/game.elf both
@@ -32,21 +32,22 @@
 # dev_hdd0/game/BCUS98107/USRDIR/data to RES_UPDATE_DIR. Do not put them (or
 # their patch_NN.bin) in the play folder: the 01.00 EBOOT cannot run with them.
 #
-# The raw-SPU programs: game.self streams them into raw SPUs after the level-1
-# intro movie and they are in no file in a form these tools can cut out, so
-# they are captured from one run, as for 01.00. Without them the v1.7 campaign
-# stops after the intro movie; that first run writes both:
-#
-#   SPU_RAW_DUMP_DIR=$PWD/out/rawspu_v17 tools/play.sh
-#   (new campaign, wait for the intro movie to end, close the window)
-#   tools/v17/regen_v17.sh spu build
+# The raw-SPU programs: game.self streams two programs into raw SPUs by proxy
+# DMA when a level starts. Both are linked into game.elf, and its PPU loader is
+# only ever handed those two (constant {pointer, size} pairs in the GOT), so
+# tools/extract_rawspu_elf.py cuts them out of the ELF; no run is needed:
 #
 #   rawspu_6D03497950639952_00060.bin  59,472 bytes  -> port/spu_v17/rawspu0
-#   rawspu_47C9CB480016D493_00060.bin  22,480 bytes  -> port/spu_v17/rawspu1
+#   rawspu_F9726FDA4A599084_00060.bin  22,480 bytes  -> port/spu_v17/rawspu1
+#
+# The second one has a parameter area the PPU fills in before every load, so
+# it is registered with that area masked (tools/v17/spu_workloads.c); as
+# loaded, its fingerprint changes with the level and checkpoint
+# (47C9CB480016D493, 5771C48D28664765, ...).
 #
 # Everything this writes is game-derived and .gitignore'd: never commit it.
-# Environment: RES_UPDATE_DIR, RAWSPU_V17 (capture folder, default
-# $RES_OUT/rawspu_v17), PS3RECOMP_DIR, PY, RPCS3, JOBS; tools/env.sh for the rest.
+# Environment: RES_UPDATE_DIR, PS3RECOMP_DIR, PY, RPCS3, JOBS; tools/env.sh for
+# the rest.
 set -e
 v17=${0:A:h}
 here=${v17:h}; source "$here/env.sh"      # RES_ROOT, RES_GAME, RES_BUILD, RES_OUT, PY
@@ -58,12 +59,11 @@ RC=$RES_ROOT/recompiled/BCUS98107/game_module_v17
 B=$RES_BUILD/BCUS98107_game_v17
 JOBS=${JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)}
 UPD=${RES_UPDATE_DIR:-$RES_ROOT/update}
-RAWDIR=${RAWSPU_V17:-$RES_OUT/rawspu_v17}
 # sha256 of the decrypted v1.7 game.self (RPCS3's "game.self Updated",
 # PPU-a08a187d78dd68ebc15b4c6c34335ea55d8dc0f7)
 ELF_SHA=e1d75e6d4afe5b02816299aa2b54b98fda76e079e3d3382f522bfb12b5be144f
 RAW0=6D03497950639952
-RAW1=47C9CB480016D493
+RAW1=F9726FDA4A599084
 
 if (( $# )); then steps=("$@"); else steps=(extract decrypt analyse lift spu build); fi
 say() { print -P "%B==> v1.7 $*%b"; }
@@ -114,25 +114,19 @@ for s in $steps; do
         rm -rf "$S"/jobmod_*
         "$PY" "$TK/tools/lift_jobmods.py" --jobmods "$work/jobmods" --out "$S" \
             --register "$S/jobmods_register.c" --symbol-prefix resistance
-        have_raw=1
+        "$PY" -I "$RES_ROOT/tools/extract_rawspu_elf.py" "$M/game.elf" --out "$work/rawspu"
+        n_raw=$(ls "$work/rawspu" | wc -l | tr -d ' ')
+        [ "$n_raw" = 2 ] || { echo "game.elf links $n_raw raw-SPU programs, the port registers 2 (tools/v17/spu_workloads.c)" >&2; exit 1; }
+        rm -rf "$S/rawspu0" "$S/rawspu1"
         for pair in rawspu0:$RAW0 rawspu1:$RAW1; do
-            name=${pair%%:*}; fp=${pair##*:}; bin=$RAWDIR/rawspu_${fp}_00060.bin
-            if [ -f "$bin" ]; then
-                "$PY" "$TK/tools/wrap_spu_elf.py" "$bin" --base 0x60 --entry 0x90 --out "$work/$name.elf"
-                "$PY" "$TK/tools/spu_lifter.py" --auto-functions "$work/$name.elf" --base 0x60 \
-                      --symbol-prefix "resistance_$name" --output "$S/$name"
-            else
-                have_raw=0; echo "  (no $bin yet: capture it, see the top of this script)"
-            fi
+            name=${pair%%:*}; fp=${pair##*:}; bin=$work/rawspu/rawspu_${fp}_00060.bin
+            [ -f "$bin" ] || { echo "no raw-SPU program $fp in $M/game.elf (not the tested v1.7 game.self?)" >&2; exit 1; }
+            "$PY" "$TK/tools/wrap_spu_elf.py" "$bin" --base 0x60 --entry 0x90 --out "$work/$name.elf"
+            "$PY" "$TK/tools/spu_lifter.py" --auto-functions "$work/$name.elf" --base 0x60 \
+                  --symbol-prefix "resistance_$name" --output "$S/$name"
         done
         rm -rf "$work"
-        if (( have_raw )); then
-            cp "$v17/spu_workloads.c" "$S/spu_workloads.c"
-        else
-            rm -rf "$S/rawspu0" "$S/rawspu1"
-            sed -e '/spu_begin_image(2)/,/"resistance_rawspu_47C9CB480016D493");/d' -e '/rawspu/d' \
-                "$v17/spu_workloads.c" > "$S/spu_workloads.c"
-        fi ;;
+        cp "$v17/spu_workloads.c" "$S/spu_workloads.c" ;;
     build)
         say "build"
         [ -f "$RC/ppu_recomp.h" ] || { echo "no lifted v1.7 code in $RC (steps analyse lift)" >&2; exit 1; }
