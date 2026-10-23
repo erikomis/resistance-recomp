@@ -28,7 +28,7 @@ index 67bb40b..bb21521 100644
        # Guest vertex and fragment programs through the decompilers, glslang
        # and spirv-cross: asserts the MSL carries the buffer, texture, sampler
 diff --git a/.github/workflows/macos.yml b/.github/workflows/macos.yml
-index 19e9eb1..4f09e33 100644
+index 19e9eb1..f0bb9bc 100644
 --- a/.github/workflows/macos.yml
 +++ b/.github/workflows/macos.yml
 @@ -109,9 +109,10 @@ jobs:
@@ -45,7 +45,7 @@ index 19e9eb1..4f09e33 100644
        - name: Run the Metal present post-processing test
          run: |
            clang -fobjc-arc -I include -I libs/video libs/video/tests/test_metal_present_post.m \
-@@ -133,6 +134,53 @@ jobs:
+@@ -133,6 +134,56 @@ jobs:
            clang -std=gnu17 -I include $(sdl2-config --cflags) -I "$(sdl2-config --prefix)/include" -o /tmp/test_pad_rumble libs/input/tests/test_pad_rumble.c $(sdl2-config --libs)
            /tmp/test_pad_rumble
  
@@ -72,8 +72,8 @@ index 19e9eb1..4f09e33 100644
 +            $(sdl2-config --libs) -framework AppKit -o /tmp/test_host_input_cocoa
 +          /tmp/test_host_input_cocoa
 +
-+      # The window host's display options and its MetalFX path (falls back
-+      # where MetalFX is missing); texture packs; internal resolution; the
++      # The window host's display options, its MetalFX path (falls back
++      # where MetalFX is missing) and its off-screen notes; texture packs; internal resolution; the
 +      # RSX thread's debug switches read once.
 +      - name: Run the display, texture pack and resolution tests
 +        run: |
@@ -82,6 +82,9 @@ index 19e9eb1..4f09e33 100644
 +          clang -fobjc-arc -I libs/video tools/host_window/test_host_window_upscale.m \
 +            -framework AppKit -framework Metal -framework QuartzCore -framework IOSurface -o /tmp/test_host_window_upscale
 +          /tmp/test_host_window_upscale
++          clang -fobjc-arc -I libs/video tools/host_window/test_host_window_offscreen.m \
++            -framework AppKit -framework Metal -framework QuartzCore -framework IOSurface -o /tmp/test_host_window_offscreen
++          /tmp/test_host_window_offscreen
 +          clang -std=gnu17 -I include -I libs/video -o /tmp/test_texture_packs libs/video/tests/test_texture_packs.c \
 +            libs/video/rsx_dispatch.c libs/video/rsx_vertex_compact.c libs/video/rsx_texture_layout.c \
 +            libs/video/rsx_vp_decompiler.c libs/video/rsx_fp_decompiler.c
@@ -99,7 +102,7 @@ index 19e9eb1..4f09e33 100644
        # Drives a real NV4097 command buffer through cellGcm -> RSX -> the Metal
        # backend and asserts the presented pixel matches the guest clear colour.
        # Headless, so it needs no display: exit 0 means the whole graphics bridge
-@@ -176,6 +224,15 @@ jobs:
+@@ -176,6 +227,15 @@ jobs:
              echo "--mip-aniso passed without PS3_ANISO; the check is not checking"
              exit 1
            fi
@@ -115,7 +118,7 @@ index 19e9eb1..4f09e33 100644
            # Render-to-texture: a red triangle drawn into a colour surface of
            # the guest's own, then sampled by a full-screen quad through the
            # guest programs. The guest bytes behind that surface are green, so
-@@ -342,6 +399,10 @@ jobs:
+@@ -342,6 +402,10 @@ jobs:
            # restart cuts bounding topology expansion. Runs on Linux too.
            clang -std=gnu17 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_rsx_draw_engine libs/video/tests/test_rsx_draw_engine.c libs/video/rsx_draw_engine.c libs/video/rsx_dispatch.c libs/video/rsx_vertex_compact.c libs/video/rsx_texture_layout.c libs/video/rsx_vp_decompiler.c libs/video/rsx_fp_decompiler.c
            /tmp/test_rsx_draw_engine
@@ -374,7 +377,7 @@ index 0000000..40570da
 +
 +#endif /* PS3EMU_PS3_ENV_ONCE_H */
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 6f76df8..5839533 100644
+index 6f76df8..80959ce 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
 @@ -20,6 +20,7 @@
@@ -385,7 +388,16 @@ index 6f76df8..5839533 100644
  #include "ps3emu/log_first.h"
  
  /* Event-queue push/lookup (runtime/syscalls/sys_event.c). Forward-declared
-@@ -161,10 +162,75 @@ static float s_mix_buffer[CELL_AUDIO_BLOCK_SAMPLES * 2];
+@@ -127,6 +128,8 @@ typedef struct {
+     /* For address reporting to guest */
+     u64                  port_addr;      /* guest-visible buffer address */
+     u64                  read_idx_addr;  /* guest-visible read index address */
++    int                  was_playing;    /* the last block mixed held sound */
++    int                  ever_started;   /* PortStart was called at least once */
+ } AudioPortSlot;
+ 
+ static int            s_audio_initialized = 0;
+@@ -161,10 +164,75 @@ static float s_mix_buffer[CELL_AUDIO_BLOCK_SAMPLES * 2];
   * Host audio output backend
   * -----------------------------------------------------------------------*/
  
@@ -461,7 +473,7 @@ index 6f76df8..5839533 100644
  static int audio_backend_init(void)
  {
      if (SDL_WasInit(SDL_INIT_AUDIO) == 0) {
-@@ -182,11 +248,18 @@ static int audio_backend_init(void)
+@@ -182,11 +250,20 @@ static int audio_backend_init(void)
      want.samples  = CELL_AUDIO_BLOCK_SAMPLES;
      want.callback = NULL; /* We'll use SDL_QueueAudio */
  
@@ -477,26 +489,198 @@ index 6f76df8..5839533 100644
          printf("[cellAudio] SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
          return -1;
      }
-+    printf("[cellAudio] output: %s\n", dev ? dev : "system default");
++    printf("[cellAudio] output: %s (%d Hz, %u ch, %u-frame device buffer)\n",
++           dev ? dev : "system default", have.freq, (unsigned)have.channels,
++           (unsigned)have.samples);
  
      SDL_PauseAudioDevice(s_sdl_audio_dev, 0); /* Start playback */
      return 0;
-@@ -427,6 +500,33 @@ static inline float ld_be_f32(const float* p)
+@@ -427,6 +504,262 @@ static inline float ld_be_f32(const float* p)
      return f;
  }
  
++/* PS3_AUDIO_DUMP=<file.wav>: the final mix (before PS3_AUDIO_MUTE and
++ * PS3_AUDIO_VOLUME, so a muted run still records what would have played) as
++ * a 48 kHz stereo 32-bit float WAV. The header's sizes are rewritten about
++ * once a second, so a run that is killed leaves a file that still opens. */
++static FILE* s_dump_wav = (FILE*)-1;
++static u64   s_dump_frames;
++
++static void audio_wav_header(unsigned char h[58], u64 frames)
++{
++    const u32 data = frames * 8u > 0xFFFFFF00ull ? 0xFFFFFF00u : (u32)(frames * 8u);
++    const u32 v[] = { 0x46464952u /* RIFF */, 50u + data, 0x45564157u /* WAVE */,
++                      0x20746D66u /* fmt  */, 18u };
++    memcpy(h, v, sizeof v);                        /* host order: little-endian */
++    const u16 fmt[] = { 3 /* IEEE float */, 2 };
++    memcpy(h + 20, fmt, 4);
++    const u32 rate[] = { CELL_AUDIO_SAMPLE_RATE, CELL_AUDIO_SAMPLE_RATE * 8u };
++    memcpy(h + 24, rate, 8);
++    const u16 blk[] = { 8, 32, 0 };
++    memcpy(h + 32, blk, 6);
++    const u32 fact[] = { 0x74636166u /* fact */, 4u, (u32)(data / 8u),
++                         0x61746164u /* data */, data };
++    memcpy(h + 38, fact, 20);
++}
++
++/* Opened by cellAudioInit. The first open in a run truncates; a later one --
++ * cellAudioInit after cellAudioQuit, or the process a title exitspawns into,
++ * which inherits PS3_AUDIO_DUMP_CONTINUE -- appends, so one file holds the
++ * whole session (Resistance's EBOOT and its game.self, for instance). */
++static void audio_dump_open(void)
++{
++    if (s_dump_wav != (FILE*)-1) return;
++    s_dump_wav = NULL;
++    s_dump_frames = 0;
++    const char* e = getenv("PS3_AUDIO_DUMP");
++    if (!e || !*e) return;
++    if (getenv("PS3_AUDIO_DUMP_CONTINUE")) {
++        FILE* f = fopen(e, "r+b");
++        unsigned char h[58], want[58];
++        audio_wav_header(want, 0);
++        if (f && fread(h, 1, sizeof h, f) == sizeof h &&
++            !memcmp(h, want, 4) && !memcmp(h + 8, want + 8, 30)) {
++            fseek(f, 0, SEEK_END);
++            const long end = ftell(f);
++            s_dump_frames = end > 58 ? (u64)(end - 58) / 8u : 0;
++            s_dump_wav = f;
++            printf("[cellAudio] PS3_AUDIO_DUMP=%s: appending at %.1f s\n", e,
++                   s_dump_frames / (double)CELL_AUDIO_SAMPLE_RATE);
++            return;
++        }
++        if (f) fclose(f);
++    }
++    s_dump_wav = fopen(e, "wb");
++    if (!s_dump_wav) return;
++    unsigned char h[58];
++    audio_wav_header(h, 0);
++    fwrite(h, 1, sizeof h, s_dump_wav);
++    fflush(s_dump_wav);
++#ifdef _WIN32
++    _putenv_s("PS3_AUDIO_DUMP_CONTINUE", "1");
++#else
++    setenv("PS3_AUDIO_DUMP_CONTINUE", "1", 1);
++#endif
++    printf("[cellAudio] PS3_AUDIO_DUMP=%s: recording the mix\n", e);
++}
++
++static void audio_dump_block(const float* stereo, u32 frames)
++{
++    if (!s_dump_wav || s_dump_wav == (FILE*)-1) return;
++    fwrite(stereo, sizeof(float), (size_t)frames * 2, s_dump_wav);
++    s_dump_frames += frames;
++    if ((s_dump_frames % (CELL_AUDIO_BLOCK_SAMPLES * 188u)) < frames) {
++        unsigned char h[58];
++        audio_wav_header(h, s_dump_frames);
++        fseek(s_dump_wav, 0, SEEK_SET);
++        fwrite(h, 1, sizeof h, s_dump_wav);
++        fseek(s_dump_wav, 0, SEEK_END);
++        fflush(s_dump_wav);
++    }
++}
++
++static void audio_dump_close(void)
++{
++    if (!s_dump_wav || s_dump_wav == (FILE*)-1) return;
++    unsigned char h[58];
++    audio_wav_header(h, s_dump_frames);
++    fseek(s_dump_wav, 0, SEEK_SET);
++    fwrite(h, 1, sizeof h, s_dump_wav);
++    fclose(s_dump_wav);
++    s_dump_wav = (FILE*)-1;
++    s_dump_frames = 0;
++}
++
++/* PS3_AUDIO_STATS=1: every ~5 s, the level of each running port and of the
++ * mix (RMS / peak over the interval, the share of blocks that were all zero,
++ * and how many mixed samples had to be clipped), so "which part is silent"
++ * and "is it clipping" can be read from the log. */
++typedef struct {
++    double sq;
++    float  peak;
++    u32    blocks, silent;
++    double ch_sq[8];   /* per channel, for an 8-channel port */
++} AudioLevel;
++static AudioLevel s_lvl_port[CELL_AUDIO_PORT_MAX], s_lvl_mix;
++/* Blocks handed to the device since cellAudioInit, continued across an
++ * exitspawn with the dump: the port lines below say where on the audio clock
++ * (and so where in PS3_AUDIO_DUMP's file) they happened. */
++static volatile u64 s_mixed_blocks;
++static double audio_clock_s(void)
++{
++    const u64 frames = (s_dump_wav && s_dump_wav != (FILE*)-1)
++                       ? s_dump_frames : s_mixed_blocks * CELL_AUDIO_BLOCK_SAMPLES;
++    return (double)frames / CELL_AUDIO_SAMPLE_RATE;
++}
++static u64 s_lvl_clipped;
++static int s_stats = -1;
++
++static void audio_level_add(AudioLevel* l, const float* s, u32 n, int be, u32 nch)
++{
++    double sq = 0.0;
++    float pk = 0.0f;
++    for (u32 i = 0; i < n; i++) {
++        const float v = be ? ld_be_f32(&s[i]) : s[i];
++        sq += (double)v * v;
++        if (nch == 8) l->ch_sq[i & 7] += (double)v * v / (n / 8);
++        const float a = v < 0 ? -v : v;
++        if (a > pk) pk = a;
++    }
++    l->sq += sq / (n ? n : 1);
++    if (pk > l->peak) l->peak = pk;
++    l->blocks++;
++    if (pk == 0.0f) l->silent++;
++}
++
++static void audio_level_print(const char* name, int idx, AudioLevel* l)
++{
++    if (!l->blocks) return;
++    const double rms = sqrt(l->sq / l->blocks);
++    char tag[16];
++    if (idx >= 0) snprintf(tag, sizeof tag, "%s %d", name, idx);
++    else snprintf(tag, sizeof tag, "%s", name);
++    printf("[audio-stats] %-6s rms %.4f (%6.1f dBFS) peak %.4f silent %5.1f%%",
++           tag, rms, rms > 0 ? 20.0 * log10(rms) : -999.0, l->peak,
++           100.0 * l->silent / l->blocks);
++    if (l->ch_sq[0] + l->ch_sq[1] + l->ch_sq[2] + l->ch_sq[3] > 0.0) {
++        static const char* nm[8] = { "L", "R", "C", "LFE", "Ls", "Rs", "Lb", "Rb" };
++        printf(" |");
++        for (int c = 0; c < 8; c++) printf(" %s %.4f", nm[c], sqrt(l->ch_sq[c] / l->blocks));
++    }
++    printf("\n");
++    memset(l, 0, sizeof(*l));
++}
++
++static void audio_stats_tick(void)
++{
++    if (s_stats < 0) s_stats = getenv("PS3_AUDIO_STATS") ? 1 : 0;
++    if (!s_stats) return;
++    if ((s_mixed_blocks % 938u) != 0) return;     /* 938 blocks = 5.0 s */
++    printf("[audio-stats] t=%.1fs (audio clock)\n", audio_clock_s());
++    for (int p = 0; p < CELL_AUDIO_PORT_MAX; p++) audio_level_print("port", p, &s_lvl_port[p]);
++    audio_level_print("mix", -1, &s_lvl_mix);
++    if (s_lvl_clipped) printf("[audio-stats] clipped %llu samples\n", (unsigned long long)s_lvl_clipped);
++    s_lvl_clipped = 0;
++    fflush(stdout);
++}
++
 +/* Hand one mixed block to the host device. Shared by the Windows and POSIX
 + * mixer loops so the debug taps behave the same on both:
++ *   PS3_AUDIO_DUMP=<file.wav>  the final mix as a float WAV (above)
 + *   AUDIO_WAV=<file>  append the final mix as raw f32le stereo 48 kHz
 + *                     (ffmpeg -f f32le -ar 48000 -ac 2 -i <file>)
 + *   PS3_AUDIO_MUTE=1  silence the HOST output only; the title still sees a
 + *                     working device and every mix/pacing path runs as normal
 + *                     (unlike PS3_NO_AUDIO, which changes what the guest does).
-+ *                     AUDIO_WAV still records the real mix.
++ *                     Both dumps still record the real mix.
 + *   PS3_AUDIO_VOLUME  0..100, the host's master volume (audio_volume_gain);
-+ *                     AUDIO_WAV records the mix before it too. */
++ *                     the dumps record the mix before it too. */
 +static void audio_submit_mix(void)
 +{
++    s_mixed_blocks++;
++    audio_dump_block(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
++    if (s_stats > 0) audio_level_add(&s_lvl_mix, s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES * 2, 0, 2);
++    audio_stats_tick();
 +    { static FILE* _wf = (FILE*)-1;
 +      if (_wf == (FILE*)-1) { const char* e = getenv("AUDIO_WAV"); _wf = e ? fopen(e, "wb") : NULL; }
 +      if (_wf) { fwrite(s_mix_buffer, sizeof(float), CELL_AUDIO_BLOCK_SAMPLES * 2, _wf); fflush(_wf); } }
@@ -512,10 +696,134 @@ index 6f76df8..5839533 100644
 +    audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
 +}
 +
++/* Add one block of a port (nch big-endian floats a frame: 2, or 8 in the
++ * cellAudio order L R C LFE Ls Rs Lb Rb) to a stereo host mix, at `level`.
++ *
++ * The 8-channel fold is RPCS3's (Emu/Audio/AudioBackend.h downmix, 7.1 ->
++ * stereo): centre at -3 dB into both sides, each side's surround and back at
++ * -3 dB into it, LFE left out -- the usual stereo downmix. It was centre
++ * -3 dB, LFE -6 dB, surround -6 dB and back -10 dB into both, with the LFE
++ * summed into each side: the coefficients added up to 3x full scale where
++ * RPCS3's add up to 2.4x, and a movie's 5.1 bed (Resistance's are AC3 3/2 +
++ * LFE) came out bass-heavy and clipping on the louder passages. */
++static void audio_downmix_add(float* mix, const float* src, u32 nch, float level)
++{
++    const float k = 0.70710678f;
++    for (u32 s = 0; s < CELL_AUDIO_BLOCK_SAMPLES; s++) {
++        float left, right;
++        if (nch >= 2) {
++            left  = ld_be_f32(&src[s * nch + 0]);
++            right = ld_be_f32(&src[s * nch + 1]);
++        } else {
++            /* Mono: duplicate to both channels */
++            left = right = ld_be_f32(&src[s]);
++        }
++        if (nch == 8) {
++            const float center = ld_be_f32(&src[s * 8 + 2]) * k;
++            left  += center + (ld_be_f32(&src[s * 8 + 4]) + ld_be_f32(&src[s * 8 + 6])) * k;
++            right += center + (ld_be_f32(&src[s * 8 + 5]) + ld_be_f32(&src[s * 8 + 7])) * k;
++        }
++        mix[s * 2 + 0] += left * level;
++        mix[s * 2 + 1] += right * level;
++    }
++}
++
++static int audio_block_is_zero(const float* src, u32 nch)
++{
++    const u32* w = (const u32*)src;
++    for (u32 i = 0; i < CELL_AUDIO_BLOCK_SAMPLES * nch; i++)
++        if (w[i] & 0x7FFFFFFFu) return 0;
++    return 1;
++}
++
++#ifndef _WIN32
++/* A running port that was playing and whose next block is still empty: its
++ * producer has not written it yet. */
++static int audio_port_starved(void)
++{
++    int starved = 0;
++    mutex_lock(&s_audio_mutex);
++    for (int p = 0; p < CELL_AUDIO_PORT_MAX && !starved; p++) {
++        const AudioPortSlot* port = &s_ports[p];
++        if (!port->in_use || !port->running || !port->buffer || !port->was_playing) continue;
++        const u32 nch = (u32)port->param.nChannel, nblock = (u32)port->param.nBlock;
++        const float* src = port->buffer + (u32)(port->read_index % nblock) * CELL_AUDIO_BLOCK_SAMPLES * nch;
++        starved = audio_block_is_zero(src, nch);
++    }
++    mutex_unlock(&s_audio_mutex);
++    return starved;
++}
++#endif
++
  /* Mix one block from all active ports into s_mix_buffer (stereo float) */
  static void audio_mix_one_block(void)
  {
-@@ -592,12 +692,7 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -439,7 +772,7 @@ static void audio_mix_one_block(void)
+         /* Diagnostic: a port that HOLDS PCM but was never started is inaudible
+          * by design -- flag it once so "no PortStart" vs "no data" is decidable
+          * from the log (LBP's Bink movie audio port sat exactly there). */
+-        if (port->in_use && !port->running && port->buffer) {
++        if (port->in_use && !port->running && !port->ever_started && port->buffer) {
+             static u8 warned[CELL_AUDIO_PORT_MAX];
+             if (!warned[p]) {
+                 u32 probe = (u32)(port->param.nBlock * CELL_AUDIO_BLOCK_SAMPLES *
+@@ -459,7 +792,7 @@ static void audio_mix_one_block(void)
+         u32 nch    = (u32)port->param.nChannel;
+         u32 nblock = (u32)port->param.nBlock;
+         float level = port->param.level;
+-        if (level <= 0.0f) level = 1.0f;
++        if (!(level >= 0.0f)) level = 0.0f;
+         if (level > 1.0f) level = 1.0f;
+ 
+         /* Read one block at the current read_index */
+@@ -486,31 +819,11 @@ static void audio_mix_one_block(void)
+                         p, (unsigned long long)port->read_index, block_idx, map);
+             } } }
+ 
+-        for (u32 s = 0; s < CELL_AUDIO_BLOCK_SAMPLES; s++) {
+-            float left, right;
+-            if (nch >= 2) {
+-                left  = ld_be_f32(&src[s * nch + 0]) * level;
+-                right = ld_be_f32(&src[s * nch + 1]) * level;
+-            } else {
+-                /* Mono: duplicate to both channels */
+-                left = right = ld_be_f32(&src[s]) * level;
+-            }
+-
+-            /* If 7.1, mix center and other channels into stereo */
+-            if (nch == 8) {
+-                float center = ld_be_f32(&src[s * 8 + 2]) * level * 0.707f;
+-                float lfe    = ld_be_f32(&src[s * 8 + 3]) * level * 0.5f;
+-                float rl     = ld_be_f32(&src[s * 8 + 4]) * level * 0.5f;
+-                float rr     = ld_be_f32(&src[s * 8 + 5]) * level * 0.5f;
+-                float sl     = ld_be_f32(&src[s * 8 + 6]) * level * 0.3f;
+-                float sr     = ld_be_f32(&src[s * 8 + 7]) * level * 0.3f;
+-                left  += center + lfe + rl + sl;
+-                right += center + lfe + rr + sr;
+-            }
++        if (s_stats > 0)
++            audio_level_add(&s_lvl_port[p], src, CELL_AUDIO_BLOCK_SAMPLES * nch, 1, nch);
++        port->was_playing = !audio_block_is_zero(src, nch);
+ 
+-            s_mix_buffer[s * 2 + 0] += left;
+-            s_mix_buffer[s * 2 + 1] += right;
+-        }
++        audio_downmix_add(s_mix_buffer, src, nch, level);
+ 
+         /* Firmware clears a ring-buffer block after consuming it. Besides
+          * preventing stale PCM from replaying when a producer stalls, the
+@@ -529,8 +842,8 @@ static void audio_mix_one_block(void)
+ 
+     /* Clip to [-1.0, 1.0] */
+     for (u32 i = 0; i < CELL_AUDIO_BLOCK_SAMPLES * 2; i++) {
+-        if (s_mix_buffer[i] > 1.0f) s_mix_buffer[i] = 1.0f;
+-        if (s_mix_buffer[i] < -1.0f) s_mix_buffer[i] = -1.0f;
++        if (s_mix_buffer[i] > 1.0f) { s_mix_buffer[i] = 1.0f; s_lvl_clipped++; }
++        if (s_mix_buffer[i] < -1.0f) { s_mix_buffer[i] = -1.0f; s_lvl_clipped++; }
+     }
+ }
+ 
+@@ -592,12 +905,7 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
                  float a = s_mix_buffer[i]; if (a < 0) a = -a; if (a > pk) pk = a; }
              if ((++_n % 200) == 0 || (pk > 0.001f && _n < 40))
                  fprintf(stderr, "[audio-peak] block#%u peak=%.4f\n", _n, pk); } }
@@ -529,35 +837,106 @@ index 6f76df8..5839533 100644
          /* AUDIO_RATE=1: blocks mixed vs real time, and frames dropped. */
          { static int on = -1; if (on < 0) on = getenv("AUDIO_RATE") ? 1 : 0;
            if (on) { static ULONGLONG t0; static unsigned n, z; static unsigned long long d0;
-@@ -627,17 +722,34 @@ static void* audio_mix_thread_func(void* arg)
+@@ -622,22 +930,105 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+     return 0;
+ }
+ #else
++/* Pacing of the POSIX mixer: one block every 5.33 ms on the monotonic clock,
++ * the way the console's audio hardware consumes them, nudged to follow the
++ * host device's own clock.
++ *
++ * A guest mixer (libmixer's cellSurMixer, which Resistance plays its movies
++ * through) writes the block after the one being played when the period event
++ * wakes it, so it needs those 5.33 ms between two reads. The previous loop
++ * mixed whenever the device queue fell under four blocks: each time the
++ * device took its buffer, the loop read two blocks back to back, the second
++ * before the guest had been woken to fill it, and every other block of a
++ * movie's soundtrack came out empty -- a 94 Hz buzz over half the audio.
++ *
++ * So blocks are due at t0 + n periods. With a device, the queue is kept
++ * between AUDIO_PACE_LOW and AUDIO_PACE_HIGH blocks by moving t0 a quarter
++ * period at most once a block (never two blocks closer than 0.75 periods),
++ * judged on the queue right after the previous block went out; with none
++ * (queued < 0) the clock alone paces. More than 100 ms behind (a debugger
++ * stop, a suspended machine) drops the backlog instead of mixing it in a
++ * burst. Returns 0 when the next block is due, else the nanoseconds to wait. */
++#define AUDIO_PACE_LOW   3u
++#define AUDIO_PACE_HIGH  10u
++typedef struct {
++    unsigned long long t0_ns;   /* when block 0 was due */
++    unsigned long long mixed;   /* blocks mixed so far  */
++    int                decided; /* the next block's nudge has been chosen */
++} AudioPace;
++
++static unsigned long long audio_pace_due(const AudioPace* p)
++{
++    /* 256 samples at 48 kHz = 16e6/3 ns, kept exact over a long run. */
++    return p->t0_ns + p->mixed * 16000000ull / 3ull;
++}
++
++static unsigned long long audio_pace_wait(AudioPace* p, unsigned long long now_ns, long queued)
++{
++    const unsigned long long period = 16000000ull / 3ull;
++    /* Once a block, on the first call after the previous one was mixed: a
++     * nudge chosen later, when the block is already due, would land on top
++     * of the next block's and bring two reads half a period apart. */
++    if (!p->decided) {
++        p->decided = 1;
++        if (queued >= 0 && p->mixed > 0) {
++            if ((unsigned long)queued < AUDIO_PACE_LOW * CELL_AUDIO_BLOCK_SAMPLES) p->t0_ns -= period / 4;
++            else if ((unsigned long)queued > AUDIO_PACE_HIGH * CELL_AUDIO_BLOCK_SAMPLES) p->t0_ns += period / 4;
++        }
++    }
++    const unsigned long long due = audio_pace_due(p);
++    if (now_ns < due) return due - now_ns;
++    if (now_ns - due > 100000000ull)
++        p->t0_ns = now_ns - p->mixed * 16000000ull / 3ull;
++    p->mixed++;
++    p->decided = 0;
++    return 0;
++}
++
++static unsigned long long audio_now_ns(void)
++{
++    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
++    return (unsigned long long)t.tv_sec * 1000000000ull + (unsigned long long)t.tv_nsec;
++}
++
++/* Frames queued at the device, or -1 with no device open. */
++static long audio_backend_queue(void)
++{
++#if AUDIO_BACKEND_SDL2
++    if (!s_sdl_audio_dev) return -1;
++#endif
++    return (long)audio_backend_queued_samples();
++}
++
+ static void* audio_mix_thread_func(void* arg)
+ {
      (void)arg;
      printf("[cellAudio] Mixing thread started\n");
  
-+    /* Pace by what the device has actually consumed. The old loop mixed a
-+     * block and then slept a fixed 2-5 ms -- with a block being 256 samples
-+     * (5.33 ms at 48 kHz) that ran the guest's audio clock up to ~2.6x faster
-+     * than real time whenever the queue was short, so the title's producers
-+     * fell behind and the output was chopped garbage; and with the queue
-+     * long, 5 ms a block is still a little faster than the device, so the
-+     * queue (and the delay before a sound is heard) kept growing. Keep ~4
-+     * blocks (~21 ms) queued: mix only when the device has drained below
-+     * that. */
-+    /* Also never run ahead of the wall clock by more than those ~4 blocks:
-+     * with no host device (or one that swallows samples) the queue reads 0
-+     * forever and the device bound alone would spin. */
-+    struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
-+    unsigned long long mixed = 0;
++    AudioPace pace = { audio_now_ns(), 0, 0 };   /* t0, mixed, decided */
      while (s_mix_thread_running) {
-+        struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
-+        unsigned long long el_us = (unsigned long long)(now.tv_sec - t0.tv_sec) * 1000000ull
-+                                 + (unsigned long long)((now.tv_nsec - t0.tv_nsec) / 1000);
-+        unsigned long long ahead_us = mixed * CELL_AUDIO_BLOCK_SAMPLES * 1000000ull / 48000ull;
-+        if (audio_backend_queued_samples() >= CELL_AUDIO_BLOCK_SAMPLES * 4 ||
-+            ahead_us > el_us + 4ull * CELL_AUDIO_BLOCK_SAMPLES * 1000000ull / 48000ull) {
-+            usleep(1000);
++        const unsigned long long wait = audio_pace_wait(&pace, audio_now_ns(), audio_backend_queue());
++        if (wait) {
++            /* Sleep most of the way, then poll: usleep overshoots by up to a
++             * few hundred microseconds. */
++            if (wait > 1500000ull) usleep((useconds_t)((wait - 1000000ull) / 1000ull));
++            else if (wait > 200000ull) usleep(100);
 +            continue;
 +        }
-+        mixed++;
++        /* A producer that is a little late (the guest thread woken by the
++         * last period event has not been scheduled yet: a loaded host) gets
++         * up to 4 ms before its block is played as silence -- RPCS3 waits for
++         * "touched" buffers the same way. The clock does not move: the next
++         * block keeps its due time, and the device queue (3+ blocks) covers
++         * the delay. Under load (12 busy cores) this took the isolated empty
++         * blocks of a 45 s movie stretch from 49-82 to 0. */
++        { const unsigned long long g0 = audio_now_ns();
++          while (s_mix_thread_running && audio_port_starved() &&
++                 audio_now_ns() - g0 < 4000000ull)
++              usleep(100); }
          audio_mix_one_block();
 -        audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
 +        audio_submit_mix();
@@ -572,17 +951,108 @@ index 6f76df8..5839533 100644
      }
  
      printf("[cellAudio] Mixing thread stopped\n");
+@@ -727,6 +1118,7 @@ s32 cellAudioInit(void)
+     { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+       s_audio_start_us = (u64)ts.tv_sec * 1000000ULL + (u64)ts.tv_nsec / 1000ULL; }
+ #endif
++    audio_dump_open();
+     if (audio_start_mix_thread() < 0) {
+         printf("[cellAudio] WARNING: Could not start mixing thread\n");
+     }
+@@ -744,6 +1136,7 @@ s32 cellAudioQuit(void)
+ 
+     audio_stop_mix_thread();
+     audio_backend_shutdown();
++    audio_dump_close();
+ 
+     /* Port buffers live in the guest vm_base arena (bump-allocated, not host
+      * malloc) -- just drop the references; never free() them. */
+@@ -772,8 +1165,17 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
+ 
+     u64 nch  = vm_read64(param_ea + 0);   /* nChannel */
+     u64 nblk = vm_read64(param_ea + 8);   /* nBlock   */
+-    printf("[cellAudio] PortOpen(nChannel=%llu, nBlock=%llu)\n",
+-           (unsigned long long)nch, (unsigned long long)nblk);
++    u64 attr = vm_read64(param_ea + 16);  /* attr     */
++    /* level is honoured only with CELL_AUDIO_PORTATTR_INITLEVEL, as on the
++     * console (RPCS3 cellAudioPortOpen); otherwise the port starts at 1.0. */
++    float level = 1.0f;
++    if (attr & 0x1000ull) {
++        u32 lv = vm_read32(param_ea + 24);
++        memcpy(&level, &lv, 4);
++    }
++    printf("[cellAudio] PortOpen(nChannel=%llu, nBlock=%llu, attr=0x%llX, level=%.3f) at t=%.2fs\n",
++           (unsigned long long)nch, (unsigned long long)nblk,
++           (unsigned long long)attr, level, audio_clock_s());
+ 
+     if (nch != CELL_AUDIO_PORT_2CH && nch != CELL_AUDIO_PORT_8CH)
+         return CELL_AUDIO_ERROR_PARAM;
+@@ -801,8 +1203,12 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
+     port->running = 0;
+     /* Store the decoded (host-endian) param values, not the raw BE guest bytes. */
+     memset(&port->param, 0, sizeof(port->param));
++    port->was_playing  = 0;
++    port->ever_started = 0;
+     port->param.nChannel = nch;
+     port->param.nBlock   = nblk;
++    port->param.attr     = attr;
++    port->param.level    = level;
+     port->read_index  = 0;
+     port->write_index = 0;
+ 
+@@ -840,7 +1246,7 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
+ 
+ s32 cellAudioPortClose(u32 portNum)
+ {
+-    printf("[cellAudio] PortClose(port=%u)\n", portNum);
++    printf("[cellAudio] PortClose(port=%u) at t=%.2fs\n", portNum, audio_clock_s());
+ 
+     if (!s_audio_initialized)
+         return CELL_AUDIO_ERROR_NOT_INIT;
+@@ -869,7 +1275,7 @@ s32 cellAudioPortClose(u32 portNum)
+ 
+ s32 cellAudioPortStart(u32 portNum)
+ {
+-    printf("[cellAudio] PortStart(port=%u)\n", portNum);
++    printf("[cellAudio] PortStart(port=%u) at t=%.2fs\n", portNum, audio_clock_s());
+ 
+     if (!s_audio_initialized)
+         return CELL_AUDIO_ERROR_NOT_INIT;
+@@ -882,6 +1288,7 @@ s32 cellAudioPortStart(u32 portNum)
+ 
+     mutex_lock(&s_audio_mutex);
+     s_ports[portNum].running = 1;
++    s_ports[portNum].ever_started = 1;
+     mutex_unlock(&s_audio_mutex);
+ 
+     return CELL_OK;
+@@ -889,7 +1296,7 @@ s32 cellAudioPortStart(u32 portNum)
+ 
+ s32 cellAudioPortStop(u32 portNum)
+ {
+-    printf("[cellAudio] PortStop(port=%u)\n", portNum);
++    printf("[cellAudio] PortStop(port=%u) at t=%.2fs\n", portNum, audio_clock_s());
+ 
+     if (!s_audio_initialized)
+         return CELL_AUDIO_ERROR_NOT_INIT;
 diff --git a/libs/audio/tests/test_audio_pacing.c b/libs/audio/tests/test_audio_pacing.c
 new file mode 100644
-index 0000000..51917fa
+index 0000000..daa9682
 --- /dev/null
 +++ b/libs/audio/tests/test_audio_pacing.c
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,124 @@
 +/* The POSIX mixing thread runs the guest's audio clock in real time: one
 + * 256-sample block every 5.33 ms, 187.5 a second, and one notify event per
-+ * block. Runs the real thread for a second with no host device (the queue
-+ * reads 0, so only the wall-clock bound paces it) and counts the events.
-+ * The old loop slept a fixed 2 ms a block there and mixed ~2.6x real time.
++ * block. Runs the real thread for a second with no host device (only the
++ * clock paces it) and counts the events. The old loop slept a fixed 2 ms a
++ * block there and mixed ~2.6x real time.
++ *
++ * Then audio_pace_wait against simulated devices that take their buffer in
++ * chunks (256 and 1024 frames) and run 0.5% fast or slow: the queue must stay
++ * bounded, the long-run rate must follow the device, and no two blocks may be
++ * mixed closer than 0.75 periods -- the loop before this one read two blocks
++ * back to back whenever the device took its buffer, before the guest's mixer
++ * had been woken to fill the second, and half of every movie block was empty.
 + * macOS: clang -std=gnu17 -I include -I /opt/homebrew/include
 + *   libs/audio/tests/test_audio_pacing.c -L /opt/homebrew/lib -lSDL2
 + *   -Wl,-dead_strip -o /tmp/test_audio_pacing && /tmp/test_audio_pacing
@@ -617,8 +1087,61 @@ index 0000000..51917fa
 +    return (double)t.tv_sec + (double)t.tv_nsec * 1e-9;
 +}
 +
++/* Simulate `secs` of a device that drains `chunk` frames every
++ * chunk/48000*(1/speed) s. Returns 0 on success. */
++static int simulate(unsigned chunk, double speed, double secs)
++{
++    AudioPace p = { 1000000000ull, 0, 0 };
++    const unsigned long long period = 16000000ull / 3ull;
++    unsigned long long now = 1000000000ull, next_pull = now, last_mix = 0;
++    long queued = 0, max_q = 0, min_q_late = 1 << 30;
++    unsigned long long min_gap = ~0ull, mixed = 0, underruns = 0;
++    const unsigned long long end = now + (unsigned long long)(secs * 1e9);
++    const double pull_ns = chunk / 48000.0 / speed * 1e9;
++    double pull_acc = (double)next_pull;
++    while (now < end) {
++        while (now >= next_pull) {
++            if (queued < (long)chunk) underruns++;
++            queued = queued > (long)chunk ? queued - (long)chunk : 0;
++            pull_acc += pull_ns;
++            next_pull = (unsigned long long)pull_acc;
++        }
++        unsigned long long w = audio_pace_wait(&p, now, queued);
++        if (w == 0) {
++            if (last_mix && now - last_mix < min_gap) min_gap = now - last_mix;
++            last_mix = now;
++            queued += CELL_AUDIO_BLOCK_SAMPLES;
++            mixed++;
++            if (queued > max_q) max_q = queued;
++            if (now > 1000000000ull + 2000000000ull && queued < min_q_late) min_q_late = queued;
++            continue;
++        }
++        unsigned long long step = w < 50000ull ? w : 50000ull;   /* 50 us polling */
++        now += step;
++    }
++    const double rate = mixed / secs, want = 187.5 * speed;
++    printf("  chunk %4u speed %.3f: %.2f blocks/s (device %.2f), queue max %ld min %ld frames, "
++           "min gap %.2f periods, %llu underruns\n", chunk, speed, rate, want, max_q,
++           min_q_late, (double)min_gap / period, underruns);
++    if (rate < want * 0.995 || rate > want * 1.005) return 1;
++    if (max_q > (long)((AUDIO_PACE_HIGH + 2) * CELL_AUDIO_BLOCK_SAMPLES) + (long)chunk) return 1;
++    if ((double)min_gap < 0.74 * period) return 1;
++    if (underruns > 2) return 1;   /* the start, before the queue has filled */
++    return 0;
++}
++
 +int main(void)
 +{
++    {
++        int bad = 0;
++        bad |= simulate(256, 1.0, 30.0);
++        bad |= simulate(1024, 1.0, 30.0);
++        bad |= simulate(256, 1.005, 60.0);
++        bad |= simulate(1024, 0.995, 60.0);
++        bad |= simulate(512, 1.005, 60.0);
++        if (bad) { printf("test_audio_pacing: FAIL (pacing against a device)\n"); return 1; }
++    }
++
 +    mutex_init(&s_audio_mutex);
 +    s_notify_queues[0].in_use = 1;
 +    s_notify_queues[0].key = 0x1234;
@@ -692,6 +1215,1233 @@ index 0000000..41bae2d
 +    printf("test_audio_settings: ok\n");
 +    return 0;
 +}
+diff --git a/libs/codec/adec_ffmpeg.c b/libs/codec/adec_ffmpeg.c
+new file mode 100644
+index 0000000..d547c33
+--- /dev/null
++++ b/libs/codec/adec_ffmpeg.c
+@@ -0,0 +1,390 @@
++/*
++ * ps3recomp - cellAdec's decoder back end (see adec_ffmpeg.h)
++ */
++
++#include "adec_ffmpeg.h"
++#include "cellAdec.h"
++#include "ffmpeg_runtime.h"
++#include "../guest_struct.h"   /* vm_memcpy_to */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++/* ---------------------------------------------------------------------------
++ * Output layout
++ * -----------------------------------------------------------------------*/
++
++static float rd_be_f32(const u8* p)
++{
++    u32 v = ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | p[3];
++    float f;
++    memcpy(&f, &v, 4);
++    return f;
++}
++
++static s32 rd_be_s32(const u8* p)
++{
++    return (s32)(((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | p[3]);
++}
++
++/* CellAdecParamAc3 (RPCS3 Modules/cellAdec.h), 0x30 bytes, big-endian:
++ *   +0x00 u8  wordSize        0 int16, 1 float
++ *   +0x01 u8  outputMode      1 1/0, 2 2/0, 3 3/0, 4 2/1, 5 3/1, 6 2/2, 7 3/2
++ *   +0x02 u8  outLfeOn
++ *   +0x04 f32 drcCutScaleFactor, +0x08 f32 drcBoostScaleFactor
++ *   +0x0C u8  compressionMode, +0x0D numberOfChannels, +0x0E stereoMode,
++ *   +0x0F u8  dualmonoMode,   +0x10 karaokeCapableMode
++ *   +0x14 f32 pcmScaleFactor
++ *   +0x18 s32 channelPointer0..5
++ *
++ * The channels come out in the AC3 bitstream's own order -- L, C, R, then the
++ * surround(s), then LFE -- with the ones the output mode lacks left out.
++ * channelPointerN, when the six of them are a permutation of 0..5, names the
++ * slot in a 6-channel frame for the speaker in the Nth place of L C R Ls Rs
++ * LFE (the AC3_InputChannel order); a title that asks for 3/2 + LFE uses it
++ * to put the channels where its own mixer wants them. */
++int adec_ac3_layout(const u8 param[0x30], AdecLayout* out)
++{
++    memset(out, 0, sizeof(*out));
++    out->word_float = 1;
++    out->scale = 1.0f;
++    out->channels = 2;
++    out->out_sp[0] = ADEC_SP_L;
++    out->out_sp[1] = ADEC_SP_R;
++    if (!param) return -1;
++
++    const u8 word = param[0], mode = param[1], lfe = param[2];
++    if (word > 1 || mode < 1 || mode > 7) return -1;
++    out->word_float = word == 1;
++    float sc = rd_be_f32(param + 0x14);
++    if (sc > 0.0f && sc <= 16.0f) out->scale = sc;
++
++    /* AC3 order for each mode (the bitstream's acmod order). A single
++     * surround (2/1, 3/1) is written from the LS slot (see adec_format_pcm). */
++    static const u8 order[8][5] = {
++        {0},
++        { ADEC_SP_C },
++        { ADEC_SP_L, ADEC_SP_R },
++        { ADEC_SP_L, ADEC_SP_C, ADEC_SP_R },
++        { ADEC_SP_L, ADEC_SP_R, ADEC_SP_LS },
++        { ADEC_SP_L, ADEC_SP_C, ADEC_SP_R, ADEC_SP_LS },
++        { ADEC_SP_L, ADEC_SP_R, ADEC_SP_LS, ADEC_SP_RS },
++        { ADEC_SP_L, ADEC_SP_C, ADEC_SP_R, ADEC_SP_LS, ADEC_SP_RS },
++    };
++    static const u8 count[8] = { 0, 1, 2, 3, 3, 4, 4, 5 };
++    u32 n = count[mode];
++    for (u32 i = 0; i < n; i++) out->out_sp[i] = order[mode][i];
++    if (lfe) out->out_sp[n++] = ADEC_SP_LFE;
++    out->channels = n;
++
++    /* channelPointer remap, for the full 3/2 + LFE frame only. */
++    if (mode == 7 && lfe) {
++        static const u8 ac3_place[6] = { ADEC_SP_L, ADEC_SP_C, ADEC_SP_R,
++                                         ADEC_SP_LS, ADEC_SP_RS, ADEC_SP_LFE };
++        s32 cp[6];
++        u32 seen = 0;
++        int ok = 1;
++        for (int i = 0; i < 6; i++) {
++            cp[i] = rd_be_s32(param + 0x18 + 4 * i);
++            if (cp[i] < 0 || cp[i] > 5 || (seen & (1u << cp[i]))) { ok = 0; break; }
++            seen |= 1u << cp[i];
++        }
++        if (ok)
++            for (int i = 0; i < 6; i++) out->out_sp[cp[i]] = ac3_place[i];
++    }
++    return 0;
++}
++
++u32 adec_pcm_bytes(const AdecLayout* l, u32 samples)
++{
++    return samples * l->channels * (l->word_float ? 4u : 2u);
++}
++
++/* Fold matrix: out slot i = sum over speakers s of m[i][s] * in[s]. */
++static void adec_fold_matrix(const AdecLayout* l, u32 have, float m[8][ADEC_SP_COUNT])
++{
++    enum { L = ADEC_SP_L, R = ADEC_SP_R, C = ADEC_SP_C, LFE = ADEC_SP_LFE,
++           LS = ADEC_SP_LS, RS = ADEC_SP_RS };
++    const float k = 0.70710678f;
++    u32 want = 0;
++    for (u32 i = 0; i < l->channels; i++) want |= ADEC_SP_BIT(l->out_sp[i]);
++    /* A single surround is written from LS: 2/1 and 3/1 have LS, no RS. */
++    const int mono_sur = (want & ADEC_SP_BIT(LS)) && !(want & ADEC_SP_BIT(RS));
++
++    memset(m, 0, sizeof(float) * 8 * ADEC_SP_COUNT);
++    for (u32 i = 0; i < l->channels; i++) {
++        const u32 sp = l->out_sp[i];
++        float* row = m[i];
++        if (have & ADEC_SP_BIT(sp)) row[sp] = 1.0f;
++        switch (sp) {
++        case L: case R: {
++            const u32 sur = sp == L ? LS : RS;
++            if (!(want & ADEC_SP_BIT(C)) && (have & ADEC_SP_BIT(C))) row[C] += k;
++            if (!(want & ADEC_SP_BIT(sur)) && !mono_sur && (have & ADEC_SP_BIT(sur)))
++                row[sur] += k;
++            /* Mono source into a stereo pair. */
++            if (!(have & ADEC_SP_BIT(sp)) && (have & ADEC_SP_BIT(C)) &&
++                !(have & (ADEC_SP_BIT(L) | ADEC_SP_BIT(R))))
++                row[C] = 1.0f;
++            break;
++        }
++        case C:
++            if (!(want & (ADEC_SP_BIT(L) | ADEC_SP_BIT(R)))) {   /* 1/0 out */
++                if (have & ADEC_SP_BIT(L)) row[L] += k;
++                if (have & ADEC_SP_BIT(R)) row[R] += k;
++                if (have & ADEC_SP_BIT(LS)) row[LS] += 0.5f;
++                if (have & ADEC_SP_BIT(RS)) row[RS] += 0.5f;
++            }
++            break;
++        case LS:
++            if (mono_sur && (have & ADEC_SP_BIT(RS))) {
++                row[LS] = (have & ADEC_SP_BIT(LS)) ? k : 0.0f;
++                row[RS] = k;
++            }
++            break;
++        default:
++            break;
++        }
++    }
++    /* Normalise: no output may sum to more than full scale. */
++    float worst = 1.0f;
++    for (u32 i = 0; i < l->channels; i++) {
++        float s = 0.0f;
++        for (u32 j = 0; j < ADEC_SP_COUNT; j++) s += m[i][j];
++        if (s > worst) worst = s;
++    }
++    if (worst > 1.0f)
++        for (u32 i = 0; i < l->channels; i++)
++            for (u32 j = 0; j < ADEC_SP_COUNT; j++) m[i][j] /= worst;
++}
++
++u32 adec_format_pcm(u8* out, const AdecLayout* l, const AdecFfFrame* f)
++{
++    float m[8][ADEC_SP_COUNT];
++    adec_fold_matrix(l, f->speakers, m);
++    const u32 nch = l->channels;
++    u8* o = out;
++    for (u32 s = 0; s < f->samples; s++) {
++        const float* in = f->pcm + (size_t)s * ADEC_SP_COUNT;
++        for (u32 c = 0; c < nch; c++) {
++            float v = 0.0f;
++            for (u32 j = 0; j < ADEC_SP_COUNT; j++) v += m[c][j] * in[j];
++            v *= l->scale;
++            if (l->word_float) {
++                u32 b;
++                memcpy(&b, &v, 4);
++                o[0] = (u8)(b >> 24); o[1] = (u8)(b >> 16); o[2] = (u8)(b >> 8); o[3] = (u8)b;
++                o += 4;
++            } else {
++                float x = v * 32768.0f;
++                s32 q = x >= 32767.0f ? 32767 : x <= -32768.0f ? -32768 : (s32)(x + (x >= 0 ? 0.5f : -0.5f));
++                o[0] = (u8)((u16)q >> 8); o[1] = (u8)q;
++                o += 2;
++            }
++        }
++    }
++    return (u32)(o - out);
++}
++
++u32 adec_store_pcm(u32 dst, const AdecLayout* l, const AdecFfFrame* f)
++{
++    const u32 bytes = adec_pcm_bytes(l, f->samples);
++    u8* tmp = (u8*)malloc(bytes ? bytes : 1);
++    if (!tmp) return 0;
++    adec_format_pcm(tmp, l, f);
++    vm_memcpy_to(dst, tmp, bytes);
++    free(tmp);
++    return bytes;
++}
++
++#ifdef PS3RECOMP_FFMPEG_RUNTIME
++
++/* ---------------------------------------------------------------------------
++ * Decoder
++ * -----------------------------------------------------------------------*/
++
++struct AdecFf {
++    const PS3FFmpeg* ff;
++    AVCodecContext* ctx;
++    AVPacket* pkt;
++    AVFrame* frame;
++    u8* buf;          /* the AU plus FFmpeg's zeroed input padding */
++    u32 buf_cap;
++    float* pcm;       /* one block, ADEC_SP_COUNT floats a frame */
++    u32 pcm_cap;      /* frames */
++};
++
++AdecFf* adec_ff_open(u32 codec_type)
++{
++    enum AVCodecID id;
++    if (codec_type == CELL_ADEC_TYPE_AC3) id = AV_CODEC_ID_AC3;
++    else return NULL;
++
++    const PS3FFmpeg* ff = ps3_ffmpeg_get();
++    if (!ff) return NULL;
++    const AVCodec* codec = ff->avcodec_find_decoder(id);
++    if (!codec) {
++        printf("[cellAdec] libavcodec has no decoder for codecType %u\n", codec_type);
++        return NULL;
++    }
++    AdecFf* d = (AdecFf*)calloc(1, sizeof(*d));
++    if (!d) return NULL;
++    d->ff = ff;
++    d->ctx = ff->avcodec_alloc_context3(codec);
++    d->pkt = ff->av_packet_alloc();
++    d->frame = ff->av_frame_alloc();
++    if (d->ctx) d->ctx->thread_count = 1;
++    if (!d->ctx || !d->pkt || !d->frame || ff->avcodec_open2(d->ctx, codec, NULL) < 0) {
++        printf("[cellAdec] could not open the libavcodec decoder\n");
++        adec_ff_close(d);
++        return NULL;
++    }
++    return d;
++}
++
++void adec_ff_close(AdecFf* d)
++{
++    if (!d) return;
++    if (d->ctx) d->ff->avcodec_free_context(&d->ctx);
++    if (d->pkt) d->ff->av_packet_free(&d->pkt);
++    if (d->frame) d->ff->av_frame_free(&d->frame);
++    free(d->buf);
++    free(d->pcm);
++    free(d);
++}
++
++/* FFmpeg's speaker for a native-order channel bit, as one of ours; a back
++ * centre (2/1, 3/1) is both surrounds at -3 dB. */
++static int adec_ff_speaker(u64 bit)
++{
++    if (bit == AV_CH_FRONT_LEFT)     return ADEC_SP_L;
++    if (bit == AV_CH_FRONT_RIGHT)    return ADEC_SP_R;
++    if (bit == AV_CH_FRONT_CENTER)   return ADEC_SP_C;
++    if (bit == AV_CH_LOW_FREQUENCY)  return ADEC_SP_LFE;
++    if (bit == AV_CH_SIDE_LEFT || bit == AV_CH_BACK_LEFT)   return ADEC_SP_LS;
++    if (bit == AV_CH_SIDE_RIGHT || bit == AV_CH_BACK_RIGHT) return ADEC_SP_RS;
++    if (bit == AV_CH_BACK_CENTER)    return 100;
++    return -1;
++}
++
++static int adec_ff_receive(AdecFf* d, adec_ff_emit_fn emit, void* cb_ctx)
++{
++    int emitted = 0;
++    for (;;) {
++        AVFrame* f = d->frame;
++        int r = d->ff->avcodec_receive_frame(d->ctx, f);
++        if (r < 0)
++            return emitted;                          /* EAGAIN / EOF / error */
++        const int nch = f->ch_layout.nb_channels;
++        const u32 ns = (u32)f->nb_samples;
++        const int planar = f->format == AV_SAMPLE_FMT_FLTP || f->format == AV_SAMPLE_FMT_S16P;
++        const int is_f = f->format == AV_SAMPLE_FMT_FLTP || f->format == AV_SAMPLE_FMT_FLT;
++        const int is_s = f->format == AV_SAMPLE_FMT_S16P || f->format == AV_SAMPLE_FMT_S16;
++        if (nch <= 0 || nch > 8 || (!is_f && !is_s)) {
++            static int _n = 0;
++            if (_n++ < 4)
++                printf("[cellAdec] skipping a block: %d channels, sample format %d\n",
++                       nch, f->format);
++            d->ff->av_frame_unref(f);
++            continue;
++        }
++        if (ns > d->pcm_cap) {
++            float* np = (float*)realloc(d->pcm, (size_t)ns * ADEC_SP_COUNT * sizeof(float));
++            if (!np) { d->ff->av_frame_unref(f); continue; }
++            d->pcm = np;
++            d->pcm_cap = ns;
++        }
++        memset(d->pcm, 0, (size_t)ns * ADEC_SP_COUNT * sizeof(float));
++
++        /* Which of our speakers each decoded channel is. */
++        int sp[8];
++        u32 speakers = 0;
++        if (f->ch_layout.order == AV_CHANNEL_ORDER_NATIVE) {
++            u64 mask = f->ch_layout.u.mask;
++            int c = 0;
++            for (int b = 0; b < 64 && c < nch; b++) {
++                if (!(mask & (1ull << b))) continue;
++                sp[c++] = adec_ff_speaker(1ull << b);
++            }
++            for (; c < nch; c++) sp[c] = -1;
++        } else {
++            /* Unspecified order: mono is C, stereo L R, then the 5.1 order. */
++            static const int dflt[8] = { ADEC_SP_L, ADEC_SP_R, ADEC_SP_C, ADEC_SP_LFE,
++                                         ADEC_SP_LS, ADEC_SP_RS, -1, -1 };
++            for (int c = 0; c < nch; c++) sp[c] = nch == 1 ? ADEC_SP_C : dflt[c];
++        }
++        for (int c = 0; c < nch; c++) {
++            if (sp[c] < 0) continue;
++            const int both = sp[c] == 100;
++            if (both) speakers |= ADEC_SP_BIT(ADEC_SP_LS) | ADEC_SP_BIT(ADEC_SP_RS);
++            else speakers |= ADEC_SP_BIT(sp[c]);
++            for (u32 s = 0; s < ns; s++) {
++                float v;
++                if (is_f) v = planar ? ((const float*)f->extended_data[c])[s]
++                                     : ((const float*)f->data[0])[(size_t)s * nch + c];
++                else v = (planar ? ((const int16_t*)f->extended_data[c])[s]
++                                 : ((const int16_t*)f->data[0])[(size_t)s * nch + c]) / 32768.0f;
++                float* o = d->pcm + (size_t)s * ADEC_SP_COUNT;
++                if (both) { o[ADEC_SP_LS] += v * 0.70710678f; o[ADEC_SP_RS] += v * 0.70710678f; }
++                else o[sp[c]] += v;
++            }
++        }
++
++        AdecFfFrame out;
++        out.pcm = d->pcm;
++        out.samples = ns;
++        out.sample_rate = (u32)f->sample_rate;
++        out.speakers = speakers;
++        out.bit_rate = d->ctx->bit_rate > 0 ? (u32)d->ctx->bit_rate : 0;
++        emit(cb_ctx, &out);
++        emitted++;
++        d->ff->av_frame_unref(f);
++    }
++}
++
++int adec_ff_decode(AdecFf* d, const u8* au, u32 size,
++                   adec_ff_emit_fn emit, void* cb_ctx)
++{
++    if (size + AV_INPUT_BUFFER_PADDING_SIZE > d->buf_cap) {
++        u8* nb = (u8*)realloc(d->buf, size + AV_INPUT_BUFFER_PADDING_SIZE);
++        if (!nb) return AVERROR(ENOMEM);
++        d->buf = nb;
++        d->buf_cap = size + AV_INPUT_BUFFER_PADDING_SIZE;
++    }
++    memcpy(d->buf, au, size);
++    memset(d->buf + size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
++
++    AVPacket* pkt = d->pkt;
++    pkt->data = d->buf;
++    pkt->size = (int)size;
++    pkt->pts = AV_NOPTS_VALUE;
++    pkt->dts = AV_NOPTS_VALUE;
++
++    int n = 0;
++    int r = d->ff->avcodec_send_packet(d->ctx, pkt);
++    if (r == AVERROR(EAGAIN)) {
++        n += adec_ff_receive(d, emit, cb_ctx);
++        r = d->ff->avcodec_send_packet(d->ctx, pkt);
++    }
++    pkt->data = NULL;
++    pkt->size = 0;
++    n += adec_ff_receive(d, emit, cb_ctx);
++    return r < 0 ? r : n;
++}
++
++void adec_ff_reset(AdecFf* d)
++{
++    d->ff->avcodec_flush_buffers(d->ctx);
++}
++
++#else /* !PS3RECOMP_FFMPEG_RUNTIME */
++
++AdecFf* adec_ff_open(u32 codec_type) { (void)codec_type; return NULL; }
++void adec_ff_close(AdecFf* d) { (void)d; }
++int  adec_ff_decode(AdecFf* d, const u8* au, u32 size,
++                    adec_ff_emit_fn emit, void* ctx)
++{ (void)d; (void)au; (void)size; (void)emit; (void)ctx; return -1; }
++void adec_ff_reset(AdecFf* d) { (void)d; }
++
++#endif /* PS3RECOMP_FFMPEG_RUNTIME */
+diff --git a/libs/codec/adec_ffmpeg.h b/libs/codec/adec_ffmpeg.h
+new file mode 100644
+index 0000000..05e8357
+--- /dev/null
++++ b/libs/codec/adec_ffmpeg.h
+@@ -0,0 +1,94 @@
++/*
++ * ps3recomp - cellAdec's decoder back end (libavcodec, loaded at run time)
++ *
++ * cellAdec.c owns the guest-facing state (handles, callbacks, the PCM queue,
++ * pcm items); this file turns one access unit into zero or more blocks of
++ * decoded audio, and lays a block out in guest memory the way a codec's
++ * StartSeq parameters ask for. Without PS3RECOMP_FFMPEG_RUNTIME, or when
++ * FFmpeg is not found, adec_ff_open returns NULL and cellAdec keeps its
++ * silence-only path.
++ */
++
++#ifndef PS3RECOMP_ADEC_FFMPEG_H
++#define PS3RECOMP_ADEC_FFMPEG_H
++
++#include "ps3emu/ps3types.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Speakers, in this order, in every AdecFfFrame (and the order cellAudio's
++ * 8-channel ports use for the first six). */
++enum {
++    ADEC_SP_L, ADEC_SP_R, ADEC_SP_C, ADEC_SP_LFE, ADEC_SP_LS, ADEC_SP_RS,
++    ADEC_SP_COUNT
++};
++#define ADEC_SP_BIT(s) (1u << (s))
++
++/* One decoded block: `samples` frames of ADEC_SP_COUNT host floats
++ * (interleaved; a speaker the stream does not carry is 0 and its bit is clear
++ * in `speakers`). Valid until the next adec_ff_decode / adec_ff_reset. */
++typedef struct AdecFfFrame {
++    const float* pcm;
++    u32 samples;
++    u32 sample_rate;
++    u32 speakers;     /* ADEC_SP_BIT mask */
++    u32 bit_rate;     /* bits/s, 0 unknown */
++} AdecFfFrame;
++
++typedef void (*adec_ff_emit_fn)(void* ctx, const AdecFfFrame* frame);
++
++typedef struct AdecFf AdecFf;
++
++/* A decoder for a cellAdec codec type, or NULL when there is none to be had
++ * (no FFmpeg, PS3RECOMP_FFMPEG=0, or a type not wired up: AC3 is). */
++AdecFf* adec_ff_open(u32 codec_type);
++void    adec_ff_close(AdecFf* d);
++
++/* Decode one AU, calling emit for each block that comes out. Returns the
++ * number of blocks emitted, or a negative FFmpeg error for a damaged AU; the
++ * decoder stays usable. */
++int  adec_ff_decode(AdecFf* d, const u8* au, u32 size,
++                    adec_ff_emit_fn emit, void* ctx);
++
++/* Drop everything held and start over (cellAdecStartSeq). */
++void adec_ff_reset(AdecFf* d);
++
++/* ---------------------------------------------------------------------------
++ * Output layout (no FFmpeg needed; unit tested on its own)
++ * -----------------------------------------------------------------------*/
++
++/* How a title wants its PCM: `channels` interleaved samples per frame, each
++ * a big-endian float (word_float) or big-endian s16; out_sp[i] is the speaker
++ * written to slot i. */
++typedef struct AdecLayout {
++    u32 channels;
++    u32 out_sp[8];
++    int word_float;
++    float scale;      /* applied to every sample; 1.0 = as decoded */
++} AdecLayout;
++
++/* The layout CellAdecParamAc3 (the 0x30 guest bytes cellAdecStartSeq gets for
++ * an AC3 decoder) describes. Returns 0, or -1 for a parameter block it cannot
++ * make sense of (the layout is then 2.0 float). */
++int  adec_ac3_layout(const u8 param[0x30], AdecLayout* out);
++
++/* Bytes adec_store_pcm writes for `samples` frames. */
++u32  adec_pcm_bytes(const AdecLayout* l, u32 samples);
++
++/* Store one block at guest address dst in layout l, folding speakers the
++ * layout lacks into the ones it has (centre into left/right at -3 dB,
++ * surrounds into the fronts or a single surround, LFE dropped), scaled so the
++ * fold cannot clip. Returns the bytes written. */
++u32  adec_store_pcm(u32 dst, const AdecLayout* l, const AdecFfFrame* f);
++
++/* The same, into a host buffer of big-endian samples (what adec_store_pcm
++ * copies to the guest). out must hold adec_pcm_bytes(l, f->samples). */
++u32  adec_format_pcm(u8* out, const AdecLayout* l, const AdecFfFrame* f);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* PS3RECOMP_ADEC_FFMPEG_H */
+diff --git a/libs/codec/cellAdec.c b/libs/codec/cellAdec.c
+index 9bacce2..35d330e 100644
+--- a/libs/codec/cellAdec.c
++++ b/libs/codec/cellAdec.c
+@@ -1,15 +1,22 @@
+ /*
+  * ps3recomp - cellAdec HLE implementation
+  *
+- * Stub audio decoder. Accepts AU data and delivers AUDONE callbacks.
+- * Actual decoding (AAC, ATRAC3+, etc.) requires integration with
+- * an audio codec library (e.g., FFmpeg).
++ * AC3 decodes through libavcodec when the runtime is built with
++ * PS3RECOMP_FFMPEG_RUNTIME and the library is present (adec_ffmpeg.c,
++ * ffmpeg_runtime.c): every AU is decoded, each block is laid out the way the
++ * StartSeq parameters ask (word size, output mode, LFE, channel order),
++ * queued, and announced with PCMOUT; GetPcmItem / GetPcm hand the queue out
++ * oldest first. Every other codec type, and every build or run without
++ * FFmpeg, keeps the silence-only decoder this always was: AUDONE and PCMOUT
++ * per AU, and a block of zeros.
+  */
+ 
+ #include "cellAdec.h"
++#include "adec_ffmpeg.h"
+ #include <stdio.h>
+ #include <stdlib.h>   /* getenv -- an implicit decl returns int, truncating the pointer */
+ #include <string.h>
++#include <math.h>
+ #include "../../runtime/ppu/ppu_memory.h"   /* vm_write*: guest EA -> host, byte-swapped */
+ #include "../../runtime/ppu/ppu_context.h" /* g_active_ctx -> the guest lr */
+ #include "../guest_struct.h"   /* GUEST_EA, guest_struct_load/store */
+@@ -17,6 +24,19 @@
+ #include "../../runtime/memory/vm.h"     /* VM_HLE_INJECT_BASE */
+ #include "ps3emu/log_first.h"
+ 
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN
++#include <windows.h>
++static SRWLOCK s_adec_lock = SRWLOCK_INIT;
++#define ADEC_LOCK()   AcquireSRWLockExclusive(&s_adec_lock)
++#define ADEC_UNLOCK() ReleaseSRWLockExclusive(&s_adec_lock)
++#else
++#include <pthread.h>
++static pthread_mutex_t s_adec_lock = PTHREAD_MUTEX_INITIALIZER;
++#define ADEC_LOCK()   pthread_mutex_lock(&s_adec_lock)
++#define ADEC_UNLOCK() pthread_mutex_unlock(&s_adec_lock)
++#endif
++
+ /* CellAdecPcmItem as the guest reads it, from RPCS3 Modules/cellAdec.h:339.
+  * ps1_netemu copies the whole thing out with six 8-byte loads from offsets
+  * 0x00..0x28 (at 0x000ED964), and that copy is what confirms these offsets
+@@ -34,30 +54,36 @@
+ #define PCMITEM_AU_USERDATA  0x28u
+ #define PCMITEM_BYTES        0x30u
+ 
+-/* ponytail: one fixed-size silence buffer per handle, 1024 stereo float samples
+- * -- the ATRAC3 frame this title (codecType 5) decodes. The ceiling is that it
+- * is SILENCE and always this size; wire a real decoder in here when the audio
+- * itself matters, without changing the guest-visible contract. */
+-#define ADEC_PCM_SAMPLES  1024u
+-#define ADEC_PCM_BYTES    (ADEC_PCM_SAMPLES * 2u * 4u)
++/* The silence-only decoder's block: 1024 stereo float samples, 8 KB, whatever
++ * the codec. Resistance: Fall of Man's movie player sizes its ring from the
++ * bsiInfo pcmSize this reports, so the value stays exactly what it was. */
++#define ADEC_STUB_PCM_BYTES  (1024u * 2u * 4u)
+ 
+ /* Guest-visible scratch, in the HLE inject window rather than from the guest's
+  * own heap. Taking 8 KB out of that heap in cellAdecOpen stalled the title
+  * before it even reached cellAdecStartSeq -- ps1_netemu allocates its own
+  * buffers from the same bump allocator, and perturbing it is not worth it for
+- * two fixed-size blocks whose lifetime is the whole process.
++ * blocks whose lifetime is the whole process.
+  *
+- * +0x40000 is clear of everything else in the window: labels +0x0000, control
+- * +0x2000, callback +0x2F00, the offset tables +0x3000/+0x5000, and sys_rsx's
+- * device/driver-info/reports pages at +0x30000/+0x31000/+0x38000. */
+-#define ADEC_SCRATCH_BASE   (VM_HLE_INJECT_BASE + 0x40000u)
+-#define ADEC_SCRATCH_STRIDE 0x4000u
+-#define ADEC_ITEM_EA(h)     (ADEC_SCRATCH_BASE + (u32)(h) * ADEC_SCRATCH_STRIDE)
+-#define ADEC_PCM_EA(h)      (ADEC_ITEM_EA(h) + 0x100u)
+-/* The codec info block the PcmItem's bsiInfo points to, in the gap between
+- * the 0x30-byte item and the PCM buffer. */
+-#define ADEC_BSI_EA(h)      (ADEC_ITEM_EA(h) + 0x40u)
+-#define ADEC_BSI_BYTES      0x40u
++ * +0x100000..+0x500000 is clear of everything else in the window: labels
++ * +0x0000, control +0x2000, callback +0x2F00, the offset tables +0x3000 /
++ * +0x5000, sys_rsx's device/driver-info/reports pages at +0x30000 / +0x31000 /
++ * +0x38000, cellVdec's pic items at +0x50000. One MB per decoder: ADEC_SLOTS
++ * blocks of 64 KB, each the 0x30-byte PcmItem at +0, the bsiInfo it points to
++ * at +0x80 and the PCM at +0x100 (an AC3 block is at most 1536 x 6 x 4 =
++ * 36 KB). */
++#define ADEC_SLOTS          16u
++#define ADEC_SLOT_STRIDE    0x10000u
++#define ADEC_BASE_EA(h)     (VM_HLE_INJECT_BASE + 0x100000u + (u32)(h) * 0x100000u)
++#define ADEC_ITEM_EA(h, s)  (ADEC_BASE_EA(h) + (u32)(s) * ADEC_SLOT_STRIDE)
++#define ADEC_BSI_EA(h, s)   (ADEC_ITEM_EA(h, s) + 0x80u)
++#define ADEC_BSI_BYTES      0x80u
++#define ADEC_PCM_EA(h, s)   (ADEC_ITEM_EA(h, s) + 0x100u)
++#define ADEC_PCM_MAX        (ADEC_SLOT_STRIDE - 0x100u)
++
++/* One AC3 block is 1536 samples: 2880 ticks of the 90 kHz clock. */
++#define ADEC_AC3_PTS_STEP   2880u
++#define CODEC_TS_INVALID    0xFFFFFFFFu
+ 
+ /* ---------------------------------------------------------------------------
+  * Internal state
+@@ -70,10 +96,26 @@ typedef struct {
+     u32 cbFunc;         /* guest EA of the callback's OPD */
+     u32 cbArg;          /* guest EA handed back to it     */
+     int seqStarted;
+-    u32 itemEa;         /* guest EA of the 0x30-byte CellAdecPcmItem */
+-    u32 pcmEa;          /* guest EA of the PCM buffer it points at    */
+-    int hasPcm;
+-    u32 auCount;        /* total AUs decoded */
++    AdecFf* ff;         /* NULL: the silence-only decoder */
++    AdecLayout layout;
++
++    /* Decoded blocks, oldest first: q[(head + i) % ADEC_SLOTS] for i < count
++     * is a slot index; itemed[slot] says GetPcmItem already handed it out. */
++    u32 q[ADEC_SLOTS];
++    u32 head, count;
++    u8  itemed[ADEC_SLOTS];
++    u32 next_slot;
++
++    /* PTS interpolation for AUs that carry none (RPCS3 correct_pts_value). */
++    u32 prev_pts_hi, prev_pts_lo;
++    int prev_pts_valid;
++
++    /* Diagnostics */
++    u64 aus, frames, errors, dropped, pcm_bytes, taken;
++    double acc_sq;      /* sum of squares of the decoded L/R since the last report */
++    u64 acc_n;
++    float acc_peak;
++    double sp_sq[ADEC_SP_COUNT];   /* per decoded speaker, same interval */
+ } AdecSlot;
+ 
+ static AdecSlot s_adec[MAX_ADEC];
+@@ -90,21 +132,263 @@ static AdecSlot s_adec[MAX_ADEC];
+  * 0x1B5F00 is the guest OPD. That crash is what this function exists to stop.
+  *
+  * ponytail: dispatched SYNCHRONOUSLY on the caller's thread rather than from a
+- * decoder thread as lv2 does. The ceiling is a guest callback that blocks
+- * waiting on the thread that called DecodeAu -- give this its own thread if a
+- * title ever deadlocks here. */
++ * decoder thread as lv2 does, and never under s_adec_lock: a title's PCMOUT
++ * handler may call GetPcmItem right away. The ceiling is a guest callback that
++ * blocks waiting on the thread that called DecodeAu -- give this its own
++ * thread if a title ever deadlocks here. */
+ static void adec_notify(CellAdecHandle handle, u32 msg_type, s32 msg_data)
+ {
+     if (handle >= MAX_ADEC || !s_adec[handle].in_use) return;
+-    const AdecSlot* a = &s_adec[handle];
++    const u32 cb = s_adec[handle].cbFunc, arg = s_adec[handle].cbArg;
+     { static int _n = 0;
+       if (PS3_LOG_FIRST(_n, 4))
+           printf("[cellAdec] notify h=%u msg=%u data=0x%X cb=0x%08X arg=0x%08X caller=%d\n",
+-                 handle, msg_type, (unsigned)msg_data, a->cbFunc, a->cbArg,
++                 handle, msg_type, (unsigned)msg_data, cb, arg,
+                  g_ps3_guest_caller ? 1 : 0); }
+-    if (!a->cbFunc || !g_ps3_guest_caller) return;
+-    g_ps3_guest_caller(a->cbFunc, (u64)handle, (u64)msg_type,
+-                       (u64)(s64)msg_data, (u64)a->cbArg, 0, 0, 0, 0);
++    if (!cb || !g_ps3_guest_caller) return;
++    g_ps3_guest_caller(cb, (u64)handle, (u64)msg_type,
++                       (u64)(s64)msg_data, (u64)arg, 0, 0, 0, 0);
++}
++
++/* One line of decode statistics (and reset the level meter). Caller holds
++ * the lock. */
++static void adec_report(CellAdecHandle h, const char* why)
++{
++    AdecSlot* a = &s_adec[h];
++    const double rms = a->acc_n ? sqrt(a->acc_sq / (double)a->acc_n) : 0.0;
++    printf("[cellAdec] h=%u %s: codecType=%u %s au=%llu blocks=%llu errors=%llu "
++           "dropped=%llu taken=%llu pcm=%llu KB, level rms %.4f peak %.4f\n",
++           h, why, a->codecType, a->ff ? "libavcodec" : "silence",
++           (unsigned long long)a->aus, (unsigned long long)a->frames,
++           (unsigned long long)a->errors, (unsigned long long)a->dropped,
++           (unsigned long long)a->taken, (unsigned long long)(a->pcm_bytes >> 10),
++           rms, a->acc_peak);
++    if (a->ff && a->acc_n) {
++        static const char* nm[ADEC_SP_COUNT] = { "L", "R", "C", "LFE", "Ls", "Rs" };
++        printf("[cellAdec] h=%u decoded speakers:", h);
++        for (int i = 0; i < ADEC_SP_COUNT; i++)
++            printf(" %s %.4f", nm[i], sqrt(a->sp_sq[i] / (double)(a->acc_n / 2)));
++        printf("\n");
++    }
++    memset(a->sp_sq, 0, sizeof a->sp_sq);
++    a->acc_sq = 0.0;
++    a->acc_n = 0;
++    a->acc_peak = 0.0f;
++}
++
++/* ---------------------------------------------------------------------------
++ * The PCM queue (caller holds the lock)
++ * -----------------------------------------------------------------------*/
++
++/* A free slot for the next block. When the title has let every slot fill, the
++ * oldest block is dropped: a stalled consumer loses audio rather than wedging
++ * the demuxer thread that calls DecodeAu. */
++static u32 adec_take_slot(AdecSlot* a)
++{
++    if (a->count == ADEC_SLOTS) {
++        a->head = (a->head + 1) % ADEC_SLOTS;
++        a->count--;
++        a->dropped++;
++        { static int _n = 0; if (PS3_LOG_FIRST(_n, 4))
++            printf("[cellAdec] PCM queue full (%u blocks): the oldest is dropped\n", ADEC_SLOTS); }
++    }
++    for (u32 tries = 0; tries < ADEC_SLOTS; tries++) {
++        const u32 s = (a->next_slot + tries) % ADEC_SLOTS;
++        int used = 0;
++        for (u32 i = 0; i < a->count; i++)
++            if (a->q[(a->head + i) % ADEC_SLOTS] == s) { used = 1; break; }
++        if (!used) {
++            a->next_slot = (s + 1) % ADEC_SLOTS;
++            return s;
++        }
++    }
++    return 0;   /* unreachable: count < ADEC_SLOTS leaves one free */
++}
++
++static void adec_push(AdecSlot* a, u32 slot)
++{
++    a->q[(a->head + a->count) % ADEC_SLOTS] = slot;
++    a->count++;
++    a->itemed[slot] = 0;
++}
++
++/* The AU's timestamp for the block that comes out of it: its own, or the
++ * previous block's plus one block when the title gave none. */
++static void adec_block_pts(AdecSlot* a, u32 hi, u32 lo, u32* out_hi, u32* out_lo)
++{
++    if (hi == CODEC_TS_INVALID && lo == CODEC_TS_INVALID && a->prev_pts_valid) {
++        u32 nlo = a->prev_pts_lo + ADEC_AC3_PTS_STEP;
++        hi = nlo < a->prev_pts_lo ? ((a->prev_pts_hi + 1) & 1) : a->prev_pts_hi;
++        lo = nlo;
++    }
++    if (hi != CODEC_TS_INVALID && lo != CODEC_TS_INVALID) {
++        a->prev_pts_hi = hi;
++        a->prev_pts_lo = lo;
++        a->prev_pts_valid = 1;
++    }
++    *out_hi = hi;
++    *out_lo = lo;
++}
++
++/* The AU's header fields, for the AC3 bitstream info block. */
++typedef struct {
++    int valid;
++    u8 fscod, frmsizecod, bsid, bsmod, acmod, cmixlev, surmixlev, dsurmod, lfeon;
++} Ac3Header;
++
++static void ac3_parse_header(const u8* p, u32 n, Ac3Header* h)
++{
++    memset(h, 0, sizeof(*h));
++    if (n < 8 || p[0] != 0x0B || p[1] != 0x77) return;
++    h->fscod = p[4] >> 6;
++    h->frmsizecod = p[4] & 0x3F;
++    h->bsid = p[5] >> 3;
++    h->bsmod = p[5] & 7;
++    /* acmod(3), then cmixlev / surmixlev / dsurmod when present, then lfeon. */
++    u32 bits = ((u32)p[6] << 8) | p[7];
++    int pos = 16;
++    #define AC3_TAKE(nb) ((pos -= (nb)), (u8)((bits >> pos) & ((1u << (nb)) - 1u)))
++    h->acmod = AC3_TAKE(3);
++    if ((h->acmod & 1) && h->acmod != 1) h->cmixlev = AC3_TAKE(2);
++    if (h->acmod & 4) h->surmixlev = AC3_TAKE(2);
++    if (h->acmod == 2) h->dsurmod = AC3_TAKE(2);
++    h->lfeon = AC3_TAKE(1);
++    #undef AC3_TAKE
++    h->valid = 1;
++}
++
++/* CellAdecBsiAc3 (RPCS3 Modules/cellAdec.h):
++ *   +0x00 codecType +0x04 versionInfo +0x08 totalCallCarryRun +0x0C totalCallNum
++ *   +0x10 bitrateValue +0x14 pcmSize +0x18 esSizeBit +0x1C errorCode
++ *   +0x20 u8 libInfoFlag, validity, channelValue, fsIndex, outputQuantization,
++ *         outputChannel, monoFlag
++ *   +0x28 u32 bsi[2]  +0x30 u16 frmSizeCod  +0x32 u8 acmod, lfeOn, karaokeMode,
++ *         cmixlev, surmixlev, dsurmod, copyright, original, bsmod, bsid, ... */
++static void adec_write_bsi_ac3(u32 bsi, const AdecSlot* a, const Ac3Header* hd,
++                               u32 pcm_size, u32 au_size, u32 bit_rate)
++{
++    static const u16 kbps[19] = { 32, 40, 48, 56, 64, 80, 96, 112, 128, 160,
++                                  192, 224, 256, 320, 384, 448, 512, 576, 640 };
++    vm_write32(bsi + 0x00, a->codecType);
++    vm_write32(bsi + 0x0C, (u32)a->frames);
++    vm_write32(bsi + 0x10, hd->valid && hd->frmsizecod / 2 < 19
++                               ? kbps[hd->frmsizecod / 2] * 1000u : bit_rate);
++    vm_write32(bsi + 0x14, pcm_size);
++    vm_write32(bsi + 0x18, au_size * 8u);
++    vm_write32(bsi + 0x1C, 0);
++    vm_write8 (bsi + 0x21, (u8)hd->valid);
++    vm_write8 (bsi + 0x22, (u8)a->layout.channels);
++    vm_write8 (bsi + 0x23, hd->fscod);
++    vm_write8 (bsi + 0x24, (u8)(a->layout.word_float ? 1 : 0));
++    vm_write8 (bsi + 0x26, (u8)(hd->acmod == 1));
++    vm_write16(bsi + 0x30, hd->frmsizecod);
++    vm_write8 (bsi + 0x32, hd->acmod);
++    vm_write8 (bsi + 0x33, hd->lfeon);
++    vm_write8 (bsi + 0x35, hd->cmixlev);
++    vm_write8 (bsi + 0x36, hd->surmixlev);
++    vm_write8 (bsi + 0x37, hd->dsurmod);
++    vm_write8 (bsi + 0x3A, hd->bsmod);
++    vm_write8 (bsi + 0x3B, hd->bsid);
++}
++
++/* Fill a slot's PcmItem. */
++static void adec_write_item(CellAdecHandle h, u32 slot, u32 pcm_size, u32 au_ea,
++                            u32 pts_hi, u32 pts_lo)
++{
++    const u32 it = ADEC_ITEM_EA(h, slot);
++    vm_write32(it + PCMITEM_PCM_HANDLE, slot);
++    vm_write32(it + PCMITEM_STATUS,     0);              /* CELL_OK */
++    vm_write32(it + PCMITEM_START_ADDR, ADEC_PCM_EA(h, slot));
++    vm_write32(it + PCMITEM_SIZE,       pcm_size);
++    /* bsiInfo must point at a codec info block, not be null. Resistance:
++     * Fall of Man sizes each AC3 block from bsiInfo+0x14; with a null
++     * pointer that read address 0x14 and came back 0, so its ring buffer
++     * never filled, it never started its audio port, and its movie player
++     * waited forever. */
++    vm_write32(it + PCMITEM_BSI_INFO,   ADEC_BSI_EA(h, slot));
++    /* Echo the AU back, which is what a real decoder does -- the guest
++     * matches returned PCM against the AU it submitted. */
++    vm_write32(it + PCMITEM_AU_START,   vm_read32(au_ea + (u32)offsetof(CellAdecAuInfo, startAddr)));
++    vm_write32(it + PCMITEM_AU_SIZE,    vm_read32(au_ea + (u32)offsetof(CellAdecAuInfo, size)));
++    vm_write32(it + PCMITEM_AU_PTS_HI,  pts_hi);
++    vm_write32(it + PCMITEM_AU_PTS_LO,  pts_lo);
++    vm_write32(it + PCMITEM_AU_USERDATA,     vm_read32(au_ea + 0x10));
++    vm_write32(it + PCMITEM_AU_USERDATA + 4, vm_read32(au_ea + 0x14));
++}
++
++/* ---------------------------------------------------------------------------
++ * Decoding one AU
++ * -----------------------------------------------------------------------*/
++
++typedef struct {
++    CellAdecHandle h;
++    u32 au_ea;          /* the CellAdecAuInfo */
++    u32 au_size;
++    u32 pts_hi, pts_lo; /* the AU's own */
++    Ac3Header hd;
++    u32 emitted;
++} AdecDecodeCtx;
++
++/* One decoded block: into a slot, onto the queue. Runs under the lock. */
++static void adec_emit_block(void* user, const AdecFfFrame* f)
++{
++    AdecDecodeCtx* c = (AdecDecodeCtx*)user;
++    AdecSlot* a = &s_adec[c->h];
++    AdecFfFrame fr = *f;
++    u32 bytes = adec_pcm_bytes(&a->layout, fr.samples);
++    if (bytes > ADEC_PCM_MAX) {
++        fr.samples = ADEC_PCM_MAX / (a->layout.channels * (a->layout.word_float ? 4u : 2u));
++        bytes = adec_pcm_bytes(&a->layout, fr.samples);
++    }
++    const u32 slot = adec_take_slot(a);
++    adec_store_pcm(ADEC_PCM_EA(c->h, slot), &a->layout, &fr);
++
++    u32 hi, lo;
++    if (c->emitted == 0) adec_block_pts(a, c->pts_hi, c->pts_lo, &hi, &lo);
++    else adec_block_pts(a, CODEC_TS_INVALID, CODEC_TS_INVALID, &hi, &lo);
++    a->frames++;
++    const u32 bsi = ADEC_BSI_EA(c->h, slot);
++    for (u32 o = 0; o < ADEC_BSI_BYTES; o += 4) vm_write32(bsi + o, 0);
++    adec_write_bsi_ac3(bsi, a, &c->hd, bytes, c->au_size, fr.bit_rate);
++    adec_write_item(c->h, slot, bytes, c->au_ea, hi, lo);
++    adec_push(a, slot);
++    a->pcm_bytes += bytes;
++    c->emitted++;
++
++    for (u32 s = 0; s < fr.samples; s++) {
++        for (int k = 0; k < ADEC_SP_COUNT; k++) {
++            const float v = fr.pcm[(size_t)s * ADEC_SP_COUNT + k];
++            a->sp_sq[k] += (double)v * v;
++        }
++        const float l = fr.pcm[(size_t)s * ADEC_SP_COUNT + ADEC_SP_L];
++        const float r = fr.pcm[(size_t)s * ADEC_SP_COUNT + ADEC_SP_R];
++        a->acc_sq += (double)l * l + (double)r * r;
++        const float al = fabsf(l), ar = fabsf(r);
++        if (al > a->acc_peak) a->acc_peak = al;
++        if (ar > a->acc_peak) a->acc_peak = ar;
++    }
++    a->acc_n += 2u * fr.samples;
++}
++
++/* A block of zeros, for the silence-only decoder and for an AU the decoder
++ * rejected (the title expects one PCMOUT per AU and counts them). */
++static void adec_emit_silence(AdecDecodeCtx* c, u32 bytes)
++{
++    AdecSlot* a = &s_adec[c->h];
++    const u32 slot = adec_take_slot(a);
++    const u32 pcm = ADEC_PCM_EA(c->h, slot);
++    for (u32 o = 0; o < bytes; o += 4) vm_write32(pcm + o, 0);
++    u32 hi, lo;
++    adec_block_pts(a, c->pts_hi, c->pts_lo, &hi, &lo);
++    a->frames++;
++    const u32 bsi = ADEC_BSI_EA(c->h, slot);
++    for (u32 o = 0; o < ADEC_BSI_BYTES; o += 4) vm_write32(bsi + o, 0);
++    if (a->ff) adec_write_bsi_ac3(bsi, a, &c->hd, bytes, c->au_size, 0);
++    else vm_write32(bsi + 0x14, bytes);   /* pcmSize: all the stub ever filled */
++    adec_write_item(c->h, slot, bytes, c->au_ea, hi, lo);
++    adec_push(a, slot);
++    a->pcm_bytes += bytes;
++    c->emitted++;
+ }
+ 
+ /* ---------------------------------------------------------------------------
+@@ -150,26 +434,34 @@ s32 cellAdecOpen(const CellAdecType* type, const CellAdecResource* res,
+     if (!type || !handle_ea)
+         return (s32)CELL_ADEC_ERROR_ARG;
+ 
++    /* Outside the lock: the first open loads FFmpeg. */
++    AdecFf* ff = adec_ff_open(codec_type);
++
++    ADEC_LOCK();
+     for (int i = 0; i < MAX_ADEC; i++) {
+         if (!s_adec[i].in_use) {
+-            memset(&s_adec[i], 0, sizeof(AdecSlot));
+-            s_adec[i].in_use    = 1;
+-            s_adec[i].codecType = codec_type;
++            AdecSlot* a = &s_adec[i];
++            memset(a, 0, sizeof(AdecSlot));
++            a->in_use    = 1;
++            a->codecType = codec_type;
++            a->ff        = ff;
++            adec_ac3_layout(NULL, &a->layout);   /* 2.0 float until StartSeq */
+             if (cb_ea) {
+-                s_adec[i].cbFunc = vm_read32(cb_ea + 0);
+-                s_adec[i].cbArg  = vm_read32(cb_ea + 4);
++                a->cbFunc = vm_read32(cb_ea + 0);
++                a->cbArg  = vm_read32(cb_ea + 4);
+             }
++            ADEC_UNLOCK();
+             /* The PcmItem is handed to the guest BY POINTER, so it cannot live
+              * in host memory -- returning &host_struct is what crashed here
+              * once already. */
+-            s_adec[i].itemEa = ADEC_ITEM_EA(i);
+-            s_adec[i].pcmEa  = ADEC_PCM_EA(i);
+             vm_write32(handle_ea, (u32)i);
+-            printf("[cellAdec] Open -> handle=%u item=0x%08X pcm=0x%08X\n",
+-                   i, s_adec[i].itemEa, s_adec[i].pcmEa);
++            printf("[cellAdec] Open -> handle=%u items=0x%08X decoder=%s\n",
++                   i, ADEC_BASE_EA(i), ff ? "libavcodec" : "silence");
+             return CELL_OK;
+         }
+     }
++    ADEC_UNLOCK();
++    adec_ff_close(ff);
+     return (s32)CELL_ADEC_ERROR_BUSY;
+ }
+ 
+@@ -177,22 +469,53 @@ s32 cellAdecClose(CellAdecHandle handle)
+ {
+     printf("[cellAdec] Close(handle=%u)\n", handle);
+ 
+-    if (handle >= MAX_ADEC || !s_adec[handle].in_use)
++    ADEC_LOCK();
++    if (handle >= MAX_ADEC || !s_adec[handle].in_use) {
++        ADEC_UNLOCK();
+         return (s32)CELL_ADEC_ERROR_ARG;
+-
++    }
++    adec_report(handle, "close");
++    AdecFf* ff = s_adec[handle].ff;
++    s_adec[handle].ff = NULL;
+     s_adec[handle].in_use = 0;
++    ADEC_UNLOCK();
++    adec_ff_close(ff);
+     return CELL_OK;
+ }
+ 
++/* param: the codec's parameter block (CellAdecParamAc3 for AC3). */
+ s32 cellAdecStartSeq(CellAdecHandle handle, void* param)
+ {
+-    (void)param;
+-    printf("[cellAdec] StartSeq(handle=%u)\n", handle);
++    const u32 pea = GUEST_EA(param);
++    u8 p[0x30];
++    if (pea) vm_memcpy_from(p, pea, sizeof p);
++    {
++        char hex[0x30 * 2 + 1];
++        for (u32 i = 0; i < (pea ? sizeof p : 0u); i++) snprintf(hex + i * 2, 3, "%02X", p[i]);
++        if (!pea) hex[0] = 0;
++        printf("[cellAdec] StartSeq(handle=%u param=0x%08X %s)\n", handle, pea, hex);
++    }
+ 
+-    if (handle >= MAX_ADEC || !s_adec[handle].in_use)
++    ADEC_LOCK();
++    if (handle >= MAX_ADEC || !s_adec[handle].in_use) {
++        ADEC_UNLOCK();
+         return (s32)CELL_ADEC_ERROR_ARG;
+-
+-    s_adec[handle].seqStarted = 1;
++    }
++    AdecSlot* a = &s_adec[handle];
++    a->seqStarted = 1;
++    a->head = a->count = 0;
++    a->prev_pts_valid = 0;
++    if (a->ff) {
++        adec_ff_reset(a->ff);
++        if (a->codecType == CELL_ADEC_TYPE_AC3 && adec_ac3_layout(pea ? p : NULL, &a->layout) < 0)
++            printf("[cellAdec] StartSeq: AC3 parameters not understood; 2.0 float\n");
++        printf("[cellAdec] StartSeq: %u channel(s) %s, speakers", a->layout.channels,
++               a->layout.word_float ? "float" : "s16");
++        static const char* names[ADEC_SP_COUNT] = { "L", "R", "C", "LFE", "Ls", "Rs" };
++        for (u32 i = 0; i < a->layout.channels; i++) printf(" %s", names[a->layout.out_sp[i]]);
++        printf(", scale %.3f\n", a->layout.scale);
++    }
++    ADEC_UNLOCK();
+     return CELL_OK;
+ }
+ 
+@@ -215,10 +538,14 @@ s32 cellAdecEndSeq(CellAdecHandle handle)
+                  g_active_ctx ? (unsigned long long)g_active_ctx->thread_id : 0ull); } }
+     printf("[cellAdec] EndSeq(handle=%u)\n", handle);
+ 
+-    if (handle >= MAX_ADEC || !s_adec[handle].in_use)
++    ADEC_LOCK();
++    if (handle >= MAX_ADEC || !s_adec[handle].in_use) {
++        ADEC_UNLOCK();
+         return (s32)CELL_ADEC_ERROR_ARG;
+-
++    }
+     s_adec[handle].seqStarted = 0;
++    if (s_adec[handle].aus) adec_report(handle, "end of sequence");
++    ADEC_UNLOCK();
+ 
+     adec_notify(handle, CELL_ADEC_MSG_TYPE_SEQDONE, CELL_OK);
+ 
+@@ -232,95 +559,134 @@ s32 cellAdecDecodeAu(CellAdecHandle handle, const CellAdecAuInfo* auInfo)
+     if (!auInfo)
+         return (s32)CELL_ADEC_ERROR_ARG;
+ 
+-    AdecSlot* a = &s_adec[handle];
++    AdecDecodeCtx c;
++    memset(&c, 0, sizeof c);
++    c.h = handle;
++    c.au_ea = GUEST_EA(auInfo);
++    const u32 au_addr = vm_read32(c.au_ea + (u32)offsetof(CellAdecAuInfo, startAddr));
++    c.au_size = vm_read32(c.au_ea + (u32)offsetof(CellAdecAuInfo, size));
++    c.pts_hi = vm_read32(c.au_ea + 0x08);
++    c.pts_lo = vm_read32(c.au_ea + 0x0C);
+ 
+-    printf("[cellAdec] DecodeAu(handle=%u, addr=0x%X, size=%u)\n",
+-           handle, vm_read32(GUEST_EA(auInfo) + (u32)offsetof(CellAdecAuInfo, startAddr)),
+-           vm_read32(GUEST_EA(auInfo) + (u32)offsetof(CellAdecAuInfo, size)));
++    { static int _n = 0; if (PS3_LOG_FIRST(_n, 8))
++        printf("[cellAdec] DecodeAu(handle=%u, addr=0x%X, size=%u, pts=%08X:%08X)\n",
++               handle, au_addr, c.au_size, c.pts_hi, c.pts_lo); }
+ 
+     /* Step 1: report the AU consumed. msgData is the AU INFO ADDRESS, not a
+      * status -- see RPCS3 Modules/cellAdec.cpp:1345. A decoder that tracks its
+      * outstanding AUs by address gets a null back if this is CELL_OK. */
+-    adec_notify(handle, CELL_ADEC_MSG_TYPE_AUDONE, (s32)GUEST_EA(auInfo));
++    adec_notify(handle, CELL_ADEC_MSG_TYPE_AUDONE, (s32)c.au_ea);
+ 
+-    /* Step 2: Generate PCMOUT callback with dummy PCM info.
+-     * Without FFmpeg, we produce silence. But games that check for
+-     * decode completion via callbacks will proceed correctly. */
+-    a->auCount++;
+-    {
+-        const u32 au = GUEST_EA(auInfo);
+-        const u32 it = a->itemEa;
+-        for (u32 o = 0; o < ADEC_PCM_BYTES; o += 4) vm_write32(a->pcmEa + o, 0);
+-
+-        vm_write32(it + PCMITEM_PCM_HANDLE, (u32)handle);
+-        vm_write32(it + PCMITEM_STATUS,     0);              /* CELL_OK */
+-        vm_write32(it + PCMITEM_START_ADDR, a->pcmEa);
+-        vm_write32(it + PCMITEM_SIZE,       ADEC_PCM_BYTES);
+-        /* bsiInfo must point at a codec info block, not be null. Resistance:
+-         * Fall of Man sizes each AC3 block from bsiInfo+0x14; with a null
+-         * pointer that read address 0x14 and came back 0, so its ring buffer
+-         * never filled, it never started its audio port, and its movie player
+-         * waited forever. ponytail: only that output-size word is filled; the
+-         * rest of the block is zero until a title reads another field. */
+-        const u32 bsi = ADEC_BSI_EA(handle);
+-        for (u32 o = 0; o < ADEC_BSI_BYTES; o += 4) vm_write32(bsi + o, 0);
+-        vm_write32(bsi + 0x14, ADEC_PCM_BYTES);
+-        vm_write32(it + PCMITEM_BSI_INFO,   bsi);
+-        /* Echo the AU back, which is what a real decoder does -- the guest
+-         * matches returned PCM against the AU it submitted. */
+-        vm_write32(it + PCMITEM_AU_START,
+-                   vm_read32(au + (u32)offsetof(CellAdecAuInfo, startAddr)));
+-        vm_write32(it + PCMITEM_AU_SIZE,
+-                   vm_read32(au + (u32)offsetof(CellAdecAuInfo, size)));
+-        vm_write32(it + PCMITEM_AU_PTS_HI,       vm_read32(au + 0x08));
+-        vm_write32(it + PCMITEM_AU_PTS_LO,       vm_read32(au + 0x0C));
+-        vm_write32(it + PCMITEM_AU_USERDATA,     vm_read32(au + 0x10));
+-        vm_write32(it + PCMITEM_AU_USERDATA + 4, vm_read32(au + 0x14));
++    /* Step 2: decode into the PCM queue. */
++    u8 stack_au[4096];
++    u8* au = NULL;
++    const u32 n = c.au_size > 0x100000u ? 0x100000u : c.au_size;
++    ADEC_LOCK();
++    AdecSlot* a = &s_adec[handle];
++    if (!a->in_use) { ADEC_UNLOCK(); return (s32)CELL_ADEC_ERROR_ARG; }
++    a->aus++;
++    if (a->ff && au_addr && n) {
++        au = n <= sizeof stack_au ? stack_au : (u8*)malloc(n);
++        if (au) {
++            vm_memcpy_from(au, au_addr, n);
++            if (a->codecType == CELL_ADEC_TYPE_AC3) ac3_parse_header(au, n, &c.hd);
++            const int r = adec_ff_decode(a->ff, au, n, adec_emit_block, &c);
++            if (r < 0) {
++                a->errors++;
++                { static int _n = 0; if (PS3_LOG_FIRST(_n, 8))
++                    printf("[cellAdec] AU %llu (size %u, starts %02X %02X) did not decode (%d)\n",
++                           (unsigned long long)a->aus, n, au[0], n > 1 ? au[1] : 0, r); }
++            }
++            if (au != stack_au) free(au);
++        }
++        /* One PCMOUT per AU, which is what the title counts: a rejected AU
++         * gets a block of silence the size a good one would have had. */
++        if (c.emitted == 0)
++            adec_emit_silence(&c, adec_pcm_bytes(&a->layout, 1536u));
++    } else {
++        adec_emit_silence(&c, ADEC_STUB_PCM_BYTES);
+     }
+-    a->hasPcm = 1;
++    /* Every 2000 AUs (about a minute of AC3); every 156 (5 s, the cellAudio
++     * PS3_AUDIO_STATS interval) when PS3_AUDIO_STATS is set. */
++    { static int every = 0;
++      if (!every) every = getenv("PS3_AUDIO_STATS") ? 156 : 2000;
++      if ((a->aus % (u64)every) == 0) adec_report(handle, "decoding"); }
++    const u32 emitted = c.emitted;
++    ADEC_UNLOCK();
+ 
+-    adec_notify(handle, CELL_ADEC_MSG_TYPE_PCMOUT, CELL_OK);
++    for (u32 i = 0; i < emitted; i++)
++        adec_notify(handle, CELL_ADEC_MSG_TYPE_PCMOUT, CELL_OK);
+ 
+     return CELL_OK;
+ }
+ 
++/* GetPcm: the oldest block, copied into the title's buffer (outBuffer may be
++ * null to just release it), and its slot freed. */
+ s32 cellAdecGetPcm(CellAdecHandle handle, void* outBuffer)
+ {
++    const u32 out = GUEST_EA(outBuffer);
+     { static int _n = 0; if (PS3_LOG_FIRST(_n, 6))
+-        printf("[cellAdec] GetPcm(handle=%u out=0x%08X)\n",
+-               handle, GUEST_EA(outBuffer)); }
+-    if (handle >= MAX_ADEC || !s_adec[handle].in_use)
+-        return (s32)CELL_ADEC_ERROR_ARG;
++        printf("[cellAdec] GetPcm(handle=%u out=0x%08X)\n", handle, out); }
+ 
+-    if (!s_adec[handle].hasPcm)
++    ADEC_LOCK();
++    if (handle >= MAX_ADEC || !s_adec[handle].in_use) {
++        ADEC_UNLOCK();
++        return (s32)CELL_ADEC_ERROR_ARG;
++    }
++    AdecSlot* a = &s_adec[handle];
++    if (a->count == 0) {
++        ADEC_UNLOCK();
+         return (s32)CELL_ADEC_ERROR_EMPTY;
+-
++    }
++    const u32 slot = a->q[a->head];
++    a->head = (a->head + 1) % ADEC_SLOTS;
++    a->count--;
++    a->taken++;
++    const u32 it = ADEC_ITEM_EA(handle, slot);
++    const u32 src = vm_read32(it + PCMITEM_START_ADDR);
++    u32 size = vm_read32(it + PCMITEM_SIZE);
++    if (size > ADEC_PCM_MAX) size = ADEC_PCM_MAX;
+     /* outBuffer is the GUEST's buffer. Leaving it untouched hands the title
+      * whatever happened to be there, which it then plays. */
+-    { const u32 out = GUEST_EA(outBuffer);
+-      if (out) for (u32 o = 0; o < ADEC_PCM_BYTES; o += 4) vm_write32(out + o, 0); }
+-
+-    s_adec[handle].hasPcm = 0;
++    if (out && size) {
++        u8* tmp = (u8*)malloc(size);
++        if (tmp) {
++            vm_memcpy_from(tmp, src, size);
++            vm_memcpy_to(out, tmp, size);
++            free(tmp);
++        }
++    }
++    ADEC_UNLOCK();
+     return CELL_OK;
+ }
+ 
++/* GetPcmItem: the oldest block GetPcmItem has not handed out yet. */
+ s32 cellAdecGetPcmItem(CellAdecHandle handle, const CellAdecPcmItem** pcmItem)
+ {
+-    { static int _n = 0; if (PS3_LOG_FIRST(_n, 6))
+-        printf("[cellAdec] GetPcmItem(handle=%u out=0x%08X hasPcm=%d)\n",
+-               handle, GUEST_EA(pcmItem),
+-               handle < MAX_ADEC ? s_adec[handle].hasPcm : -1); }
+-    if (handle >= MAX_ADEC || !s_adec[handle].in_use)
++    ADEC_LOCK();
++    if (handle >= MAX_ADEC || !s_adec[handle].in_use) {
++        ADEC_UNLOCK();
+         return (s32)CELL_ADEC_ERROR_ARG;
+-
+-    if (!s_adec[handle].hasPcm)
+-        return (s32)CELL_ADEC_ERROR_EMPTY;
+-
+-    /* pcmItem is a GUEST CellAdecPcmItem**. Writing &host_struct here put a
+-     * HOST address into guest memory; the guest dereferenced it and died on a
+-     * wild address (rip 0x870D0E, fault 0xCFFDFFF0). Write the guest EA. */
+-    if (pcmItem)
+-        vm_write32(GUEST_EA(pcmItem), s_adec[handle].itemEa);
+-
+-    return CELL_OK;
++    }
++    AdecSlot* a = &s_adec[handle];
++    { static int _n = 0; if (PS3_LOG_FIRST(_n, 6))
++        printf("[cellAdec] GetPcmItem(handle=%u out=0x%08X queued=%u)\n",
++               handle, GUEST_EA(pcmItem), a->count); }
++    if (!pcmItem) {
++        ADEC_UNLOCK();
++        return (s32)CELL_ADEC_ERROR_FATAL;
++    }
++    for (u32 i = 0; i < a->count; i++) {
++        const u32 slot = a->q[(a->head + i) % ADEC_SLOTS];
++        if (a->itemed[slot]) continue;
++        a->itemed[slot] = 1;
++        /* pcmItem is a GUEST CellAdecPcmItem**. Writing &host_struct here put a
++         * HOST address into guest memory; the guest dereferenced it and died on a
++         * wild address (rip 0x870D0E, fault 0xCFFDFFF0). Write the guest EA. */
++        vm_write32(GUEST_EA(pcmItem), ADEC_ITEM_EA(handle, slot));
++        ADEC_UNLOCK();
++        return CELL_OK;
++    }
++    ADEC_UNLOCK();
++    return (s32)CELL_ADEC_ERROR_EMPTY;
+ }
 diff --git a/libs/codec/cellVdec.c b/libs/codec/cellVdec.c
 index 204a005..05f1c43 100644
 --- a/libs/codec/cellVdec.c
@@ -986,6 +2736,474 @@ index 204a005..05f1c43 100644
  }
  
  s32 cellVdecSetFrameRate(CellVdecHandle handle, u32 frameRateCode)
+diff --git a/libs/codec/ffmpeg_runtime.h b/libs/codec/ffmpeg_runtime.h
+index 6ec3bbc..93eefc0 100644
+--- a/libs/codec/ffmpeg_runtime.h
++++ b/libs/codec/ffmpeg_runtime.h
+@@ -1,7 +1,7 @@
+ /*
+  * ps3recomp - FFmpeg, loaded at run time
+  *
+- * The codec modules (cellVdec today; cellAdec, cellDmux later) decode through
++ * The codec modules (cellVdec, and cellAdec for AC3; cellDmux later) decode through
+  * libavcodec when the host has it. It is never linked: the library is opened
+  * with dlopen / LoadLibrary the first time a decoder is created, and only the
+  * handful of functions the modules call are resolved into a table. So
+diff --git a/libs/codec/tests/CMakeLists.txt b/libs/codec/tests/CMakeLists.txt
+index 935169b..1a0ed0a 100644
+--- a/libs/codec/tests/CMakeLists.txt
++++ b/libs/codec/tests/CMakeLists.txt
+@@ -1,4 +1,5 @@
+-# cellVdec, driven through its guest API (test_vdec_decode.c).
++# cellVdec and cellAdec, driven through their guest APIs (test_vdec_decode.c,
++# test_adec_decode.c).
+ 
+ if(UNIX)
+     set(VDEC_TEST_LIBS m)
+@@ -10,6 +11,13 @@ target_include_directories(test_vdec_stub PRIVATE "${PROJECT_SOURCE_DIR}/include
+ target_link_libraries(test_vdec_stub PRIVATE ${VDEC_TEST_LIBS})
+ add_test(NAME vdec_stub COMMAND test_vdec_stub stub)
+ 
++# cellAdec's output layouts and its silence-only decoder.
++add_executable(test_adec_stub test_adec_decode.c)
++target_include_directories(test_adec_stub PRIVATE "${PROJECT_SOURCE_DIR}/include")
++target_link_libraries(test_adec_stub PRIVATE ${VDEC_TEST_LIBS})
++add_test(NAME adec_layout COMMAND test_adec_stub layout)
++add_test(NAME adec_stub COMMAND test_adec_stub stub)
++
+ if(NOT PS3RECOMP_FFMPEG_RUNTIME)
+     return()
+ endif()
+@@ -33,6 +41,12 @@ if(PS3RECOMP_AVCODEC_LIBRARY AND UNIX)
+     endif()
+ endif()
+ 
++add_executable(test_adec_ffmpeg test_adec_decode.c)
++target_include_directories(test_adec_ffmpeg PRIVATE
++    "${PROJECT_SOURCE_DIR}/include" "${PS3RECOMP_FFMPEG_INCLUDE_DIR}")
++target_compile_definitions(test_adec_ffmpeg PRIVATE PS3RECOMP_FFMPEG_RUNTIME)
++target_link_libraries(test_adec_ffmpeg PRIVATE ${VDEC_TEST_LIBS} ${CMAKE_DL_LIBS})
++
+ # Off at run time, or no library: the same callback-only behaviour.
+ add_test(NAME vdec_ffmpeg_disabled COMMAND test_vdec_ffmpeg stub)
+ set_tests_properties(vdec_ffmpeg_disabled PROPERTIES
+@@ -40,6 +54,9 @@ set_tests_properties(vdec_ffmpeg_disabled PROPERTIES
+ add_test(NAME vdec_ffmpeg_missing COMMAND test_vdec_ffmpeg stub)
+ set_tests_properties(vdec_ffmpeg_missing PROPERTIES ENVIRONMENT
+     "PS3RECOMP_FFMPEG_AVCODEC=${CMAKE_CURRENT_BINARY_DIR}/no-such-libavcodec;${VDEC_LIB_ENV}")
++add_test(NAME adec_ffmpeg_disabled COMMAND test_adec_ffmpeg stub)
++set_tests_properties(adec_ffmpeg_disabled PROPERTIES
++    ENVIRONMENT "PS3RECOMP_FFMPEG=0;${VDEC_LIB_ENV}")
+ 
+ # Real decode needs streams, made by the ffmpeg CLI at test time.
+ find_program(PS3RECOMP_FFMPEG_EXECUTABLE ffmpeg)
+@@ -72,3 +89,17 @@ foreach(c avc mpeg2)
+     set_tests_properties(vdec_decode_${c} vdec_rgba_${c} vdec_disabled_${c}
+         PROPERTIES FIXTURES_REQUIRED vdec_media)
+ endforeach()
++
++# AC3 3/2 + LFE, one tone per speaker, through cellAdec.
++set(ADEC_MEDIA "${CMAKE_CURRENT_BINARY_DIR}/adec_media")
++add_test(NAME adec_media_gen COMMAND "${CMAKE_COMMAND}"
++    -DFFMPEG=${PS3RECOMP_FFMPEG_EXECUTABLE} -DOUT=${ADEC_MEDIA}
++    -P "${CMAKE_CURRENT_SOURCE_DIR}/gen_adec_media.cmake")
++set_tests_properties(adec_media_gen PROPERTIES FIXTURES_SETUP adec_media)
++add_test(NAME adec_decode_ac3 COMMAND test_adec_ffmpeg decode ${ADEC_MEDIA}/a.ac3)
++add_test(NAME adec_disabled_ac3 COMMAND test_adec_ffmpeg stub ${ADEC_MEDIA}/a.ac3)
++set_tests_properties(adec_decode_ac3 PROPERTIES
++    ENVIRONMENT "${VDEC_LIB_ENV}" SKIP_RETURN_CODE 77)
++set_tests_properties(adec_disabled_ac3 PROPERTIES
++    ENVIRONMENT "PS3RECOMP_FFMPEG=0;${VDEC_LIB_ENV}")
++set_tests_properties(adec_decode_ac3 adec_disabled_ac3 PROPERTIES FIXTURES_REQUIRED adec_media)
+diff --git a/libs/codec/tests/test_adec_decode.c b/libs/codec/tests/test_adec_decode.c
+new file mode 100644
+index 0000000..b95def5
+--- /dev/null
++++ b/libs/codec/tests/test_adec_decode.c
+@@ -0,0 +1,383 @@
++/*
++ * ps3recomp -- cellAdec through the guest API, with and without libavcodec
++ *
++ * Built twice by CMakeLists.txt (PS3RECOMP_BUILD_TESTS), like test_vdec_decode:
++ *   test_adec_stub    no PS3RECOMP_FFMPEG_RUNTIME
++ *   test_adec_ffmpeg  with it, against an AC3 stream gen_adec_media.cmake makes
++ *
++ * Modes:
++ *   layout          CellAdecParamAc3 -> output layout, and the fold-down of
++ *                   5.1 into the smaller layouts (no FFmpeg needed)
++ *   stub   [ES]     the silence-only decoder: one AUDONE + PCMOUT per AU, an
++ *                   8 KB block of zeros, bsiInfo pcmSize 8192 -- what every
++ *                   build without FFmpeg (and Resistance's movie player, which
++ *                   sizes its ring from it) always had
++ *   decode ES       AC3 3/2 + LFE, AU by AU: Resistance's StartSeq parameters
++ *                   (float, 3/2, LFE on) must give 6 channels of 1536 samples
++ *                   in the order L C R Ls Rs LFE, each channel carrying the
++ *                   tone the generator put on that speaker (and nothing much
++ *                   of the others); s16 2.0 must give the folded stereo.
++ */
++#include "../cellAdec.c"
++#include "../adec_ffmpeg.c"
++#include "../ffmpeg_runtime.c"
++
++#include <math.h>
++#include <stdlib.h>
++
++/* What the runtime would provide. */
++uint8_t* vm_base;
++uint32_t ppu_vm_size;
++uint32_t ppu_hle_inject_base = 0x01000000u;
++int g_resv_store_active;
++uint32_t g_ww_lo, g_ww_hi;
++void ppu_resv_break_store(uint64_t ea) { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
++int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++
++#define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); exit(1); } } while (0)
++
++/* Guest layout */
++#define MEM_SIZE   (64u << 20)
++#define G_TYPE     0x10000u
++#define G_CB       0x10010u
++#define G_HANDLE   0x10020u
++#define G_AUINFO   0x10040u
++#define G_PARAM    0x10080u
++#define G_ITEMPTR  0x100C0u
++#define G_AU       0x00100000u
++#define G_PCM      0x00200000u
++#define CB_OPD     0x00001000u
++
++static u32 s_msgs[1 << 16];
++static int s_nmsg;
++static void fake_guest_call(uint32_t opd, uint64_t a0, uint64_t a1, uint64_t a2,
++                            uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6,
++                            uint64_t a7)
++{
++    (void)a0; (void)a2; (void)a4; (void)a5; (void)a6; (void)a7;
++    CHECK(opd == CB_OPD && a3 == 0xC0FFEEu);
++    if (s_nmsg < (1 << 16)) s_msgs[s_nmsg++] = (u32)a1;
++}
++ps3_guest_caller_fn g_ps3_guest_caller = fake_guest_call;
++
++static int count_msgs(u32 type)
++{
++    int n = 0;
++    for (int i = 0; i < s_nmsg; i++) n += s_msgs[i] == type;
++    return n;
++}
++
++static u8* read_file(const char* path, size_t* len)
++{
++    FILE* f = fopen(path, "rb");
++    if (!f) { printf("cannot open %s\n", path); exit(1); }
++    fseek(f, 0, SEEK_END);
++    long n = ftell(f);
++    fseek(f, 0, SEEK_SET);
++    u8* p = (u8*)malloc((size_t)n + 1);
++    CHECK(p && fread(p, 1, (size_t)n, f) == (size_t)n);
++    fclose(f);
++    *len = (size_t)n;
++    return p;
++}
++
++/* Resistance: Fall of Man's CellAdecParamAc3, as its movie player passes it
++ * to cellAdecStartSeq (logged from the title): float, 3/2, LFE on, DRC 1/1,
++ * line out, 6 channels, PCM scale 1, channel pointers 0..5. */
++static const u8 k_res_param[0x30] = {
++    0x01, 0x07, 0x01, 0x00, 0x3F, 0x80, 0x00, 0x00, 0x3F, 0x80, 0x00, 0x00,
++    0x02, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3F, 0x80, 0x00, 0x00,
++    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5,
++};
++
++static float be_f32(u32 ea)
++{
++    u32 v = vm_read32(ea);
++    float f;
++    memcpy(&f, &v, 4);
++    return f;
++}
++
++/* ---------------------------------------------------------------------------
++ * layout: no decoder
++ * -----------------------------------------------------------------------*/
++static int mode_layout(void)
++{
++    AdecLayout l;
++    CHECK(adec_ac3_layout(k_res_param, &l) == 0);
++    CHECK(l.channels == 6 && l.word_float && fabsf(l.scale - 1.0f) < 1e-6f);
++    const u32 want[6] = { ADEC_SP_L, ADEC_SP_C, ADEC_SP_R, ADEC_SP_LS, ADEC_SP_RS, ADEC_SP_LFE };
++    for (int i = 0; i < 6; i++) CHECK(l.out_sp[i] == want[i]);
++    CHECK(adec_pcm_bytes(&l, 1536) == 36864);   /* the 0x9000 stride the title uses */
++
++    /* channelPointer: L to slot 0, C 2, R 1, Ls 4, Rs 5, LFE 3 (cellAudio order). */
++    u8 p[0x30];
++    memcpy(p, k_res_param, sizeof p);
++    const u8 cp[6] = { 0, 2, 1, 4, 5, 3 };
++    for (int i = 0; i < 6; i++) p[0x18 + 4 * i + 3] = cp[i];
++    CHECK(adec_ac3_layout(p, &l) == 0);
++    const u32 want2[6] = { ADEC_SP_L, ADEC_SP_R, ADEC_SP_C, ADEC_SP_LFE, ADEC_SP_LS, ADEC_SP_RS };
++    for (int i = 0; i < 6; i++) CHECK(l.out_sp[i] == want2[i]);
++    /* Not a permutation: ignored. */
++    p[0x18 + 3] = 5;
++    CHECK(adec_ac3_layout(p, &l) == 0);
++    for (int i = 0; i < 6; i++) CHECK(l.out_sp[i] == want[i]);
++
++    /* s16 2.0, no LFE. */
++    memcpy(p, k_res_param, sizeof p);
++    p[0] = 0; p[1] = 2; p[2] = 0;
++    CHECK(adec_ac3_layout(p, &l) == 0);
++    CHECK(l.channels == 2 && !l.word_float && l.out_sp[0] == ADEC_SP_L && l.out_sp[1] == ADEC_SP_R);
++    CHECK(adec_pcm_bytes(&l, 1536) == 6144);
++
++    /* Junk: 2.0 float, and an error. */
++    memset(p, 0xEE, sizeof p);
++    CHECK(adec_ac3_layout(p, &l) < 0);
++    CHECK(l.channels == 2 && l.word_float);
++
++    /* Fold-down: one frame of a full 5.1 source into 2.0 float. */
++    float in[ADEC_SP_COUNT] = { 0 };
++    in[ADEC_SP_L] = 0.5f; in[ADEC_SP_C] = 0.4f; in[ADEC_SP_LS] = 0.2f; in[ADEC_SP_LFE] = 0.9f;
++    AdecFfFrame fr = { in, 1, 48000, 0x3F, 0 };
++    memcpy(p, k_res_param, sizeof p);
++    p[1] = 2; p[2] = 0;
++    CHECK(adec_ac3_layout(p, &l) == 0);
++    u8 out[64];
++    CHECK(adec_format_pcm(out, &l, &fr) == 8);
++    u32 b; float lv, rv;
++    b = ((u32)out[0] << 24) | ((u32)out[1] << 16) | ((u32)out[2] << 8) | out[3]; memcpy(&lv, &b, 4);
++    b = ((u32)out[4] << 24) | ((u32)out[5] << 16) | ((u32)out[6] << 8) | out[7]; memcpy(&rv, &b, 4);
++    const float k = 0.70710678f, norm = 1.0f / (1.0f + k + k);   /* L + kC + kLs, normalised */
++    CHECK(fabsf(lv - (0.5f + k * 0.4f + k * 0.2f) * norm) < 1e-5f);
++    CHECK(fabsf(rv - (k * 0.4f) * norm) < 1e-5f);              /* LFE is left out */
++
++    /* s16 big-endian, clamped. */
++    p[0] = 0;
++    CHECK(adec_ac3_layout(p, &l) == 0);
++    in[ADEC_SP_L] = 4.0f; in[ADEC_SP_C] = 0.0f; in[ADEC_SP_LS] = 0.0f;
++    in[ADEC_SP_R] = -0.25f;
++    CHECK(adec_format_pcm(out, &l, &fr) == 4);
++    CHECK(out[0] == 0x7F && out[1] == 0xFF);
++    const s16 r16 = (s16)(((u16)out[2] << 8) | out[3]);
++    CHECK(r16 == (s16)(-0.25f * norm * 32768.0f - 0.5f));
++
++    /* 3/2 + LFE source into a 3/2 + LFE layout: the identity. */
++    CHECK(adec_ac3_layout(k_res_param, &l) == 0);
++    for (int i = 0; i < ADEC_SP_COUNT; i++) in[i] = 0.1f * (float)(i + 1);
++    CHECK(adec_format_pcm(out, &l, &fr) == 24);
++    for (int i = 0; i < 6; i++) {
++        const u8* q = out + 4 * i;
++        b = ((u32)q[0] << 24) | ((u32)q[1] << 16) | ((u32)q[2] << 8) | q[3];
++        float v; memcpy(&v, &b, 4);
++        CHECK(fabsf(v - in[l.out_sp[i]]) < 1e-6f);
++    }
++    printf("layout: ok\n");
++    return 0;
++}
++
++/* ---------------------------------------------------------------------------
++ * Driving cellAdec
++ * -----------------------------------------------------------------------*/
++static u32 open_decoder(const u8* param)
++{
++    vm_write32(G_TYPE, CELL_ADEC_TYPE_AC3);
++    vm_write32(G_CB, CB_OPD);
++    vm_write32(G_CB + 4, 0xC0FFEEu);
++    CHECK(cellAdecOpen((const CellAdecType*)(uintptr_t)G_TYPE, NULL,
++                       (const CellAdecCb*)(uintptr_t)G_CB,
++                       (CellAdecHandle*)(uintptr_t)G_HANDLE) == CELL_OK);
++    const u32 h = vm_read32(G_HANDLE);
++    vm_memcpy_to(G_PARAM, param, 0x30);
++    CHECK(cellAdecStartSeq(h, (void*)(uintptr_t)G_PARAM) == CELL_OK);
++    return h;
++}
++
++static void submit(u32 h, const u8* au, u32 size, u32 pts)
++{
++    vm_memcpy_to(G_AU, au, size);
++    vm_write32(G_AUINFO + 0x00, G_AU);
++    vm_write32(G_AUINFO + 0x04, size);
++    vm_write32(G_AUINFO + 0x08, pts == ~0u ? ~0u : 0);
++    vm_write32(G_AUINFO + 0x0C, pts);
++    vm_write64(G_AUINFO + 0x10, 0x1234ull);
++    CHECK(cellAdecDecodeAu(h, (const CellAdecAuInfo*)(uintptr_t)G_AUINFO) == CELL_OK);
++}
++
++/* AC3 sync frames: 0x0B77, length from fscod (48 kHz) / frmsizecod. */
++static int split_ac3(const u8* es, size_t len, size_t* off, int max)
++{
++    static const u16 words48[19] = { 64, 80, 96, 112, 128, 160, 192, 224, 256, 320,
++                                     384, 448, 512, 640, 768, 896, 1024, 1152, 1280 };
++    int n = 0;
++    size_t i = 0;
++    while (i + 6 < len && n < max) {
++        CHECK(es[i] == 0x0B && es[i + 1] == 0x77);
++        CHECK((es[i + 4] >> 6) == 0);                    /* 48 kHz */
++        const u32 code = es[i + 4] & 0x3F;
++        CHECK(code / 2 < 19);
++        off[n++] = i;
++        i += 2u * words48[code / 2];
++    }
++    off[n] = i;
++    return n;
++}
++
++static int mode_stub(int argc, char** argv)
++{
++    u8 dummy[1792];
++    memset(dummy, 0x5A, sizeof dummy);
++    const u8* es = dummy;
++    size_t len = sizeof dummy;
++    size_t off[4096];
++    int nau = 1;
++    off[0] = 0; off[1] = len;
++    if (argc > 2) {
++        es = read_file(argv[2], &len);
++        nau = split_ac3(es, len, off, 64);
++    }
++    const u32 h = open_decoder(k_res_param);
++    CHECK(s_adec[h].ff == NULL);
++    for (int i = 0; i < nau; i++) {
++        s_nmsg = 0;
++        vm_memset(G_PCM, 0x77, 0x2000);
++        submit(h, es + off[i], (u32)(off[i + 1] - off[i]), ~0u);
++        CHECK(count_msgs(CELL_ADEC_MSG_TYPE_AUDONE) == 1 && count_msgs(CELL_ADEC_MSG_TYPE_PCMOUT) == 1);
++        CHECK(cellAdecGetPcmItem(h, (const CellAdecPcmItem**)(uintptr_t)G_ITEMPTR) == CELL_OK);
++        const u32 it = vm_read32(G_ITEMPTR);
++        CHECK(vm_read32(it + PCMITEM_SIZE) == 8192);
++        CHECK(vm_read32(vm_read32(it + PCMITEM_BSI_INFO) + 0x14) == 8192);
++        CHECK(vm_read32(it + PCMITEM_AU_START) == G_AU);
++        CHECK(cellAdecGetPcm(h, (void*)(uintptr_t)G_PCM) == CELL_OK);
++        for (u32 o = 0; o < 8192; o += 4) CHECK(vm_read32(G_PCM + o) == 0);
++        CHECK(cellAdecGetPcm(h, (void*)(uintptr_t)G_PCM) == (s32)CELL_ADEC_ERROR_EMPTY);
++    }
++    CHECK(cellAdecEndSeq(h) == CELL_OK);
++    CHECK(cellAdecClose(h) == CELL_OK);
++    printf("stub: %d AU(s) ok\n", nau);
++    return 0;
++}
++
++/* The generator's tones (gen_adec_media.cmake), by speaker. */
++static const float k_amp[ADEC_SP_COUNT] = {
++    [ADEC_SP_L] = 0.10f, [ADEC_SP_R] = 0.20f, [ADEC_SP_C] = 0.30f,
++    [ADEC_SP_LFE] = 0.40f, [ADEC_SP_LS] = 0.25f, [ADEC_SP_RS] = 0.15f,
++};
++
++static int mode_decode(int argc, char** argv)
++{
++    CHECK(argc > 2);
++    size_t len;
++    u8* es = read_file(argv[2], &len);
++    static size_t off[4096];
++    const int nau = split_ac3(es, len, off, 4000);
++    CHECK(nau > 40);
++
++    const u32 h = open_decoder(k_res_param);
++    if (!s_adec[h].ff) { printf("no libavcodec AC3 decoder: skipped\n"); return 77; }
++
++    /* 3/2 + LFE float, the title's own parameters. Queue a few AUs before
++     * taking them, the way a demuxer runs ahead of the player. */
++    double sq[6] = { 0 };
++    u64 n = 0;
++    int taken = 0;
++    s_nmsg = 0;
++    for (int i = 0; i < nau; i++) {
++        submit(h, es + off[i], (u32)(off[i + 1] - off[i]), i == 0 ? 90000u : ~0u);
++        if (i % 3 != 2 && i != nau - 1) continue;
++        for (;;) {
++            if (cellAdecGetPcmItem(h, (const CellAdecPcmItem**)(uintptr_t)G_ITEMPTR) != CELL_OK) break;
++            const u32 it = vm_read32(G_ITEMPTR);
++            CHECK(vm_read32(it + PCMITEM_SIZE) == 36864);
++            const u32 bsi = vm_read32(it + PCMITEM_BSI_INFO);
++            CHECK(vm_read32(bsi + 0x14) == 36864);
++            CHECK(vm_read8(bsi + 0x32) == 7 && vm_read8(bsi + 0x33) == 1);   /* acmod 3/2, LFE */
++            /* PTS: the first AU's, then one AC3 block (2880 ticks) apart. */
++            CHECK(vm_read32(it + PCMITEM_AU_PTS_LO) == 90000u + 2880u * (u32)taken);
++            CHECK(vm_read64(it + PCMITEM_AU_USERDATA) == 0x1234ull);
++            CHECK(cellAdecGetPcm(h, (void*)(uintptr_t)G_PCM) == CELL_OK);
++            if (taken >= 8)   /* past the encoder's start-up */
++                for (u32 s = 0; s < 1536; s++, n++)
++                    for (int c = 0; c < 6; c++) {
++                        const float v = be_f32(G_PCM + (s * 6 + (u32)c) * 4);
++                        sq[c] += (double)v * v;
++                    }
++            taken++;
++        }
++    }
++    CHECK(taken == nau);
++    CHECK(count_msgs(CELL_ADEC_MSG_TYPE_PCMOUT) == nau && count_msgs(CELL_ADEC_MSG_TYPE_AUDONE) == nau);
++    CHECK(s_adec[h].errors == 0 && s_adec[h].dropped == 0);
++    const AdecLayout* l = &s_adec[h].layout;
++    for (int c = 0; c < 6; c++) {
++        const double rms = sqrt(sq[c] / (double)n);
++        const double want = k_amp[l->out_sp[c]] / sqrt(2.0);
++        printf("  slot %d (speaker %u): rms %.4f, tone %.4f\n", c, l->out_sp[c], rms, want);
++        CHECK(fabs(rms - want) < 0.15 * want);
++    }
++    CHECK(cellAdecEndSeq(h) == CELL_OK);
++
++    /* The same stream as s16 2.0: L = L + kC + kLs folded and normalised. */
++    u8 p[0x30];
++    memcpy(p, k_res_param, sizeof p);
++    p[0] = 0; p[1] = 2; p[2] = 0;
++    vm_memcpy_to(G_PARAM, p, 0x30);
++    CHECK(cellAdecStartSeq(h, (void*)(uintptr_t)G_PARAM) == CELL_OK);
++    double s2[2] = { 0 };
++    n = 0;
++    for (int i = 0; i < nau; i++) {
++        submit(h, es + off[i], (u32)(off[i + 1] - off[i]), ~0u);
++        CHECK(cellAdecGetPcmItem(h, (const CellAdecPcmItem**)(uintptr_t)G_ITEMPTR) == CELL_OK);
++        CHECK(vm_read32(vm_read32(G_ITEMPTR) + PCMITEM_SIZE) == 6144);
++        CHECK(cellAdecGetPcm(h, (void*)(uintptr_t)G_PCM) == CELL_OK);
++        if (i < 8) continue;
++        for (u32 s = 0; s < 1536 * 2; s++) {
++            const s16 v = (s16)vm_read16(G_PCM + s * 2);
++            s2[s & 1] += (double)v * v / (32768.0 * 32768.0);
++        }
++        n += 1536;
++    }
++    const double k = 0.70710678, norm = 1.0 / (1.0 + 2 * k);
++    /* Different tones per speaker: the powers add. */
++    const double wl = norm * sqrt(0.5 * (0.01 + k * k * 0.09 + k * k * 0.0625));
++    const double wr = norm * sqrt(0.5 * (0.04 + k * k * 0.09 + k * k * 0.0225));
++    const double gl = sqrt(s2[0] / (double)n), gr = sqrt(s2[1] / (double)n);
++    printf("  s16 2.0: L rms %.4f (want %.4f), R rms %.4f (want %.4f)\n", gl, wl, gr, wr);
++    CHECK(fabs(gl - wl) < 0.15 * wl && fabs(gr - wr) < 0.15 * wr);
++
++    /* A damaged AU still gets one PCMOUT, of silence, the right size. */
++    u8 bad[1792];
++    memset(bad, 0, sizeof bad);
++    s_nmsg = 0;
++    submit(h, bad, sizeof bad, ~0u);
++    CHECK(count_msgs(CELL_ADEC_MSG_TYPE_PCMOUT) == 1);
++    CHECK(cellAdecGetPcmItem(h, (const CellAdecPcmItem**)(uintptr_t)G_ITEMPTR) == CELL_OK);
++    CHECK(vm_read32(vm_read32(G_ITEMPTR) + PCMITEM_SIZE) == 6144);
++    CHECK(cellAdecGetPcm(h, NULL) == CELL_OK);
++    CHECK(cellAdecGetPcmItem(h, (const CellAdecPcmItem**)(uintptr_t)G_ITEMPTR) == (s32)CELL_ADEC_ERROR_EMPTY);
++
++    /* A consumer that stops taking blocks: the queue keeps the newest. */
++    for (int i = 0; i < 40; i++) submit(h, es + off[i], (u32)(off[i + 1] - off[i]), ~0u);
++    CHECK(s_adec[h].count == ADEC_SLOTS && s_adec[h].dropped == 40 - ADEC_SLOTS);
++    CHECK(cellAdecClose(h) == CELL_OK);
++    printf("decode: %d AUs ok\n", nau);
++    return 0;
++}
++
++int main(int argc, char** argv)
++{
++    setvbuf(stdout, NULL, _IONBF, 0);
++    vm_base = (uint8_t*)calloc(1, MEM_SIZE);
++    CHECK(vm_base);
++    ppu_vm_size = MEM_SIZE;
++    const char* mode = argc > 1 ? argv[1] : "layout";
++    if (strcmp(mode, "layout") == 0) return mode_layout();
++    if (strcmp(mode, "stub") == 0)   return mode_stub(argc, argv);
++    if (strcmp(mode, "decode") == 0) return mode_decode(argc, argv);
++    printf("unknown mode %s\n", mode);
++    return 2;
++}
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
 index 7fa8cab..404004f 100644
 --- a/libs/input/cellPad.c
@@ -4803,7 +7021,7 @@ index b58a830..19d3e3c 100644
  typedef struct rsx_dsp_index_array {
      u32 offset;
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index f99986b..3f5592c 100644
+index f99986b..587f068 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -22,6 +22,10 @@
@@ -4817,7 +7035,7 @@ index f99986b..3f5592c 100644
  #include "ps3emu/log_first.h"
  
  /* Guest memory and the RSX offset resolvers, declared the way every backend
-@@ -107,6 +111,7 @@ typedef struct {
+@@ -107,13 +111,18 @@ typedef struct {
      u32 w, h;
      u32 handle;
      u32 snapshot;          /* sampleable copy, or 0                        */
@@ -4825,9 +7043,10 @@ index f99986b..3f5592c 100644
      int cleared;
      int had_write;
      int snapshot_valid;
-@@ -114,6 +119,9 @@ typedef struct {
+     u64 depth_serial;      /* g.write_serial of the last depth write or clear */
      int guest_dirty;       /* written since guest memory last got a copy     */
      u32 zfmt, pitch;       /* SURFACE_FORMAT depth field and zeta pitch then */
++    int swizzled;          /* SURFACE_FORMAT type SWIZZLE: Morton order in memory */
      u32 used_w, used_h;    /* the clip that write went through              */
 +    u32 snapshot_rgba;     /* depth_snapshot_rgba8 copy (backend-owned), or 0 */
 +    u32 rgba_w, rgba_h;    /* the region that copy holds                    */
@@ -4835,7 +7054,7 @@ index f99986b..3f5592c 100644
  } eng_zdepth;
  
  typedef struct {
-@@ -132,7 +140,7 @@ typedef struct {
+@@ -132,7 +141,7 @@ typedef struct {
      u32 handle;
      u8 fixed;
      u16 tex_used;           /* units the pixel program samples */
@@ -4844,7 +7063,7 @@ index f99986b..3f5592c 100644
  } eng_pipeline;
  
  typedef struct { u32 first, count; } eng_batch;
-@@ -177,7 +185,9 @@ static struct {
+@@ -177,7 +186,9 @@ static struct {
      u32* indices;
      u32 index_cap;
  
@@ -4855,7 +7074,7 @@ index f99986b..3f5592c 100644
  } g;
  
  /* The decompilers' HLSL. The VP decompiler builds bodies up to 192 KB. */
-@@ -203,6 +213,14 @@ static struct {
+@@ -203,6 +214,14 @@ static struct {
      u8* verts;
      u64 verts_cap;
      u32 n_verts;
@@ -4870,7 +7089,7 @@ index f99986b..3f5592c 100644
  
      /* Canonical ATTR0..15 float4 snapshots for register-based vertices.
       * Bounded separately from compact GPU staging; never fetch stale arrays. */
-@@ -882,6 +900,8 @@ static u32 eng_zdepth_get(u32 location, u32 offset, u32 rt_w, u32 rt_h)
+@@ -882,6 +901,8 @@ static u32 eng_zdepth_get(u32 location, u32 offset, u32 rt_w, u32 rt_h)
      z->cleared = 0;
      z->had_write = 0;
      z->snapshot_valid = 0;
@@ -4879,7 +7098,7 @@ index f99986b..3f5592c 100644
      z->depth_serial = 0;
      z->guest_dirty = 0;
      if (slot == g.n_zdepths) g.n_zdepths++;
-@@ -892,15 +912,26 @@ static u32 eng_zdepth_get(u32 location, u32 offset, u32 rt_w, u32 rt_h)
+@@ -892,15 +913,26 @@ static u32 eng_zdepth_get(u32 location, u32 offset, u32 rt_w, u32 rt_h)
   * a depth-WRITING draw: a write-enable bit alone does not prove the pass
   * produced a usable depth map, and a clear-only zeta falls through to guest
   * memory instead (rsx_live_draw.c:6016-6018, 6265-6269). */
@@ -4909,7 +7128,7 @@ index f99986b..3f5592c 100644
      z->snapshot_valid = 1;
      return tex;
  }
-@@ -1035,6 +1066,391 @@ static int eng_staging_reserve(u32 bytes)
+@@ -1035,6 +1067,391 @@ static int eng_staging_reserve(u32 bytes)
      return 1;
  }
  
@@ -5301,7 +7520,7 @@ index f99986b..3f5592c 100644
  /* Decode a guest texture out of guest memory and hand every face and level to
   * the backend. Returns the backend handle, or 0. */
  static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
-@@ -1090,6 +1506,28 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1090,6 +1507,28 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
      const u8* src = eng_guest_ptr(NULL, location, offset, span);
      if (!src) return 0;
  
@@ -5330,7 +7549,7 @@ index f99986b..3f5592c 100644
      const u32 handle = g.be->texture_create(g.be->user, eng_texfmt(lv[0].tl.fmt),
                                              w, h, nlv, faces, remap, fmt);
      if (!handle) return 0;
-@@ -1105,6 +1543,7 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1105,6 +1544,7 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
              rsx_texture_decode(g.tex_staging, tl->dst_row_bytes,
                                 face + lv[m].offset, lv[m].w, lv[m].h, tl,
                                 rsx_texture_argb_is_rgba());
@@ -5338,7 +7557,7 @@ index f99986b..3f5592c 100644
              g.be->texture_upload(g.be->user, handle, f, m, lv[m].w, lv[m].h,
                                   g.tex_staging, tl->dst_row_bytes, tl->rows);
          }
-@@ -1119,6 +1558,12 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1119,6 +1559,12 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
   * cache full evicts the least recently used entry rather than returning
   * nothing: returning white "made the recovered orphanage render as flat
   * green/black geometry" (rsx_live_draw.c:2326-2334). */
@@ -5351,7 +7570,7 @@ index f99986b..3f5592c 100644
  static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
                              u32 levels, u32 pitch, int cube, u32 remap, u32 depth)
  {
-@@ -1128,13 +1573,32 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1128,13 +1574,32 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
                                 : eng_texture_span(fmt, w, h, levels, pitch, cube);
      if (!span) return 0;
  
@@ -5391,7 +7610,7 @@ index f99986b..3f5592c 100644
          if (e->handle && e->last_hash_frame != g.frames) {
              /* Every cached texture used to be hashed in full every frame;
               * in a big scene that is hundreds of MB a second for the few
-@@ -1159,6 +1623,14 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1159,6 +1624,14 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
                      g.be->texture_release(g.be->user, e->handle);
                      e->handle = fresh;
                      e->content_hash = hash;
@@ -5406,7 +7625,7 @@ index f99986b..3f5592c 100644
                  }
              }
          }
-@@ -1176,7 +1648,9 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1176,7 +1649,9 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
              if (g.textures[i].last_use_serial < g.textures[index].last_use_serial)
                  index = i;
          evicted = g.textures[index].handle;
@@ -5416,7 +7635,56 @@ index f99986b..3f5592c 100644
  
      eng_texture e;
      memset(&e, 0, sizeof(e));
-@@ -1306,6 +1780,69 @@ static int eng_zdepth_to_guest(u32 slot)
+@@ -1267,7 +1742,22 @@ static int eng_zdepth_to_guest(u32 slot)
+     const u32 bpp = (z->zfmt == 1u) ? 2u : 4u;      /* SURFACE_FORMAT Z16 = 1 */
+     const u32 w = z->used_w < z->w ? z->used_w : z->w;
+     const u32 h = z->used_h < z->h ? z->used_h : z->h;
+-    if (!w || !h || z->pitch < w * bpp) return 0;
++    /* A swizzled zeta has no pitch: its texels are in Morton order over a
++     * power-of-two extent, the order a swizzled DEPTH16 or DEPTH24_D8
++     * texture reads them back in (rsx_texture_layout.c). Resistance renders
++     * its 64x64 distant-character shadow map that way and samples it as a
++     * swizzled DEPTH16: stored linearly -- or, before this, refused for its
++     * pitch of 64 -- the lookup read a colour target that was never written
++     * and every pixel of the projected quad came out in shadow. */
++    const int swz = z->swizzled;
++    if (!w || !h) return 0;
++    if (swz ? ((w & (w - 1u)) || (h & (h - 1u))) : z->pitch < w * bpp) return 0;
++    u32 lw = 0, lh = 0;
++    while ((1u << lw) < w) lw++;
++    while ((1u << lh) < h) lh++;
++    u8* const swz_base = swz
++        ? (u8*)eng_guest_ptr(NULL, z->location, z->offset, w * h * bpp) : NULL;
++    if (swz && !swz_base) return 0;
+     if (s_depth_cap < w * h) {
+         float* n = (float*)realloc(s_depth_rows, (size_t)w * h * sizeof(float));
+         if (!n) return 0;
+@@ -1279,10 +1769,12 @@ static int eng_zdepth_to_guest(u32 slot)
+                              w * (u32)sizeof(float)) != 0)
+         return 0;
+     for (u32 r = 0; r < h; r++) {
+-        u8* dst = (u8*)eng_guest_ptr(NULL, z->location, z->offset + r * z->pitch, w * bpp);
++        u8* dst = swz ? swz_base
++                      : (u8*)eng_guest_ptr(NULL, z->location, z->offset + r * z->pitch, w * bpp);
+         if (!dst) return 0;
+         const float* src = s_depth_rows + (size_t)r * w;
+         for (u32 c = 0; c < w; c++) {
++            if (swz) dst = swz_base + (size_t)rsx_swizzle_offset(c, r, lw, lh) * bpp;
+             float d = src[c];
+             if (!(d > 0.0f)) d = 0.0f;
+             if (d > 1.0f) d = 1.0f;
+@@ -1299,13 +1791,77 @@ static int eng_zdepth_to_guest(u32 slot)
+         }
+     }
+     z->guest_dirty = 0;
+-    eng_textures_touch(z->location, z->offset, z->pitch * h);
++    eng_textures_touch(z->location, z->offset, swz ? w * h * bpp : z->pitch * h);
+     if (eng_coherence_log())
+-        fprintf(stderr, "[rsx engine] depth 0x%08X (%s, pitch %u) %ux%u stored to guest memory\n",
+-                z->offset, bpp == 2u ? "Z16" : "Z24S8", z->pitch, w, h);
++        fprintf(stderr, "[rsx engine] depth 0x%08X (%s, %s %u) %ux%u stored to guest memory\n",
++                z->offset, bpp == 2u ? "Z16" : "Z24S8", swz ? "swizzled, pitch" : "pitch",
++                z->pitch, w, h);
      return 1;
  }
  
@@ -5486,15 +7754,18 @@ index f99986b..3f5592c 100644
  /* A depth write or clear through the current zeta, recorded with what the
   * guest-memory copy needs to lay it out. */
  static void eng_zdepth_wrote(u32 slot, const rsx_dsp_surface* sf)
-@@ -1317,6 +1854,7 @@ static void eng_zdepth_wrote(u32 slot, const rsx_dsp_surface* sf)
+@@ -1315,8 +1871,10 @@ static void eng_zdepth_wrote(u32 slot, const rsx_dsp_surface* sf)
+     z->guest_dirty = 1;
+     z->zfmt = sf->depth_format;
      z->pitch = sf->zeta_pitch;
++    z->swizzled = sf->raster_type == 2u;
      z->used_w = sf->clip_w ? sf->clip_w : g.width;
      z->used_h = sf->clip_h ? sf->clip_h : g.height;
 +    z->snapshot_rgba_valid = 0;    /* the colour-format copy follows every write */
  }
  
  static void eng_surfaces_wrote(const u32* targets, u32 n_targets)
-@@ -1334,6 +1872,27 @@ static void eng_surfaces_wrote(const u32* targets, u32 n_targets)
+@@ -1334,6 +1892,27 @@ static void eng_surfaces_wrote(const u32* targets, u32 n_targets)
   * max LOD at [18:7] and min LOD at [30:19], both 4.8 fixed point. RSX's LOD
   * bias, SET_TEXTURE_FILTER [12:0], is not applied: the reference engine
   * leaves it at zero too. */
@@ -5522,7 +7793,7 @@ index f99986b..3f5592c 100644
  static void eng_decode_sampler(u32 filter, u32 wrap, u32 control0,
                                 rsx_be_sampler_desc* out)
  {
-@@ -1418,41 +1977,148 @@ static u32 eng_cube_mask(void)
+@@ -1418,41 +1997,150 @@ static u32 eng_cube_mask(void)
      return mask;
  }
  
@@ -5563,6 +7834,7 @@ index f99986b..3f5592c 100644
 +    u64 structural;             /* rsx_fp_structural_hash from the FNV basis; 0: will not hash */
 +    int constants_ok;
 +    u32 sampled_units;          /* rsx_fp_texture_units */
++    int reads_wpos;             /* rsx_fp_reads_wpos: the shader window is identity */
 +    /* The last texture-state masks the gamma / expand analyses ran with. */
 +    int gamma_valid, expand_valid;
 +    u8 gamma_in[RSX_DSP_NUM_TEXTURES], expand_in[RSX_DSP_NUM_TEXTURES];
@@ -5672,6 +7944,7 @@ index f99986b..3f5592c 100644
 +    memset(&m->constants, 0, sizeof m->constants);
 +    m->constants_ok = rsx_fp_collect_constants(uc, size, &m->constants) >= 0;
 +    m->sampled_units = rsx_fp_texture_units(uc, size);
++    m->reads_wpos = rsx_fp_reads_wpos(uc, size);
 +    m->gamma_valid = m->expand_valid = 0;
 +    return m;
 +}
@@ -5697,7 +7970,7 @@ index f99986b..3f5592c 100644
  }
  
  /* The layout the active vertex program actually reads. An uncertain analysis
-@@ -1460,14 +2126,8 @@ static int eng_guest_programs(const u8** out_vp, u32* out_vp_instrs,
+@@ -1460,14 +2148,8 @@ static int eng_guest_programs(const u8** out_vp, u32* out_vp_instrs,
  static void eng_vertex_layout(rsx_vertex_layout_plan* layout)
  {
      u32 mask = 0xFFFFu;
@@ -5714,7 +7987,7 @@ index f99986b..3f5592c 100644
      rsx_vertex_layout_plan_init(layout, mask);
  }
  
-@@ -1601,13 +2261,34 @@ static int eng_debug_fp(u64 fp_hash, u32 pipeline)
+@@ -1601,13 +2283,34 @@ static int eng_debug_fp(u64 fp_hash, u32 pipeline)
  
  /* A guest fragment program's name for the debug knobs: its structural hash
   * (inline constants excluded) seeded with the FNV offset basis, the value
@@ -5735,7 +8008,9 @@ index f99986b..3f5592c 100644
 +static u32 s_pipe_index[ENG_PIPE_INDEX];   /* table index + 1, 0 = empty */
 +
 +static int eng_pipeline_find(u64 key)
-+{
+ {
+-    return fp_uc && fp_size
+-        ? rsx_fp_structural_hash(fp_uc, fp_size, 1469598103934665603ull) : 0;
 +    u32 p = (u32)(key ^ (key >> 32)) & (ENG_PIPE_INDEX - 1u);
 +    for (u32 n = 0; n < ENG_PIPE_INDEX; n++, p = (p + 1u) & (ENG_PIPE_INDEX - 1u)) {
 +        const u32 v = s_pipe_index[p];
@@ -5746,16 +8021,14 @@ index f99986b..3f5592c 100644
 +}
 +
 +static void eng_pipeline_index_add(u64 key, u32 i)
- {
--    return fp_uc && fp_size
--        ? rsx_fp_structural_hash(fp_uc, fp_size, 1469598103934665603ull) : 0;
++{
 +    u32 p = (u32)(key ^ (key >> 32)) & (ENG_PIPE_INDEX - 1u);
 +    while (s_pipe_index[p]) p = (p + 1u) & (ENG_PIPE_INDEX - 1u);
 +    s_pipe_index[p] = i + 1u;
  }
  
  static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
-@@ -1618,11 +2299,14 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1618,11 +2321,14 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
      *out_fixed = 1;
      *out_tex_used = 0;
      *out_fp_hash = 0;
@@ -5774,7 +8047,7 @@ index f99986b..3f5592c 100644
  
      const u32 fp_ctrl  = rsx_dsp_shader_control(&g.rsx);
      const u32 srgb_output = !fixed && rsx_fp_srgb_output_enabled(
-@@ -1631,9 +2315,18 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1631,9 +2337,25 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
      const u32 cube_mask = eng_cube_mask();
      const u32 vol_mask = eng_volume_mask();
      const u32 vtex_mask = eng_vtex_mask();
@@ -5787,6 +8060,13 @@ index f99986b..3f5592c 100644
 +    rsx_dsp_get_surface(&g.rsx, &sf);
 +    const u32 wpos_grid[2] = { sf.aa_sx ? sf.aa_sx : 1u, sf.aa_sy ? sf.aa_sy : 1u };
 +    const int wpos_scaled = !fixed && (wpos_grid[0] > 1u || wpos_grid[1] > 1u);
++    /* SET_SHADER_WINDOW's height, origin and pixel centre, for a program
++     * that reads WPOS (rsx_fp_apply_wpos_window). A TOP origin with half
++     * centres is SV_POSITION as it is, and stays out of the key. */
++    u32 shader_window = (!fixed && fpm->reads_wpos)
++        ? rsx_dsp_reg(&g.rsx, 0x1D88u) & 0xFFFFFu : 0u;
++    if (((shader_window >> 12) & 0xFu) != 1u && ((shader_window >> 16) & 0xFu) != 1u)
++        shader_window = 0;
      rsx_fp_shadow_desc shadow[RSX_DSP_NUM_TEXTURES] = {{0}};
      u32 shadow_mask = 0;
 -    const u32 sampled_units = fixed ? 0 : rsx_fp_texture_units(fp_uc, fp_size);
@@ -5794,7 +8074,7 @@ index f99986b..3f5592c 100644
      for (u32 u = 0; u < RSX_DSP_NUM_TEXTURES; u++) {
          if (!(sampled_units & (1u << u))) continue;
          rsx_dsp_texture t;
-@@ -1647,7 +2340,15 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1647,7 +2369,15 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          rsx_dsp_texture t; rsx_dsp_get_texture(&g.rsx, u, &t);
          if (t.enabled) gamma_masks[u] = rsx_texture_gamma_mask(t.format, t.remap, t.filter, t.wrap);
      }
@@ -5811,7 +8091,7 @@ index f99986b..3f5592c 100644
      for (u32 u = 0; u < RSX_DSP_NUM_TEXTURES; ++u)
          if (!(gamma_units & (1u << u))) gamma_masks[u] = 0;
      /* Texture sign expansion: SET_TEXTURE_ADDRESS's UNSIGNED_REMAP_BIASED
-@@ -1658,7 +2359,15 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1658,7 +2388,15 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          rsx_dsp_texture t; rsx_dsp_get_texture(&g.rsx, u, &t);
          if (t.enabled) expand_masks[u] = rsx_texture_expand_mask(t.format, t.remap, t.filter, t.wrap);
      }
@@ -5828,7 +8108,7 @@ index f99986b..3f5592c 100644
      for (u32 u = 0; u < RSX_DSP_NUM_TEXTURES; ++u)
          if (!(expand_units & (1u << u))) expand_masks[u] = 0;
  
-@@ -1671,9 +2380,9 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1671,9 +2409,9 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          if (!(unnorm_mask & (1u << u)))
              unnorm_dim[u][0] = unnorm_dim[u][1] = 0;
  
@@ -5841,7 +8121,7 @@ index f99986b..3f5592c 100644
  
      /* Identity: the vertex program's own bytes, the fragment program's
       * STRUCTURE (its inline constants are hoisted into the buffered block, so
-@@ -1685,9 +2394,13 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1685,9 +2423,13 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          static const u32 fixed_tag = 0x4E464958u;   /* "XIFN" */
          key = eng_fnv1a(&fixed_tag, sizeof fixed_tag, key);
      } else {
@@ -5858,11 +8138,12 @@ index f99986b..3f5592c 100644
          const u32 fp_ctrl_key = fp_ctrl & 0x4Eu; /* colour width and fragment depth export */
          key = eng_fnv1a(&fp_ctrl_key, sizeof fp_ctrl_key, key);
          if (srgb_output) key = eng_fnv1a(&srgb_output, sizeof srgb_output, key);
-@@ -1702,22 +2415,29 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1702,22 +2444,30 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          key = eng_fnv1a(&vtex_mask, sizeof vtex_mask, key);
          key = eng_fnv1a(&unnorm_mask, sizeof unnorm_mask, key);
          if (unnorm_mask) key = eng_fnv1a(unnorm_dim, sizeof unnorm_dim, key);
 +        if (wpos_scaled) key = eng_fnv1a(wpos_grid, sizeof wpos_grid, key);
++        if (shader_window) key = eng_fnv1a(&shader_window, sizeof shader_window, key);
      }
      key = eng_fnv1a(&layout->mask, sizeof layout->mask, key);
      key = eng_fnv1a(&layout->stride, sizeof layout->stride, key);
@@ -5890,7 +8171,7 @@ index f99986b..3f5592c 100644
      if (g.n_pipelines >= ENG_MAX_PIPELINES) return 0;
  
      u32 handle = 0;
-@@ -1727,16 +2447,21 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1727,16 +2477,24 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          snprintf(s_vs_hlsl, sizeof s_vs_hlsl, "%s", kEngFixedVS);
          snprintf(s_ps_hlsl, sizeof s_ps_hlsl, "%s", kEngFixedPS);
      } else {
@@ -5910,10 +8191,13 @@ index f99986b..3f5592c 100644
 +        if (fi > 0 && wpos_scaled &&
 +            rsx_fp_apply_wpos_grid(s_ps_hlsl, sizeof s_ps_hlsl, wpos_grid[0], wpos_grid[1]) < 0)
 +            fi = -1;
++        if (fi > 0 && shader_window &&
++            rsx_fp_apply_wpos_window(s_ps_hlsl, sizeof s_ps_hlsl, shader_window) < 0)
++            fi = -1;
          if (fi > 0 && srgb_output &&
              rsx_fp_apply_srgb_output(s_ps_hlsl, sizeof s_ps_hlsl) < 0)
              fi = -1;
-@@ -1748,7 +2473,8 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1748,7 +2506,8 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
      if (vi > 0 && fi > 0)
          handle = g.be->pipeline_create(g.be->user, s_vs_hlsl, s_ps_hlsl, rs,
                                         layout, layout->stride, rt_fmt, rt_count);
@@ -5923,7 +8207,7 @@ index f99986b..3f5592c 100644
      /* RSX_ENGINE_SHADER_DUMP=<existing dir>: each new pipeline's two programs
       * as <dir>/pipe<handle>.vs.hlsl and .ps.hlsl, the handle being the one
       * RSX_ENGINE_PASS_DUMP's index names, and a guest fragment program's own
-@@ -1795,6 +2521,7 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -1795,6 +2554,7 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
          (u16)(fixed ? 0xFFFFu : eng_sampled_units(s_ps_hlsl));
      *out_tex_used = g.pipelines[g.n_pipelines].tex_used;
      *out_fp_hash = fp_hash;
@@ -5931,7 +8215,7 @@ index f99986b..3f5592c 100644
      g.n_pipelines++;
      *out_fixed = fixed;
      return handle;
-@@ -1807,6 +2534,9 @@ static void dc_reset(void)
+@@ -1807,6 +2567,9 @@ static void dc_reset(void)
      dc.n_arr = dc.n_idx = dc.n_packets = 0;
      dc.n_refs = dc.n_source_refs = dc.n_verts = dc.n_cuts = 0;
      dc.refs_remapped = 0;
@@ -5941,7 +8225,7 @@ index f99986b..3f5592c 100644
      dc.fetch_ok = 1;
      dc.inl = NULL;
      dc.inl_bytes = 0;
-@@ -1829,6 +2559,61 @@ static int dc_push_ref(u32 vertex_id, u32 base_index)
+@@ -1829,6 +2592,61 @@ static int dc_push_ref(u32 vertex_id, u32 base_index)
      return 1;
  }
  
@@ -6003,7 +8287,7 @@ index f99986b..3f5592c 100644
  static int dc_reserve_verts(u64 bytes)
  {
      if (bytes <= dc.verts_cap) return 1;
-@@ -1853,12 +2638,514 @@ static int dc_reserve_indices(u32 count)
+@@ -1853,12 +2671,514 @@ static int dc_reserve_indices(u32 count)
      return 1;
  }
  
@@ -6518,7 +8802,7 @@ index f99986b..3f5592c 100644
      if (dc.n_immediate) {
          dc.n_source_refs = dc.n_immediate;
          if (!dc_reserve_verts((u64)dc.n_immediate * layout->stride)) {
-@@ -1872,9 +3159,15 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
+@@ -1872,9 +3192,15 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
          dc.n_verts = dc.n_immediate;
          return;
      }
@@ -6537,7 +8821,7 @@ index f99986b..3f5592c 100644
  
      if (dc.n_idx && dc.fetch_ok) {
          const u32 base_index = rsx_dsp_vertex_data_base_index(&g.rsx);
-@@ -1895,6 +3188,13 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
+@@ -1895,6 +3221,13 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
              if (count && start <= 0xFFFFFFFFull && bytes <= 0xFFFFFFFFull &&
                  start + bytes <= 0x100000000ull)
                  run = eng_guest_ptr(NULL, ia_loc, (u32)start, (u32)bytes);
@@ -6551,7 +8835,7 @@ index f99986b..3f5592c 100644
              for (u32 i = 0; i < count && dc.fetch_ok; i++) {
                  const u8* p = run ? run + (size_t)i * esz
                      : eng_guest_ptr(NULL, ia_loc, ia.offset + (first + i) * esz, esz);
-@@ -1918,18 +3218,56 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
+@@ -1918,18 +3251,56 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
      /* Only a topology this engine rebuilds through an index buffer may share
       * repeated references. A line strip or a point list is drawn in the order
       * it arrived, so collapsing duplicates would reorder it. */
@@ -6611,7 +8895,7 @@ index f99986b..3f5592c 100644
      if (!dc_reserve_verts((u64)dc.n_refs * layout->stride)) {
          dc.fetch_ok = 0;
          return;
-@@ -1942,6 +3280,7 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
+@@ -1942,6 +3313,7 @@ static void dc_fetch(const rsx_vertex_layout_plan* layout, int allow_remap)
          }
      }
      dc.n_verts = dc.n_refs;
@@ -6619,7 +8903,7 @@ index f99986b..3f5592c 100644
  }
  
  /* ---- sink ---------------------------------------------------------------- */
-@@ -2071,6 +3410,18 @@ static u32 eng_color_feedback_failure(u32 unit, const eng_surface* s,
+@@ -2071,6 +3443,18 @@ static u32 eng_color_feedback_failure(u32 unit, const eng_surface* s,
      return ENG_INVALID;
  }
  
@@ -6638,7 +8922,7 @@ index f99986b..3f5592c 100644
  static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
                                u32 current_zslot, u32 tex_used,
                                u32 textures[RSX_BE_MAX_TEXTURES],
-@@ -2087,9 +3438,19 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
+@@ -2087,9 +3471,19 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
          if (!t.enabled || !((tex_used >> u) & 1u)) continue;
          mask |= 1u << u;
          eng_decode_sampler(t.filter, t.wrap, t.control0, &samplers[u]);
@@ -6659,7 +8943,7 @@ index f99986b..3f5592c 100644
              if (!g.surfaces[i].handle || g.surfaces[i].location != t.location ||
                  g.surfaces[i].offset != t.offset)
                  continue;
-@@ -2101,11 +3462,10 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
+@@ -2101,11 +3495,10 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
              sampled = (int)i;
              break;
          }
@@ -6672,7 +8956,7 @@ index f99986b..3f5592c 100644
              const eng_zdepth* z = &g.zdepths[i];
              if (z->location != t.location || z->offset != t.offset || !z->depth_serial)
                  continue;
-@@ -2117,8 +3477,20 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
+@@ -2117,8 +3510,20 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
              /* DEPTH24_D8 keeps the backend's own snapshot when it has one;
               * anything else goes through guest memory. */
              if (base_fmt == RSX_TEX_FMT_DEPTH24_D8 && current_zslot != (u32)zsrc) {
@@ -6695,7 +8979,7 @@ index f99986b..3f5592c 100644
              }
              if (eng_zdepth_to_guest((u32)zsrc)) {
                  textures[u] = eng_texture_slot(t.location, t.offset, t.format,
-@@ -2176,8 +3548,8 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
+@@ -2176,8 +3581,8 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
              for (u32 i = 0; i < g.n_zdepths; i++)
                  if (g.zdepths[i].location == t.location &&
                      g.zdepths[i].offset == t.offset && current_zslot != i) {
@@ -6706,7 +8990,7 @@ index f99986b..3f5592c 100644
                      break;
                  }
              if (textures[u]) continue;
-@@ -2200,6 +3572,7 @@ static u32 sink_bind_vertex_textures(
+@@ -2200,6 +3605,7 @@ static u32 sink_bind_vertex_textures(
          rsx_dsp_vertex_texture vt;
          rsx_dsp_get_vertex_texture(&g.rsx, u, &vt);
          eng_decode_sampler(vt.filter, vt.wrap, vt.control0, &samplers[u]);
@@ -6714,7 +8998,7 @@ index f99986b..3f5592c 100644
          /* A vertex unit has no crossbar, so its remap is the identity. */
          textures[u] = eng_texture_slot(vt.location, vt.offset, vt.format,
                                         vt.width, vt.height, vt.mipmaps,
-@@ -2279,6 +3652,24 @@ static int pd_capturing(void)
+@@ -2279,6 +3685,24 @@ static int pd_capturing(void)
      if (s_pd.state == 1 && s_pd.after_s &&
          difftime(time(NULL), s_pd.start) >= (double)s_pd.after_s && pd_open_index())
          fprintf(s_pd.index, "from a draw of frame %u, %u s in\n", g.frames, s_pd.after_s);
@@ -6739,7 +9023,7 @@ index f99986b..3f5592c 100644
      return s_pd.state == 2;
  }
  
-@@ -2459,6 +3850,34 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
+@@ -2459,6 +3883,34 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
              fprintf(s_pd.draws_log, " t%u %u:0x%08X f%02X %ux%u", u, t.location, t.offset,
                      t.format & 0xFFu, t.width, t.height);
          }
@@ -6774,7 +9058,7 @@ index f99986b..3f5592c 100644
          fprintf(s_pd.draws_log, "\n");
      }
      if (s_pd.draws++) return;
-@@ -2558,6 +3977,10 @@ static void sink_end(void* user, const rsx_dispatch* r)
+@@ -2558,6 +4010,10 @@ static void sink_end(void* user, const rsx_dispatch* r)
      eng_vertex_layout(&layout);
      dc_fetch(&layout, rebuild);
      if (!dc.n_verts || !dc.fetch_ok) return;
@@ -6785,7 +9069,7 @@ index f99986b..3f5592c 100644
  
      int indexed = 0;
      u32 n_draw = dc.n_source_refs;
-@@ -2646,7 +4069,7 @@ static void sink_end(void* user, const rsx_dispatch* r)
+@@ -2646,7 +4102,7 @@ static void sink_end(void* user, const rsx_dispatch* r)
  
      /* The buffered fragment constants, then fp_alpha: the layout
       * rsx_fp_decompile_buffered_ex compiled the shader against. */
@@ -6794,7 +9078,7 @@ index f99986b..3f5592c 100644
      const u32 fp_bytes = (nslots + 1u) * 16u;
      if (g.fp_cb_cap < fp_bytes) {
          u8* n = (u8*)realloc(g.fp_cb, fp_bytes);
-@@ -2655,8 +4078,8 @@ static void sink_end(void* user, const rsx_dispatch* r)
+@@ -2655,8 +4111,8 @@ static void sink_end(void* user, const rsx_dispatch* r)
          g.fp_cb_cap = fp_bytes;
      }
      memset(g.fp_cb, 0, fp_bytes);
@@ -6805,7 +9089,7 @@ index f99986b..3f5592c 100644
      { float* alpha = (float*)(g.fp_cb + nslots * 16u);
        alpha[0] = rsx_fp_alpha_ref(rs.alpha_ref_raw, rs.alpha_ref_format);
        alpha[1] = alpha[2] = alpha[3] = 0.0f; }
-@@ -2722,16 +4145,32 @@ static void sink_end(void* user, const rsx_dispatch* r)
+@@ -2722,16 +4178,32 @@ static void sink_end(void* user, const rsx_dispatch* r)
      }
  
      const u32 uploaded = indexed ? dc.n_verts : n_draw;
@@ -6840,7 +9124,7 @@ index f99986b..3f5592c 100644
          eng_zdepth_wrote(zslot, &sf);
      }
  }
-@@ -2821,7 +4260,9 @@ static void eng_present(u32 buffer_id)
+@@ -2821,7 +4293,9 @@ static void eng_present(u32 buffer_id)
      if (!g.ready) return;
      const u32 target = eng_present_surface(buffer_id);
      if (target == ENG_INVALID) return;
@@ -6851,7 +9135,7 @@ index f99986b..3f5592c 100644
          u32 current = eng_current_surface();
          fprintf(stderr, "[rsx capture] frame=%u buffer=%u selected=%u current=%u draws=%u surfaces=%u\n",
                  g.frames, buffer_id, target, current, g.guest_draws, g.n_surfaces);
-@@ -2834,6 +4275,8 @@ static void eng_present(u32 buffer_id)
+@@ -2834,6 +4308,8 @@ static void eng_present(u32 buffer_id)
      g.last_present_surface = target;
      g.be->present(g.be->user, g.surfaces[target].handle);
      g.frames++;
@@ -6860,7 +9144,7 @@ index f99986b..3f5592c 100644
      g.last_guest_draws = g.guest_draws;
      g.guest_draws = 0;
  }
-@@ -2883,6 +4326,10 @@ int rsx_draw_engine_init(u32 width, u32 height)
+@@ -2883,6 +4359,10 @@ int rsx_draw_engine_init(u32 width, u32 height)
      g.height = height ? height : 720;
      { const char* e = getenv("PS3RECOMP_ENG_TEXHASH_FULL");
        s_texhash_full_always = e && *e && strcmp(e, "0") != 0; }
@@ -6871,7 +9155,7 @@ index f99986b..3f5592c 100644
      g.vp_cb = (u8*)calloc(1, ENG_VP_CB_BYTES);
      if (!g.vp_cb) return -1;
      if (g.be->init && g.be->init(g.be->user, g.width, g.height) != 0) {
-@@ -2905,6 +4352,8 @@ int rsx_draw_engine_init(u32 width, u32 height)
+@@ -2905,6 +4385,8 @@ int rsx_draw_engine_init(u32 width, u32 height)
      cellGcm_replay_display_buffers_to_engine();
      fprintf(stderr, "[rsx engine] register-file draw engine up (%ux%u)\n",
              g.width, g.height);
@@ -6880,7 +9164,7 @@ index f99986b..3f5592c 100644
      return 0;
  }
  
-@@ -2913,6 +4362,7 @@ void rsx_draw_engine_shutdown(void)
+@@ -2913,6 +4395,7 @@ void rsx_draw_engine_shutdown(void)
      if (!g.be) return;
      if (g.ready && g.be->submit_and_wait)
          g.be->submit_and_wait(g.be->user, RSX_BE_FLUSH_SHUTDOWN);
@@ -6888,7 +9172,7 @@ index f99986b..3f5592c 100644
      for (u32 i = 0; i < g.n_textures; i++)
          if (g.textures[i].handle) g.be->texture_release(g.be->user, g.textures[i].handle);
      for (u32 i = 0; i < g.n_pipelines; i++)
-@@ -2933,6 +4383,8 @@ void rsx_draw_engine_shutdown(void)
+@@ -2933,6 +4416,8 @@ void rsx_draw_engine_shutdown(void)
      const rsx_draw_backend* be = g.be;
      memset(&g, 0, sizeof g);
      g.be = be;
@@ -7024,7 +9308,7 @@ index 4dec1d6..2a2eb0c 100644
  /*
   * These are the neutral parts the unit tests in libs/video/tests exercise
 diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
-index 5ce72ef..c7fabe9 100644
+index 5ce72ef..e31f763 100644
 --- a/libs/video/rsx_fp_decompiler.c
 +++ b/libs/video/rsx_fp_decompiler.c
 @@ -359,6 +359,11 @@ static const char* input_expr(u32 input_src)
@@ -7081,7 +9365,7 @@ index 5ce72ef..c7fabe9 100644
      if (strstr(o.p, "_rsx_inv_w("))
          out_puts(&p,
              "#ifdef RSX_FRAGCOORD_W_IS_RCP\n"
-@@ -1716,6 +1736,52 @@ int rsx_fp_apply_unnorm_scale(char* hlsl, u32 hlsl_size, u32 unnorm_mask,
+@@ -1716,6 +1736,136 @@ int rsx_fp_apply_unnorm_scale(char* hlsl, u32 hlsl_size, u32 unnorm_mask,
      return patched;
  }
  
@@ -7131,11 +9415,95 @@ index 5ce72ef..c7fabe9 100644
 +    return 1;
 +}
 +
++int rsx_fp_reads_wpos(const u8* ucode, u32 max_bytes)
++{
++    if (!ucode) return 0;
++    for (u32 off = 0; off + 16 <= max_bytes;) {
++        const u32 w0 = rsx_fp_read_word(ucode + off);
++        const u32 w1 = rsx_fp_read_word(ucode + off + 4);
++        const u32 w2 = rsx_fp_read_word(ucode + off + 8);
++        const u32 w3 = rsx_fp_read_word(ucode + off + 12);
++        const int branch = (w2 & FP_BRANCH) != 0;
++        if (!branch && ((w0 & FP_INPUT_SRC_MASK) >> FP_INPUT_SRC_SHIFT) == 0 &&
++            ((w1 & FP_REG_TYPE_MASK) == FP_REG_TYPE_INPUT ||
++             (w2 & FP_REG_TYPE_MASK) == FP_REG_TYPE_INPUT ||
++             (w3 & FP_REG_TYPE_MASK) == FP_REG_TYPE_INPUT))
++            return 1;
++        off += 16;
++        if (!branch && ((w1 & FP_REG_TYPE_MASK) == FP_REG_TYPE_CONST ||
++                        (w2 & FP_REG_TYPE_MASK) == FP_REG_TYPE_CONST ||
++                        (w3 & FP_REG_TYPE_MASK) == FP_REG_TYPE_CONST))
++            off += 16;
++        if (w0 & FP_END) break;
++    }
++    return 0;
++}
++
++/*
++ * WPOS in the guest's window convention (see the header).
++ *
++ * Resistance: Fall of Man sets a BOTTOM origin on every surface and its water
++ * and soft-particle programs turn WPOS back into a top-down row with
++ * (height - WPOS.y) before they look the scene's depth up. Fed SV_POSITION
++ * as is, that row came out mirrored: the river showed the trees above it as a
++ * false reflection, clamped into vertical streaks where the mirrored row left
++ * the screen. The flip is written in SV_POSITION's units, before any
++ * _rsx_wpos (PS3_RES_SCALE) division, so the height is scaled to match.
++ */
++int rsx_fp_apply_wpos_window(char* hlsl, u32 capacity, u32 shader_window)
++{
++    static const char wpos_read[] = "(input.position).";
++    static const char grid_line[] = "    input.position.xy = floor(";
++    static const char* const entries[] = { "main(PSInput input) : SV_TARGET {\n",
++                                           "main(PSInput input) {\n" };
++    if (!hlsl || !capacity) return -1;
++    const u32 height = shader_window & 0xFFFu;
++    const int bottom = ((shader_window >> 12) & 0xFu) == 1u;    /* CELL_GCM_WINDOW_ORIGIN_BOTTOM */
++    const int integer = ((shader_window >> 16) & 0xFu) == 1u;   /* CELL_GCM_WINDOW_PIXEL_CENTER_INTEGER */
++    if (!bottom && !integer) return 0;
++    size_t len = 0;
++    while (len < capacity && hlsl[len]) ++len;
++    if (len == capacity) return -1;
++    if (!strstr(hlsl, wpos_read) && !strstr(hlsl, "_rsx_wpos(input.position)")) return 0;
++    if (strstr(hlsl, "/* rsx shader window */")) return -1;
++    char* body = NULL;
++    for (size_t i = 0; i < sizeof entries / sizeof entries[0] && !body; ++i) {
++        char* at = strstr(hlsl, entries[i]);
++        if (at) body = at + strlen(entries[i]);
++    }
++    if (!body) return -1;
++    /* After the grid line when there is one: it rebuilds x and y from the
++     * sample position, which would undo a flip placed before it. */
++    if (!strncmp(body, grid_line, sizeof grid_line - 1)) {
++        char* eol = strchr(body, '\n');
++        if (!eol) return -1;
++        body = eol + 1;
++    }
++    const double k = (double)s_fp_wpos_scale;
++    char line[256];
++    int n;
++    if (bottom && integer)
++        n = snprintf(line, sizeof line,
++            "    /* rsx shader window */ input.position.xy = float2(input.position.x - %.9g, %.9g - input.position.y);\n",
++            0.5 * k, ((double)height - 0.5) * k);
++    else if (bottom)
++        n = snprintf(line, sizeof line,
++            "    /* rsx shader window */ input.position.y = %.9g - input.position.y;\n",
++            (double)height * k);
++    else
++        n = snprintf(line, sizeof line,
++            "    /* rsx shader window */ input.position.xy -= %.9g;\n", 0.5 * k);
++    if (n < 0 || (size_t)n >= sizeof line || len + (size_t)n + 1 > capacity) return -1;
++    memmove(body + n, body, len - (size_t)(body - hlsl) + 1);
++    memcpy(body, line, (size_t)n);
++    return 1;
++}
++
  /* NV4097_SET_SHADER_PACKER accepts any nonzero value. Floating surfaces and
   * 32-bit exports bypass the integer framebuffer's RGB transfer function. */
  int rsx_fp_srgb_output_enabled(u32 packer, u32 ctrl, u32 color_format)
 diff --git a/libs/video/rsx_fp_decompiler.h b/libs/video/rsx_fp_decompiler.h
-index 670e886..b5f379d 100644
+index 670e886..8873612 100644
 --- a/libs/video/rsx_fp_decompiler.h
 +++ b/libs/video/rsx_fp_decompiler.h
 @@ -85,6 +85,13 @@ int rsx_fp_apply_alpha_test(char* hlsl, u32 out_size, u32 func, float ref);
@@ -7152,7 +9520,7 @@ index 670e886..b5f379d 100644
  /* Scale texel-space (RSX_TEX_FMT_UNNORM) coordinates into HLSL's 0..1 range.
   * unnorm_mask selects the units; dim[u] gives that unit's {width, height};
   * cube units are skipped. Returns the number of Sample sites patched, or -1 if
-@@ -92,6 +99,15 @@ float rsx_fp_alpha_ref(u32 raw, u32 surface_color_format);
+@@ -92,6 +99,31 @@ float rsx_fp_alpha_ref(u32 raw, u32 surface_color_format);
  int rsx_fp_apply_unnorm_scale(char* hlsl, u32 hlsl_size, u32 unnorm_mask,
                                const u32 dim[][2], u32 cube_mask);
  
@@ -7164,6 +9532,22 @@ index 670e886..b5f379d 100644
 + * to do (a 1x1 grid, or no WPOS read), or -1 without mutation when the entry
 + * point is not found, the grid is already applied, or the buffer is short. */
 +int rsx_fp_apply_wpos_grid(char* hlsl, u32 capacity, u32 sx, u32 sy);
++
++/* Does the program read WPOS (input 0) as an instruction source? Scans the
++ * ucode the way rsx_fp_texture_units does, so a caller can tell before
++ * decompiling whether the shader window belongs to the program's identity. */
++int rsx_fp_reads_wpos(const u8* ucode, u32 max_bytes);
++
++/* NV4097_SET_SHADER_WINDOW (height [0:11], origin [12:15], pixel centre
++ * [16:19]) applied to WPOS. SV_POSITION has its origin at the top left and
++ * its centres at .5; the RSX counts WPOS.y up from the bottom of a window of
++ * that height when the origin is BOTTOM (libgcm's default) and drops the .5
++ * when the centre is INTEGER (RPCS3 RSXDrawCommands.cpp: wpos_scale and
++ * wpos_bias). The line goes after rsx_fp_apply_wpos_grid's, so apply that
++ * first. Returns 1 when patched, 0 when there is nothing to do (top origin
++ * with half centres, or no WPOS read), or -1 without mutation when the entry
++ * point is not found, the window is already applied, or the buffer is short. */
++int rsx_fp_apply_wpos_window(char* hlsl, u32 capacity, u32 shader_window);
 +
  /* Decode NV4097_SET_ALPHA_REF for the active surface color format. Ordinary
   * integer render targets use the low 8 bits as UNORM8; W16Z16Y16X16 uses a
@@ -10332,10 +12716,10 @@ index 0000000..2d12a63
 +    return 0;
 +}
 diff --git a/libs/video/tests/test_fp_decompiler.c b/libs/video/tests/test_fp_decompiler.c
-index 650c021..6894248 100644
+index 650c021..301b540 100644
 --- a/libs/video/tests/test_fp_decompiler.c
 +++ b/libs/video/tests/test_fp_decompiler.c
-@@ -520,6 +520,96 @@ int main(void)
+@@ -520,6 +520,183 @@ int main(void)
          check_absent("persp_off_no_helper", hlsl, "_rsx_inv_w");
      }
  
@@ -10427,6 +12811,93 @@ index 650c021..6894248 100644
 +        check("wpos_grid_res_scale_line", hlsl,
 +              "    input.position.xy = floor(input.position.xy / float2(2, 1)) + 0.5;\n");
 +        check("wpos_grid_res_scale_read", hlsl, "((_rsx_wpos(input.position)).xyzw)");
++    }
++
++    /* SET_SHADER_WINDOW: a BOTTOM origin counts WPOS.y up from the window's
++     * bottom edge. Resistance's water reads its depth at (720 - WPOS.y); with
++     * SV_POSITION's top-down y that row was mirrored. */
++    {
++        u8 prog[32];
++        u32 nk = 0;
++        put_word(prog + 0, OPC(0x01) | OUTMASK_ALL | INSRC(0));            /* MOV r0, WPOS */
++        put_word(prog + 4, T_INPUT | SWZ_IDENT | EXEC_ALWAYS);
++        put_word(prog + 8, 0);
++        put_word(prog + 12, 0);
++        put_word(prog + 16, OPC(0x17) | OUTMASK_ALL | OUTREG(1) | INSRC(6) | TEXU(0) | END);
++        put_word(prog + 20, T_INPUT | SWZ_IDENT | EXEC_ALWAYS);              /* TEX r1, TC2 */
++        put_word(prog + 24, 0);
++        put_word(prog + 28, 1u << 31);
++        check_true("reads_wpos", rsx_fp_reads_wpos(prog, sizeof prog) == 1);
++
++        rsx_fp_decompile_buffered_ex(prog, sizeof prog, CTRL_32BIT, 0, hlsl, sizeof hlsl, &nk);
++        char before[sizeof hlsl];
++        memcpy(before, hlsl, sizeof hlsl);
++        check_true("wpos_window_top_noop",
++                   rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000002D0u) == 0 &&
++                   !strcmp(before, hlsl));
++        check_true("wpos_window_short_buffer",
++                   rsx_fp_apply_wpos_window(hlsl, (u32)strlen(hlsl) + 8, 0x000012D0u) == -1 &&
++                   !strcmp(before, hlsl));
++        check_true("wpos_window_bottom", rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000012D0u) == 1);
++        check("wpos_window_bottom_line", hlsl,
++              "float4 main(PSInput input) : SV_TARGET {\n"
++              "    /* rsx shader window */ input.position.y = 720 - input.position.y;\n");
++        check("wpos_window_inv_w_kept", hlsl, "_rsx_inv_w(input.position)");
++        check_true("wpos_window_once", rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000012D0u) == -1);
++
++        /* On an antialiased target the flip follows the grid line, which
++         * rebuilds y from the sample position. */
++        rsx_fp_decompile_buffered_ex(prog, sizeof prog, CTRL_32BIT, 0, hlsl, sizeof hlsl, &nk);
++        check_true("wpos_window_grid", rsx_fp_apply_wpos_grid(hlsl, sizeof hlsl, 2, 1) == 1 &&
++                                       rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000012D0u) == 1);
++        check("wpos_window_after_grid", hlsl,
++              "    input.position.xy = floor(input.position.xy / float2(2, 1)) + 0.5;\n"
++              "    /* rsx shader window */ input.position.y = 720 - input.position.y;\n");
++
++        /* INTEGER centres drop the half on both axes (RPCS3 wpos_bias). */
++        rsx_fp_decompile_buffered_ex(prog, sizeof prog, CTRL_32BIT, 0, hlsl, sizeof hlsl, &nk);
++        check_true("wpos_window_bottom_integer", rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000112D0u) == 1);
++        check("wpos_window_bottom_integer_line", hlsl,
++              "input.position.xy = float2(input.position.x - 0.5, 719.5 - input.position.y);\n");
++        rsx_fp_decompile_buffered_ex(prog, sizeof prog, CTRL_32BIT, 0, hlsl, sizeof hlsl, &nk);
++        check_true("wpos_window_top_integer", rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000102D0u) == 1);
++        check("wpos_window_top_integer_line", hlsl, "input.position.xy -= 0.5;\n");
++
++        /* Under PS3_RES_SCALE SV_POSITION counts scaled pixels and _rsx_wpos
++         * divides afterwards, so the flip uses the scaled height. */
++        rsx_fp_set_wpos_scale(2.0f);
++        rsx_fp_decompile_buffered_ex(prog, sizeof prog, CTRL_32BIT, 0, hlsl, sizeof hlsl, &nk);
++        check_true("wpos_window_res_scale", rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000012D0u) == 1);
++        rsx_fp_set_wpos_scale(1.0f);
++        check("wpos_window_res_scale_line", hlsl, "input.position.y = 1440 - input.position.y;\n");
++        check("wpos_window_res_scale_read", hlsl, "_rsx_wpos(input.position)");
++
++        /* No WPOS read: nothing to do, and the scanner agrees. The
++         * perspective-corrected texcoord's 1/w is not a WPOS read. */
++        put_word(prog + 0, OPC(0x01) | OUTMASK_ALL | INSRC(1));            /* MOV r0, COL0 */
++        check_true("reads_wpos_none", rsx_fp_reads_wpos(prog, sizeof prog) == 0);
++        rsx_fp_decompile_buffered_ex(prog, sizeof prog, CTRL_32BIT, 0, hlsl, sizeof hlsl, &nk);
++        memcpy(before, hlsl, sizeof hlsl);
++        check_true("wpos_window_no_wpos_noop",
++                   rsx_fp_apply_wpos_window(hlsl, sizeof hlsl, 0x000012D0u) == 0 &&
++                   !strcmp(before, hlsl));
++
++        /* An inline constant's 16 bytes are data, not an instruction: a
++         * constant whose words look like a WPOS read is skipped. */
++        u8 kprog[48];
++        put_word(kprog + 0, OPC(0x01) | OUTMASK_ALL | INSRC(1));           /* MOV r0, c */
++        put_word(kprog + 4, T_CONST | SWZ_IDENT | EXEC_ALWAYS);
++        put_word(kprog + 8, 0);
++        put_word(kprog + 12, 0);
++        put_word(kprog + 16, OPC(0x01) | INSRC(0));                        /* looks like MOV WPOS */
++        put_word(kprog + 20, T_INPUT);
++        put_word(kprog + 24, 0);
++        put_word(kprog + 28, 0);
++        put_word(kprog + 32, OPC(0x01) | OUTMASK_ALL | INSRC(1) | END);    /* MOV r0, COL0 */
++        put_word(kprog + 36, T_INPUT | SWZ_IDENT | EXEC_ALWAYS);
++        put_word(kprog + 40, 0);
++        put_word(kprog + 44, 0);
++        check_true("reads_wpos_skips_constant", rsx_fp_reads_wpos(kprog, sizeof kprog) == 0);
 +    }
 +
      printf("\n===========================================\n");
@@ -12091,7 +14562,7 @@ index 0000000..524a7d8
 +    return g_failures ? 1 : 0;
 +}
 diff --git a/libs/video/tests/test_rsx_draw_engine.c b/libs/video/tests/test_rsx_draw_engine.c
-index aee6109..239b8d8 100644
+index aee6109..7578ebc 100644
 --- a/libs/video/tests/test_rsx_draw_engine.c
 +++ b/libs/video/tests/test_rsx_draw_engine.c
 @@ -14,6 +14,7 @@
@@ -12205,7 +14676,7 @@ index aee6109..239b8d8 100644
  /* A 128x128 A8R8G8B8 linear texture on unit 0: 64 KB, past the size that is
   * hashed in full every frame. */
  #define BIG_TEX_OFFSET 0x00100000u
-@@ -1385,6 +1439,73 @@ static void test_antialiased_surface(void)
+@@ -1385,6 +1439,171 @@ static void test_antialiased_surface(void)
      }
  }
  
@@ -12276,13 +14747,184 @@ index aee6109..239b8d8 100644
 +    engine_down();
 +}
 +
++/* SET_SHADER_WINDOW: a BOTTOM origin counts WPOS.y up from the window's
++ * bottom edge. Resistance sets it on every surface and its water reads the
++ * scene's depth at (720 - WPOS.y); taken top-down, that row was mirrored and
++ * the river showed the trees above it, streaked. The window is identity only
++ * for a program that reads WPOS. */
++#define M_SHADER_WINDOW 0x1D88
++static void test_shader_window_wpos(void)
++{
++    printf("-- WPOS in the shader window's origin\n");
++    static const char flip720[] =
++        "    /* rsx shader window */ input.position.y = 720 - input.position.y;\n";
++    static const char flip192[] =
++        "    /* rsx shader window */ input.position.y = 192 - input.position.y;\n";
++    engine_up();
++    rsx_draw_backend be = g_stub_backend;
++    be.pipeline_create = wpos_capture_pipeline;
++    rsx_draw_engine_set_backend(&be);
++    u8 vp[16];
++    rsx_test_vp_mov_out(vp, 0, RSX_TEST_VP_SWZ_IDENT, 0, 1);
++    m(0x1E9C, 0);                                    /* TRANSFORM_PROGRAM_LOAD */
++    for (u32 i = 0; i < 4; i++) { u32 w; memcpy(&w, vp + i * 4, 4); m(0xB80 + i * 4, w); }
++    m(0x1EA0, 0);                                    /* TRANSFORM_PROGRAM_START */
++    rsx_test_fp_instr(vm_base + WPOS_FP_OFFSET,
++                      RSX_TEST_FP_OPC(RSX_TEST_FP_OP_MOV) | RSX_TEST_FP_MASK_XYZW |
++                      RSX_TEST_FP_INSRC(0) | RSX_TEST_FP_END,
++                      RSX_TEST_FP_SRC_INPUT | RSX_TEST_FP_SWZ_IDENT);
++    m(0x08E4, WPOS_FP_OFFSET | 2u);                  /* SHADER_PROGRAM, main */
++    m(0x1D60, 0x40u);                                /* SHADER_CONTROL: fp32 exports */
++    m(M_SURFACE_FORMAT, 8u);
++
++    /* Never written (reads 0): TOP origin, half centres -- unchanged. */
++    int before = stub.n_pipeline_create;
++    draw_triangle();
++    const u32 top = stub.bound_pipeline;
++    CHECK(stub.n_pipeline_create == before + 1 && strstr(g_wpos_ps, "(input.position).") &&
++          !strstr(g_wpos_ps, "rsx shader window"),
++          "a TOP window leaves WPOS as the host position");
++    m(M_SHADER_WINDOW, 720u);                        /* TOP, height 720 */
++    before = stub.n_pipeline_create;
++    draw_triangle();
++    CHECK(stub.n_pipeline_create == before && stub.bound_pipeline == top,
++          "a TOP window's height is not part of the key");
++
++    m(M_SHADER_WINDOW, 720u | (1u << 12));           /* BOTTOM, height 720 */
++    before = stub.n_pipeline_create;
++    draw_triangle();
++    const u32 bottom720 = stub.bound_pipeline;
++    CHECK(stub.n_pipeline_create == before + 1 && bottom720 != top &&
++          strstr(g_wpos_ps, flip720) != NULL,
++          "a BOTTOM window of 720 flips WPOS.y in a pipeline of its own");
++
++    m(M_SHADER_WINDOW, 192u | (1u << 12));           /* a 192-row shadow target */
++    before = stub.n_pipeline_create;
++    draw_triangle();
++    CHECK(stub.n_pipeline_create == before + 1 && stub.bound_pipeline != bottom720 &&
++          strstr(g_wpos_ps, flip192) != NULL,
++          "the window height is part of the flip and of the key");
++
++    m(M_SHADER_WINDOW, 720u | (1u << 12));
++    before = stub.n_pipeline_create;
++    draw_triangle();
++    CHECK(stub.n_pipeline_create == before && stub.bound_pipeline == bottom720,
++          "back on the 720 window, its pipeline is reused");
++
++    /* A 2x1 antialiased target: the flip follows the grid's pixel centre. */
++    m(M_SURFACE_FORMAT, 8u | (3u << 12));
++    draw_triangle();
++    {
++        const char* grid = strstr(g_wpos_ps,
++            "    input.position.xy = floor(input.position.xy / float2(2, 1)) + 0.5;\n");
++        const char* flip = strstr(g_wpos_ps, flip720);
++        CHECK(grid && flip && grid < flip, "on a 2x1 grid the flip comes after the grid line");
++    }
++    m(M_SURFACE_FORMAT, 8u);
++
++    /* A program that does not read WPOS keeps one pipeline whatever the
++     * window says. */
++    rsx_test_fp_instr(vm_base + WPOS_FP_OFFSET + 0x100u,
++                      RSX_TEST_FP_OPC(RSX_TEST_FP_OP_MOV) | RSX_TEST_FP_MASK_XYZW |
++                      RSX_TEST_FP_INSRC(1) | RSX_TEST_FP_END,
++                      RSX_TEST_FP_SRC_INPUT | RSX_TEST_FP_SWZ_IDENT);
++    m(0x08E4, (WPOS_FP_OFFSET + 0x100u) | 2u);
++    m(M_SHADER_WINDOW, 720u | (1u << 12));
++    draw_triangle();
++    const u32 col = stub.bound_pipeline;
++    before = stub.n_pipeline_create;
++    m(M_SHADER_WINDOW, 192u | (1u << 12));
++    draw_triangle();
++    m(M_SHADER_WINDOW, 0u);
++    draw_triangle();
++    CHECK(stub.n_pipeline_create == before && stub.bound_pipeline == col &&
++          !strstr(g_wpos_ps, "rsx shader window"),
++          "a program without WPOS is not rebuilt per window");
++    m(M_SHADER_WINDOW, 0u);
++    m(0x08E4, 0);
++    engine_down();
++}
++
  /* ---- 10. a zeta or a target read in a texture format of its own --------- */
  
  static void test_depth_read_as_color(void)
-@@ -1431,6 +1552,148 @@ static void test_depth_read_as_color(void)
+@@ -1431,6 +1650,221 @@ static void test_depth_read_as_color(void)
      engine_down();
  }
  
++/* A swizzled zeta has no pitch: RSX keeps its texels in Morton order, and a
++ * swizzled DEPTH16 texture reads them back in that order. Resistance renders
++ * its 64x64 distant-character shadow map so (pitch register 64, half a Z16
++ * row) and samples it that way; refused for the pitch, the unit fell back to
++ * the never-written colour target at that address and the projected shadow
++ * quad came out solid black. Each texel here reads back as its own index. */
++static int ramp_depth_readback(void* u, u32 d, u32 x, u32 y, u32 w, u32 h,
++                               float* out, u32 pitch)
++{
++    (void)u; (void)d; (void)x; (void)y;
++    stub.n_depth_readback++;
++    for (u32 r = 0; r < h; r++)
++        for (u32 c = 0; c < w; c++)
++            *(float*)((u8*)out + (size_t)r * pitch + c * 4u) = (float)(r * w + c) / 65535.0f;
++    return 0;
++}
++
++static void test_swizzled_zeta_read(void)
++{
++    printf("-- swizzled Z16 zeta read as DEPTH16\n");
++    engine_up();
++    rsx_draw_backend be = g_stub_backend;
++    be.depth_readback = ramp_depth_readback;
++    rsx_draw_engine_set_backend(&be);
++    /* A8R8G8B8 + Z16, type SWIZZLE, 4x4 (log2 2 x 2). */
++    m(M_CONTEXT_DMA_ZETA, DMA_LOCAL);
++    m(M_SURFACE_FORMAT, 8u | (1u << 5) | (2u << 8) | (2u << 16) | (2u << 24));
++    m(M_SURFACE_CLIP_H, 4u << 16);
++    m(M_SURFACE_CLIP_V, 4u << 16);
++    m(M_ZETA_OFFSET, ZETA_OFFSET);
++    m(M_ZETA_PITCH, 64u);
++    m(M_COLOR_A_OFFSET, ZETA_OFFSET);
++    m(M_COLOR_MASK, 0u);
++    m(M_DEPTH_TEST, 1u);
++    m(M_DEPTH_WRITE, 1u);
++    u8* z = vm_base + GUEST_LOCAL_EA + ZETA_OFFSET;
++    memset(z, 0xEE, 64);
++    draw_triangle();
++    CHECK(stub.n_draw == 1, "the depth-only pass drew");
++
++    m(M_COLOR_MASK, 0x01010101u);
++    m(M_DEPTH_TEST, 0u);
++    m(M_DEPTH_WRITE, 0u);
++    m(M_COLOR_A_OFFSET, 0x90000u);
++    m(M_SURFACE_FORMAT, 8u | (1u << 5) | (1u << 8));
++    m(M_ZETA_OFFSET, ZETA_OFFSET + 0x10000u);
++    bind_texture_unit(RSX_LOCATION_LOCAL, ZETA_OFFSET);
++    m(M_TEX_UNIT + 0x04, 1u | (2u << 4) | (0x92u << 8) | (1u << 16));   /* swizzled DEPTH16 */
++    const int uploads = stub.n_texture_create;
++    draw_triangle();
++    CHECK(stub.n_depth_readback == 1, "the depth target was read back (%d)",
++          stub.n_depth_readback);
++    /* texel (x, y) holds y*4+x; Morton order puts x in bit 0 and y in bit 1. */
++    static const struct { u32 x, y, at; } texel[] = {
++        { 0, 0, 0 }, { 1, 0, 1 }, { 0, 1, 2 }, { 1, 1, 3 },
++        { 2, 0, 4 }, { 0, 2, 8 }, { 3, 3, 15 }, { 2, 1, 6 },
++    };
++    int ordered = 1;
++    for (u32 i = 0; i < sizeof texel / sizeof texel[0]; i++) {
++        const u32 v = ((u32)z[texel[i].at * 2u] << 8) | z[texel[i].at * 2u + 1u];
++        if (v != texel[i].y * 4u + texel[i].x) {
++            ordered = 0;
++            printf("    texel %u,%u at %u holds %u\n", texel[i].x, texel[i].y, texel[i].at, v);
++        }
++    }
++    CHECK(ordered, "guest memory holds the Z16 depth in Morton order");
++    CHECK(z[32] == 0xEE && z[63] == 0xEE, "nothing is stored past the 4x4 image");
++    CHECK(stub.n_texture_create == uploads + 1 &&
++          stub.bound_tex[0] == stub.last_created_texture,
++          "the unit samples a texture decoded from those bytes");
++    engine_down();
++}
++
 +/* The same read with a backend that builds the colour-format bytes itself:
 + * no readback, no store to guest memory, no texture decoded from it; the
 + * unit samples the backend's copy, which follows depth writes and clears.
@@ -12428,7 +15070,7 @@ index aee6109..239b8d8 100644
  static void test_color_read_as_float(void)
  {
      printf("-- colour target read as X32_FLOAT\n");
-@@ -1541,6 +1804,33 @@ static void test_immediate_compositor(void)
+@@ -1541,6 +1975,33 @@ static void test_immediate_compositor(void)
      CHECK(stub.n_draw == 5 && stub.captured_vertices[1][3] == 0 &&
            stub.captured_vertices[1][35] == 0,
            "explicit all-zero DATA4F preserves position W and attribute alpha");
@@ -12462,7 +15104,7 @@ index aee6109..239b8d8 100644
      engine_down();
  }
  
-@@ -1609,6 +1899,7 @@ int main(void)
+@@ -1609,6 +2070,7 @@ int main(void)
      test_surface_aliasing();
      test_mrt_set();
      test_texture_cache();
@@ -12470,12 +15112,14 @@ index aee6109..239b8d8 100644
      test_texture_sparse_rehash();
      test_pipeline_key();
      test_restart_expansion();
-@@ -1623,7 +1914,10 @@ int main(void)
+@@ -1623,7 +2085,12 @@ int main(void)
      test_inline_array();
      test_depth_clear_value();
      test_antialiased_surface();
 +    test_antialiased_wpos();
++    test_shader_window_wpos();
      test_depth_read_as_color();
++    test_swizzled_zeta_read();
 +    test_depth_read_as_color_gpu();
 +    test_depth_snapshot_retired_by_write();
      test_color_read_as_float();
@@ -15676,7 +18320,7 @@ index f46d415..77640c5 100644
   * brsl/bisl frame is live (host_depth>0); at 0 the frame was destroyed (task
   * resume / restack unwind) so dispatch to the link register instead -- faithful
 diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
-index 7b0debe..dd6b3d6 100644
+index 7b0debe..d16b601 100644
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -728,10 +728,19 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
@@ -15820,7 +18464,7 @@ index 7b0debe..dd6b3d6 100644
 +                  fflush(stderr);
 +                  spu_halt(spu);
 +              }
-+              /* A job re-reading a word another processor writes (an RSX label, a
++              /* A job re-reading a word another agent writes (an RSX label, a
 +               * ring-space counter, a peer job's completion flag) is bound by
 +               * that write, and a 1 ms sleep per poll lands it up to a
 +               * millisecond late -- on the frame's critical path when the
@@ -16350,7 +18994,7 @@ index 3f7d733..4d340f0 100644
  
  
 diff --git a/runtime/spu/spu_raw.c b/runtime/spu/spu_raw.c
-index f6dc8be..8a2ddaa 100644
+index f6dc8be..038fbb1 100644
 --- a/runtime/spu/spu_raw.c
 +++ b/runtime/spu/spu_raw.c
 @@ -229,10 +229,27 @@ void spu_raw_note_image(uint32_t src_ea, uint32_t entry)
@@ -16413,7 +19057,7 @@ index f6dc8be..8a2ddaa 100644
  
      fprintf(stderr, "[spu-raw] spu%u stopped: halted=%d pc=0x%05X lr=0x%05X "
                      "steps=%llu stop_code=0x%X outmbox(n=%u v=0x%08X) "
-@@ -265,35 +296,103 @@ static DWORD WINAPI raw_spu_thread(LPVOID arg)
+@@ -265,35 +296,114 @@ static DWORD WINAPI raw_spu_thread(LPVOID arg)
              (unsigned)c->ch_out_intr_mbox.count, c->ch_out_intr_mbox.value,
              (unsigned)c->ch_in_mbox.count);
      fflush(stderr);
@@ -16472,17 +19116,30 @@ index f6dc8be..8a2ddaa 100644
       * Ports register each image's executable segment too (build_spu_workloads
       * .text fingerprint), so one of the GET runs matches it. */
 -    for (int r = 0; !s_pending_entry && r < s->get_runs; r++) {
-+    for (int r = 0; !entry && r < s->get_runs; r++) {
-         uint64_t fp = spu_workload_fingerprint(vm_base + s->base + s->get_lo[r],
-                                                s->get_hi[r] - s->get_lo[r]);
+-        uint64_t fp = spu_workload_fingerprint(vm_base + s->base + s->get_lo[r],
+-                                               s->get_hi[r] - s->get_lo[r]);
 -        s_pending_entry = spu_workload_find_img(fp, &s_pending_image_id);
 -        fprintf(stderr, "[spu-raw] spu%u proxy-loaded LS 0x%05X..0x%05X fp=0x%016llX -> %s\n",
++    for (int r = 0; !entry && r < s->get_runs; r++) {
++        const uint8_t* run = vm_base + s->base + s->get_lo[r];
++        const uint32_t run_len = s->get_hi[r] - s->get_lo[r];
++        uint64_t fp = spu_workload_fingerprint(run, run_len);
++        uint64_t masked_fp = 0;
 +        entry = spu_workload_find_img(fp, &image_id);
-+        fprintf(stderr, "[spu-raw] spu%u proxy-loaded LS 0x%05X..0x%05X fp=0x%016llX npc=0x%05X -> %s\n",
++        /* A program that carries a parameter block the PPU fills in before
++         * every load (pointers, per-level values) never fingerprints the same
++         * twice; it is registered with that area masked out. */
++        if (!entry)
++            entry = spu_workload_find_img_masked(run, run_len, &masked_fp, &image_id);
++        char how[64] = "";
++        if (entry && masked_fp)
++            snprintf(how, sizeof how, " (fp=0x%016llX with its parameter area zeroed)",
++                     (unsigned long long)masked_fp);
++        fprintf(stderr, "[spu-raw] spu%u proxy-loaded LS 0x%05X..0x%05X fp=0x%016llX npc=0x%05X -> %s%s\n",
                  n, s->get_lo[r], s->get_hi[r], (unsigned long long)fp,
 -                s_pending_entry ? "lifted entry registered" : "no match");
 +                be32_load(s->base + SPU_RAW_NPC) & ~3u,
-+                entry ? "lifted entry registered" : "no match");
++                entry ? "lifted entry registered" : "no match", how);
 +        /* SPU_RAW_DUMP_DIR=<dir>: write an unmatched run out as
 +         * rawspu_<fp>_<lo>.bin -- the bytes exactly as they sit in local store
 +         * at <lo>, which is the base to lift them at. */
@@ -16526,7 +19183,7 @@ index f6dc8be..8a2ddaa 100644
  
      if (!s->ctx) {
          s->ctx = (spu_context*)malloc(sizeof(spu_context));
-@@ -304,12 +403,12 @@ static void raw_spu_start(raw_spu* s)
+@@ -304,12 +414,12 @@ static void raw_spu_start(raw_spu* s)
      /* THE point of this whole file: local store is the guest window, not a copy.
       * The PPU keeps writing command buffers into it while the SPU runs. */
      s->ctx->ls       = vm_base + s->base;
@@ -16542,7 +19199,7 @@ index f6dc8be..8a2ddaa 100644
  
      g_spu_force_ch_block = 1;   /* an empty RdInMbox must park, not fabricate 0 */
  
-@@ -330,7 +429,17 @@ static void raw_spu_start(raw_spu* s)
+@@ -330,7 +440,17 @@ static void raw_spu_start(raw_spu* s)
  
  #ifdef _WIN32
      s->thread = CreateThread(NULL, 1u << 20, raw_spu_thread, s, 0, NULL);
@@ -16561,7 +19218,7 @@ index f6dc8be..8a2ddaa 100644
  #endif
  }
  
-@@ -351,7 +460,7 @@ void spu_raw_reg_store(uint32_t ea, uint32_t val, int width)
+@@ -351,7 +471,7 @@ void spu_raw_reg_store(uint32_t ea, uint32_t val, int width)
      switch (off) {
      case SPU_RAW_RUNCNTL:
          if (val == RUNCNTL_RUN) raw_spu_start(s);
@@ -16571,7 +19228,7 @@ index f6dc8be..8a2ddaa 100644
  
      case SPU_RAW_IN_MBOX:
 diff --git a/runtime/spu/spu_workload.c b/runtime/spu/spu_workload.c
-index 2008961..5389268 100644
+index 2008961..8cf8da5 100644
 --- a/runtime/spu/spu_workload.c
 +++ b/runtime/spu/spu_workload.c
 @@ -13,6 +13,7 @@
@@ -16582,6 +19239,101 @@ index 2008961..5389268 100644
  #ifdef _WIN32
  #include <windows.h>
  #else
+@@ -51,6 +52,9 @@ typedef struct {
+     spu_lifted_entry_fn fn;
+     int                 image_id;
+     const char*         name;
++    /* Masked registrations only (var_len != 0): the image is `size` bytes and
++     * its fingerprint takes [var_off, var_off + var_len) as zero. */
++    uint32_t            size, var_off, var_len;
+ } spu_workload_entry;
+ 
+ static spu_workload_entry s_registry[SPU_WORKLOAD_MAX];
+@@ -105,6 +109,51 @@ spu_lifted_entry_fn spu_workload_find_img(uint64_t fingerprint, int* image_id_ou
+     return NULL;
+ }
+ 
++void spu_workload_register_img_masked(uint64_t fingerprint, spu_lifted_entry_fn fn,
++                                      int image_id, const char* name,
++                                      uint32_t size, uint32_t var_off,
++                                      uint32_t var_len)
++{
++    if (!fn || !size || !var_len || var_off > size || var_len > size - var_off) {
++        fprintf(stderr, "[spu_workload] bad masked registration '%s' "
++                        "(size 0x%X, area 0x%X+0x%X)\n",
++                name ? name : "?", size, var_off, var_len);
++        return;
++    }
++    spu_workload_register_img(fingerprint, fn, image_id, name);
++    for (unsigned i = 0; i < s_registry_count; i++)
++        if (s_registry[i].fp == fingerprint) {
++            s_registry[i].size    = size;
++            s_registry[i].var_off = var_off;
++            s_registry[i].var_len = var_len;
++            return;
++        }
++}
++
++spu_lifted_entry_fn spu_workload_find_img_masked(const void* data, size_t n,
++                                                 uint64_t* fp_out,
++                                                 int* image_id_out)
++{
++    const uint8_t* p = (const uint8_t*)data;
++    for (unsigned i = 0; i < s_registry_count; i++) {
++        const spu_workload_entry* e = &s_registry[i];
++        if (!e->var_len || e->size != n) continue;
++        /* spu_workload_fingerprint() with the variable area read as zero. */
++        uint64_t h = 1469598103934665603ULL;
++        for (size_t k = 0; k < n; k++) {
++            const uint8_t b = (k - e->var_off < e->var_len) ? 0 : p[k];
++            h ^= b;
++            h *= 1099511628211ULL;
++        }
++        if (h != e->fp) continue;
++        if (fp_out) *fp_out = h;
++        if (image_id_out) *image_id_out = e->image_id;
++        return e->fn;
++    }
++    if (image_id_out) *image_id_out = 0;
++    return NULL;
++}
++
+ unsigned spu_workload_count(void) { return s_registry_count; }
+ 
+ /* ---- SPU ELF loader (32-bit big-endian) -------------------------------- */
+diff --git a/runtime/spu/spu_workload.h b/runtime/spu/spu_workload.h
+index f8a726e..09c982f 100644
+--- a/runtime/spu/spu_workload.h
++++ b/runtime/spu/spu_workload.h
+@@ -58,6 +58,28 @@ spu_lifted_entry_fn spu_workload_find(uint64_t fingerprint);
+ /* As spu_workload_find, but also returns the image's indirect-branch table id. */
+ spu_lifted_entry_fn spu_workload_find_img(uint64_t fingerprint, int* image_id_out);
+ 
++/* Register an image whose loaded bytes include an area the loading code fills
++ * in on every load: a parameter block of pointers and per-level values that
++ * the PPU writes into the program before it DMAs it into a raw SPU. Its bytes
++ * differ from load to load, so a plain fingerprint of the loaded run never
++ * repeats. `fingerprint` is FNV-1a-64 over the `size` bytes with
++ * [var_off, var_off + var_len) taken as zero -- for an image cut out of an ELF
++ * whose parameter block is zero there, simply the fingerprint of those bytes.
++ * spu_workload_find_img_masked() matches it against a run of exactly `size`
++ * bytes, whatever the area holds. */
++void spu_workload_register_img_masked(uint64_t fingerprint, spu_lifted_entry_fn fn,
++                                      int image_id, const char* name,
++                                      uint32_t size, uint32_t var_off,
++                                      uint32_t var_len);
++
++/* Look `data` (n bytes) up among the masked registrations of that size: the
++ * entry whose fingerprint matches `data` with its variable area zeroed. Writes
++ * that fingerprint to *fp_out and the image id to *image_id_out on a match;
++ * NULL when none matches. */
++spu_lifted_entry_fn spu_workload_find_img_masked(const void* data, size_t n,
++                                                 uint64_t* fp_out,
++                                                 int* image_id_out);
++
+ /* Run a SPURS policy module (raw PM binary loaded at LS 0xA00) under the HLE'd
+  * kernel handoff: kernel context at LS 0x100, entry ABI of
+  * cellSpursModuleEntry(context, ea) with the workload's u64 data in r4.
 diff --git a/runtime/spu/spurs_job.c b/runtime/spu/spurs_job.c
 index bb8f122..81dd81d 100644
 --- a/runtime/spu/spurs_job.c
@@ -17272,6 +20024,93 @@ index 26e7db3..478ec1e 100644
      reset();
      spu.spu_id = 0x7FFFFF;                       /* no such thread: nothing will ever bind its port */
      r = send_event(0x2A, &ms);
+diff --git a/runtime/spu/tests/test_spu_workload_masked.c b/runtime/spu/tests/test_spu_workload_masked.c
+new file mode 100644
+index 0000000..f9d6aea
+--- /dev/null
++++ b/runtime/spu/tests/test_spu_workload_masked.c
+@@ -0,0 +1,81 @@
++/* A raw-SPU program whose loader fills a parameter area in before every load is
++ * found whatever that area holds. Resistance's second raw SPU program carries
++ * 0x50 bytes of heap pointers, per-level values and its own MMIO window at the
++ * end of its image; one run loaded it as 47C9CB480016D493, a Continue from a
++ * later checkpoint as 5771C48D28664765, and with a plain fingerprint the second
++ * found no lifted entry and the game hung. Registered masked, both resolve to
++ * the image's fingerprint with the area zero.
++ *
++ * clang -std=gnu17 -I include -I runtime -I runtime/spu
++ *   runtime/spu/tests/test_spu_workload_masked.c -Wl,-dead_strip -pthread
++ *   -o /tmp/test_spu_workload_masked && /tmp/test_spu_workload_masked
++ */
++#include "../spu_workload.c"
++#include <assert.h>
++
++/* The rest of spu_workload.c (dispatch, SPURS jobs, the policy-module runner)
++ * is outside this fixture. */
++uint8_t* vm_base;
++uint32_t g_barrier_sync_watch;
++void (*g_spu_out_mbox_hook)(uint32_t, uint32_t, int, uint32_t);
++uint32_t g_ydkj_real_spurs_ea, g_ydkj_real_taskid, g_ydkj_real_taskset_ea;
++unsigned long long ps3_ms_now(void) { return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_coh_unregister(spu_context* c) { (void)c; }
++void spu_lockline_lock(void) { }
++void spu_lockline_unlock(void) { }
++void spu_mfc_release(spu_context* c) { (void)c; }
++int spu_run_spurs_job(spu_lifted_entry_fn e, int id, uint32_t ea, uint32_t sz)
++{ (void)e; (void)id; (void)ea; (void)sz; return -1; }
++int spu_run_with_halt(void (*f)(spu_context*), spu_context* c) { (void)f; (void)c; return -1; }
++void spu_thread_publish_ctx(uint32_t tid, void* c) { (void)tid; (void)c; }
++uint64_t spurs_pm_build_context(uint8_t* ls, uint32_t a, uint32_t b, uint32_t c, uint32_t d)
++{ (void)ls; (void)a; (void)b; (void)c; (void)d; return 0; }
++int spurs_run_taskset_policy_probe(uint32_t a, uint32_t b, uint32_t c, uint64_t d,
++                                   uint32_t e, uint8_t* ls, uint32_t f)
++{ (void)a; (void)b; (void)c; (void)d; (void)e; (void)ls; (void)f; return -1; }
++void tsp_spu_func_00000A00(spu_context* c) { (void)c; }
++void ydkj_wake_all_event_flags(void) { }
++
++static void prog_a(spu_context* c) { (void)c; }
++static void prog_b(spu_context* c) { (void)c; }
++
++int main(void)
++{
++    enum { SIZE = 0x57D0, VAR = 0x5780, VLEN = 0x50 };
++    static uint8_t img[SIZE], loaded[SIZE];
++    for (unsigned i = 0; i < VAR; i++) img[i] = (uint8_t)(i * 7 + 3);
++    const uint64_t fp = spu_workload_fingerprint(img, SIZE);     /* area zero */
++
++    spu_workload_register_img(0x1111ULL, prog_a, 2, "a");
++    spu_workload_register_img_masked(fp, prog_b, 3, "b", SIZE, VAR, VLEN);
++
++    /* Two loads with different parameters: neither fingerprints as the image,
++     * both resolve to it. */
++    for (int run = 0; run < 2; run++) {
++        memcpy(loaded, img, SIZE);
++        for (unsigned i = 0; i < VLEN; i++) loaded[VAR + i] = (uint8_t)(0x47 + run * 13 + i);
++        uint64_t plain = spu_workload_fingerprint(loaded, SIZE), got = 0;
++        int id = -1;
++        assert(plain != fp);
++        assert(spu_workload_find_img(plain, &id) == NULL);
++        assert(spu_workload_find_img_masked(loaded, SIZE, &got, &id) == prog_b);
++        assert(got == fp && id == 3);
++    }
++
++    /* A change outside the area is a different program. */
++    memcpy(loaded, img, SIZE);
++    loaded[0x100] ^= 1;
++    int id = -1;
++    assert(spu_workload_find_img_masked(loaded, SIZE, NULL, &id) == NULL && id == 0);
++    /* So is the same bytes at another length. */
++    assert(spu_workload_find_img_masked(img, SIZE - 0x10, NULL, &id) == NULL);
++    /* The plain lookup still finds the image loaded as it is in the ELF. */
++    assert(spu_workload_find_img(fp, &id) == prog_b && id == 3);
++    /* A masked registration that does not fit its size is refused. */
++    spu_workload_register_img_masked(0x2222ULL, prog_a, 4, "bad", 0x100, 0xF0, 0x20);
++    assert(spu_workload_find(0x2222ULL) == NULL);
++
++    printf("test_spu_workload_masked: ok\n");
++    return 0;
++}
 diff --git a/runtime/syscalls/lv2_register.c b/runtime/syscalls/lv2_register.c
 index 8815650..6aeb999 100644
 --- a/runtime/syscalls/lv2_register.c
@@ -34924,10 +37763,10 @@ index 0000000..9288d91
 +#endif /* PS3RECOMP_HOST_DISPLAY_H */
 diff --git a/tools/host_window/host_window.m b/tools/host_window/host_window.m
 new file mode 100644
-index 0000000..347e336
+index 0000000..ee3d300
 --- /dev/null
 +++ b/tools/host_window/host_window.m
-@@ -0,0 +1,843 @@
+@@ -0,0 +1,878 @@
 +/*
 + * ps3recomp - host window: one window across an executable swap (macOS)
 + *
@@ -34959,9 +37798,19 @@ index 0000000..347e336
 + *   PS3_WINDOW_MODE, PS3_WINDOW_SIZE, PS3_DISPLAY, PS3_VSYNC, PS3_UPSCALE
 + *                          how the window opens and presents (host_display.h)
 + *   PS3RECOMP_METAL_FPS=1  FPS in the title and [RSX FPS] lines, as the backend's
-+ *                          own window does; guest FPS comes from the game
++ *                          own window does; guest FPS comes from the game.
++ *                          A line ends in hidden=1 while the window is off
++ *                          screen (below)
 + *   PS3RECOMP_HOST_STATS=1 once a second: publish->screen latency, frames
 + *                          copied/dropped, and this process's CPU time
++ *
++ * Off screen: macOS shows nothing of a window that is not on screen: another
++ * app or Space in front (with PS3_WINDOW_MODE=fullscreen the window has a
++ * Space of its own, so bringing any other app to the front hides it),
++ * minimized, or fully covered. Presents go on and are dropped unseen, so the
++ * display rate reads 0 while the guest's goes on, which in a log looks like a
++ * frozen picture. The window logs when it leaves the screen and when it is
++ * back, and shows the newest frame as soon as it is back.
 + *
 + * If the bootstrap service cannot be registered the program is exec'd
 + * directly and opens its own window, as it would without this launcher.
@@ -35019,6 +37868,8 @@ index 0000000..347e336
 +    NSString*            title;
 +    int                  present_busy;
 +    uint64_t             shown_seq;
++    int                  off_screen;       /* see "Off screen" above */
++    double               off_since;
 +    HostInputCocoa       input;            /* keys and mouse -> ctl->input */
 +    /* display options (host_display.h) */
 +    int                  fs_style;         /* what View > Full Screen enters */
@@ -35341,6 +38192,23 @@ index 0000000..347e336
 +    }
 +}
 +
++/* The window's occlusion changed: on screen or not (see "Off screen" at the
++ * top). Logged both ways, so a run of display=0 reads as what it is. */
++static void note_on_screen(int on, double now)
++{
++    const int off = !on;
++    if (off == g.off_screen) return;
++    g.off_screen = off;
++    if (!on) {
++        g.off_since = now;
++        fprintf(stderr, "[host window] window off screen (another app or Space in front, minimized or "
++                        "covered): its frames are not shown until it is back\n");
++        return;
++    }
++    fprintf(stderr, "[host window] window on screen again after %.1f s\n", now - g.off_since);
++    try_present();
++}
++
 +/* Black until the game's first frame, rather than whatever the drawable held. */
 +static void present_black(void)
 +{
@@ -35376,8 +38244,9 @@ index 0000000..347e336
 +        g.window.title = [NSString stringWithFormat:
 +            @"%@ | display %.1f FPS | guest %.1f FPS | %.1f ms avg / %.1f p95 / %.1f max | age %.1f s",
 +            g.title, r.display_fps, r.guest_fps, r.average_ms, r.p95_ms, r.worst_ms, r.age_seconds];
-+        fprintf(stderr, "[RSX FPS] display=%.2f guest=%.2f avg_ms=%.2f p95_ms=%.2f max_ms=%.2f age_s=%.2f\n",
-+                r.display_fps, r.guest_fps, r.average_ms, r.p95_ms, r.worst_ms, r.age_seconds);
++        fprintf(stderr, "[RSX FPS] display=%.2f guest=%.2f avg_ms=%.2f p95_ms=%.2f max_ms=%.2f age_s=%.2f%s\n",
++                r.display_fps, r.guest_fps, r.average_ms, r.p95_ms, r.worst_ms, r.age_seconds,
++                g.off_screen ? " hidden=1" : "");
 +    }
 +    if (g.stats_on) {
 +        struct rusage ru;
@@ -35555,6 +38424,11 @@ index 0000000..347e336
 +- (void)windowDidChangeBackingProperties:(NSNotification*)note { (void)note; keep_drawable(); }
 +- (void)windowDidEnterFullScreen:(NSNotification*)note { (void)note; keep_drawable(); }
 +- (void)windowDidExitFullScreen:(NSNotification*)note { (void)note; keep_drawable(); }
++- (void)windowDidChangeOcclusionState:(NSNotification*)note
++{
++    (void)note;
++    note_on_screen((g.window.occlusionState & NSWindowOcclusionStateVisible) != 0, CACurrentMediaTime());
++}
 +- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)app
 +{
 +    (void)app;
@@ -35825,6 +38699,124 @@ index 0000000..95df325
 +    cw = 1280; ch = 720;
 +    hd_shrink_to(1512, 945, &cw, &ch); assert(cw == 1280 && ch == 720);
 +    printf("test_host_display: ok\n");
++    return 0;
++}
+diff --git a/tools/host_window/test_host_window_offscreen.m b/tools/host_window/test_host_window_offscreen.m
+new file mode 100644
+index 0000000..d09d222
+--- /dev/null
++++ b/tools/host_window/test_host_window_offscreen.m
+@@ -0,0 +1,112 @@
++/* The window host off screen (host_window.m, "Off screen"): a window macOS
++ * does not show (another app or Space in front, minimized, covered) logs
++ * that it left and came back, its [RSX FPS] lines carry hidden=1 meanwhile,
++ * and coming back shows the newest frame the game published while it was
++ * away. No window: the layer is a bare CAMetalLayer.
++ *
++ *   clang -fobjc-arc -I libs/video tools/host_window/test_host_window_offscreen.m \
++ *         -framework AppKit -framework Metal -framework QuartzCore -framework IOSurface \
++ *         -o /tmp/test_host_window_offscreen && /tmp/test_host_window_offscreen
++ */
++#define main host_window_main
++#include "host_window.m"
++#undef main
++#include <assert.h>
++
++/* stderr into a file for the duration of fn; returns what was written */
++static char* capture(void (^fn)(void))
++{
++    char path[] = "/tmp/test_host_window_offscreen.XXXXXX";
++    const int fd = mkstemp(path);
++    assert(fd >= 0);
++    fflush(stderr);
++    const int saved = dup(2);
++    dup2(fd, 2);
++    fn();
++    fflush(stderr);
++    dup2(saved, 2);
++    close(saved);
++    const off_t n = lseek(fd, 0, SEEK_END);
++    char* out = calloc(1, (size_t)n + 1);
++    pread(fd, out, (size_t)n, 0);
++    close(fd);
++    unlink(path);
++    return out;
++}
++
++static int count(const char* s, const char* what)
++{
++    int n = 0;
++    for (const char* p = s; (p = strstr(p, what)); p += strlen(what)) n++;
++    return n;
++}
++
++/* what the game does for a finished frame */
++static uint64_t publish(void)
++{
++    const int slot = rsx_host_begin_render(g.ctl);
++    assert(slot >= 0);
++    rsx_host_end_render(g.ctl, slot, 1, mach_absolute_time());
++    return atomic_load(&g.ctl->seq[slot]);
++}
++
++/* the copy's completion comes back on the main queue */
++static void settle(void)
++{
++    for (int i = 0; i < 500 && g.present_busy; i++)
++        [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
++                                 beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
++    assert(!g.present_busy);
++}
++
++int main(void)
++{
++    @autoreleasepool {
++        g.dev = MTLCreateSystemDefaultDevice();
++        if (!g.dev) { printf("test_host_window_offscreen: no Metal device, skipped\n"); return 0; }
++        g.queue = [g.dev newCommandQueue];
++        g.layer = [CAMetalLayer layer];
++        g.layer.device = g.dev;
++        g.layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
++        g.layer.framebufferOnly = NO;
++        assert(make_control() == 0 && make_surfaces(64, 36) == 0);
++        g.fps_on = 1;
++        metal_frame_rate_reset(&g.fps, CACurrentMediaTime());
++
++        /* on screen: a frame goes up, and the rate line is plain */
++        const uint64_t first = publish();
++        try_present();
++        settle();
++        assert(g.shown_seq == first);
++        char* line = capture(^{ stats_tick(); });
++        assert(strstr(line, "[RSX FPS] display=") && !strstr(line, "hidden"));
++        free(line);
++
++        /* off screen: said once, and every rate line says hidden=1 */
++        line = capture(^{ note_on_screen(0, 100.0); note_on_screen(0, 101.0); });
++        assert(count(line, "[host window] window off screen") == 1);
++        free(line);
++        assert(g.off_screen);
++        line = capture(^{ stats_tick(); });
++        assert(strstr(line, "[RSX FPS] display=") && strstr(line, " hidden=1\n"));
++        free(line);
++
++        /* the game goes on meanwhile; back on screen, the newest of its
++         * frames goes up at once, with how long the window was away */
++        settle();
++        publish();
++        const uint64_t newest = publish();
++        line = capture(^{ note_on_screen(1, 127.5); });
++        assert(strstr(line, "[host window] window on screen again after 27.5 s"));
++        free(line);
++        assert(!g.off_screen);
++        assert(g.present_busy);                 /* presented by the change itself */
++        settle();
++        assert(g.shown_seq == newest);
++        line = capture(^{ note_on_screen(1, 130.0); stats_tick(); });
++        assert(!strstr(line, "on screen again") && !strstr(line, "hidden"));
++        free(line);
++        printf("test_host_window_offscreen: ok\n");
++    }
 +    return 0;
 +}
 diff --git a/tools/host_window/test_host_window_upscale.m b/tools/host_window/test_host_window_upscale.m
