@@ -81,7 +81,7 @@ next time the game starts.
   **Clear**), async shaders (`PS3_SHADER_ASYNC=1`, opt-in), the frame clock
   (`PS3_FRAMECLOCK_US`), the frame-rate counter (`PS3RECOMP_METAL_FPS=1`, on
   as in `play.sh`), keep the Mac awake (`caffeinate -i`, on as in `play.sh`);
-  **60 fps and field of view** (see "Coming", below).
+  **60 fps and field of view** (below).
 - **Game / Jogo**: the disc (path, the image it is mounted from, mount,
   folder, find, eject, mount on Play); the **campaign version**: "v1.7 when
   built" (the exitspawn switches to `build/BCUS98107_game_v17` with
@@ -91,7 +91,10 @@ next time the game starts.
   movies (`PS3RECOMP_FFMPEG=0` when off, and the `PS3RECOMP_FFMPEG_AVCODEC` /
   `_AVUTIL` paths, Homebrew's by default); the play folder (empty =
   `~/Library/Application Support/resistance-recomp`, `play.sh`'s
-  `RES_DATA`); the **saves manager** (below).
+  `RES_DATA`); **audio**: volume (`PS3_AUDIO_VOLUME` 0-100, passed below
+  100), mute (`PS3_AUDIO_MUTE=1`) and the output device (`PS3_AUDIO_DEVICE`,
+  part of its name; empty = the system's default; macOS only, the Windows
+  backend has no device choice); the **saves manager** (below).
 - **Controls / Controles**: the bindings table, PS3 control by keyboard,
   mouse button and controller, with what each does in Resistance (R1 fire,
   L1 aim, L2 grenade, ✕ jump, ○ crouch, □ reload/use, △ switch weapon,
@@ -302,21 +305,21 @@ The icon is an original placeholder (`scripts/make_icon.py`, then `npx
 tauri icon src-tauri/icons/app-icon.png`): a targeting reticle, no game art
 or logo. The font is Oswald (SIL Open Font License, `src/assets/fonts/`).
 
-## Coming: 60 fps and field of view
+## 60 fps and field of view
 
 The port's optional game patches (the community's RPCS3 patches carried over
-to the static recompilation: `port/patches.cpp`, in progress) are read from
-`RES_UNLOCK_FPS=1` (campaign frame limiter off), `RES_MENU_60FPS=1` (menus
-and multiplayer) and `RES_FOV=<factor>` (the game's is 1.0; RPCS3's
-"Extended FOV" is 0.7). The Performance page has the settings already, but
-shows each one only when the builds contain its variable's name; until then
-it says the patches are in progress. TODO when they land:
+to the static recompilation: `port/patches.cpp` and the switchable
+instructions in `port/patches/*.insn.json`) are on the Performance page,
+shown only when the builds contain their variables' names (a build from
+before them says to rebuild):
 
-- check the names against `port/patches.cpp` (they may still change; a
-  renamed variable just keeps its setting hidden) and the FOV choices
-  (0.85, 0.7) against the patch's range;
-- say in the hints which campaign versions (01.00, v1.7) each patch covers,
-  and whether `PS3_VBLANK_HZ=120` should go with the unlocked frame rate.
+- **60 fps** passes `RES_UNLOCK_FPS=1` (the campaign's frame limiter off and
+  its minimum timestep 1/30 -> 1/240 s; 01.00 and v1.7) and `RES_MENU_60FPS=1`
+  (the front end and multiplayer at one vblank per frame). About 56 fps in
+  the campaign and 59 in the menus on an idle machine, at the normal game
+  speed. `PS3_VBLANK_HZ=120` (Extra variables) raises the cap to about 100 fps.
+- **Field of view**: `RES_FOV` 0.85 or 0.7 (RPCS3's "Extended FOV"); the
+  game's own is 1.0 and passes nothing. The patch accepts 0.1-4.
 
 ## Not done (from the inFAMOUS 2 launcher)
 
@@ -324,7 +327,7 @@ it says the patches are in progress. TODO when they land:
   release-signing key pair and published releases; the Updates card checks
   the newest GitHub release and links to it instead.
 - **Button-icon settings, the built-in LUT presets, the tone curve and
-  clarity, audio volume and output, voice/subtitle languages, trophies**:
+  clarity, voice/subtitle languages, trophies**:
   this port's runtime has no such options (and the game has no trophies).
 - **A bundled port and an in-app first install from a game folder**: the
   port is built from a git checkout with `tools/rebuild.sh`; the app runs

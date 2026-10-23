@@ -367,10 +367,6 @@
             <span class="opt-text"><span class="opt-label" data-i18n="patches.unlockFps"></span><span class="hint" data-i18n="patches.unlockFpsHint"></span></span>
             <span class="switch"><input id="unlock-fps" type="checkbox" /><i></i></span>
           </label>
-          <label class="opt hidden" data-feature-hide="RES_MENU_60FPS">
-            <span class="opt-text"><span class="opt-label" data-i18n="patches.menu60"></span><span class="hint" data-i18n="patches.menu60Hint"></span></span>
-            <span class="switch"><input id="menu-60fps" type="checkbox" /><i></i></span>
-          </label>
           <div class="opt hidden" data-feature-hide="RES_FOV">
             <span class="opt-text"><label class="opt-label" for="fov" data-i18n="patches.fov">Campo de visão</label><span class="hint" data-i18n="patches.fovHint"></span></span>
             <select id="fov">
@@ -441,6 +437,23 @@
           <div class="field"><input id="ffmpeg-avutil" type="text" spellcheck="false" /><div class="buttons"><button id="pick-avutil" data-i18n="ui.pick">Escolher…</button></div></div>
           <p class="hint mac-only" data-i18n="settings.ffmpegHint"></p>
           <p class="hint win-only" data-i18n="settings.ffmpegHintWin"></p>
+        </section>
+
+        <section class="section" data-feature="PS3_AUDIO_VOLUME">
+          <h2 data-i18n="sec.audio">Áudio</h2>
+          <div class="opt">
+            <span class="opt-text"><label class="opt-label" for="audio-volume" data-i18n="settings.audioVolume">Volume</label><span class="hint" data-i18n="settings.audioVolumeHint"></span></span>
+            <span class="slider"><input id="audio-volume" type="range" min="0" max="100" step="5" /><output id="audio-volume-out"></output></span>
+          </div>
+          <label class="opt">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.audioMute"></span><span class="hint" data-i18n="settings.audioMuteHint"></span></span>
+            <span class="switch"><input id="audio-mute" type="checkbox" /><i></i></span>
+          </label>
+          <div class="mac-only">
+            <label class="field-label" for="audio-device" data-i18n="settings.audioDevice">Saída de áudio</label>
+            <div class="field"><input id="audio-device" type="text" spellcheck="false" data-i18n-placeholder="settings.audioDevicePlaceholder" /></div>
+            <p class="hint" data-i18n="settings.audioDeviceHint"></p>
+          </div>
         </section>
 
         <section class="section">

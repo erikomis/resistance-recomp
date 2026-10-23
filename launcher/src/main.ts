@@ -49,6 +49,9 @@ export interface Settings {
   mouseCapture: boolean;
   rumble: boolean;
   rumbleStrength: number;
+  audioVolume: number;
+  audioMute: boolean;
+  audioDevice: string;
   unlockFps: boolean;
   menu60fps: boolean;
   fov: string;
@@ -323,6 +326,21 @@ function bindCheck(id: string, key: BoolKey) {
   });
 }
 
+/** "60 fps": the campaign's and the front end's patches together
+ * (RES_UNLOCK_FPS + RES_MENU_60FPS). A menus-only switch saved by an earlier
+ * version counts as on, and a change sets both. */
+function bind60fps() {
+  const el = $<HTMLInputElement>("unlock-fps");
+  const sync = () => (el.checked = settings.unlockFps || settings.menu60fps);
+  syncers.push(sync);
+  sync();
+  el.addEventListener("change", () => {
+    settings.unlockFps = settings.menu60fps = el.checked;
+    syncAll();
+    persist();
+  });
+}
+
 function bindRange(id: string, key: NumKey, fmt: (v: number) => string) {
   const el = $<HTMLInputElement>(id);
   const out = $(`${id}-out`);
@@ -455,8 +473,8 @@ function bindSettings() {
   bindCheck("mouse-invert-x", "mouseInvertX");
   bindCheck("mouse-capture", "mouseCapture");
   bindCheck("rumble-on", "rumble");
-  bindCheck("unlock-fps", "unlockFps");
-  bindCheck("menu-60fps", "menu60fps");
+  bindCheck("audio-mute", "audioMute");
+  bind60fps();
   bindSelect("window-mode", "windowMode");
   bindSelect("display", "display");
   bindSelect("res-scale", "resScale");
@@ -483,6 +501,7 @@ function bindSettings() {
   bindRange("mouse-sens", "mouseSens", (v) => `${v.toFixed(2)}×`);
   bindRange("mouse-dz", "mouseDeadzone", (v) => String(v));
   bindRange("rumble-strength", "rumbleStrength", (v) => `${v}%`);
+  bindRange("audio-volume", "audioVolume", (v) => `${v}%`);
   const lutSync = () => {
     $("lut-file").textContent = settings.lutPath ? tilde(settings.lutPath) : t("settings.lutNone");
   };
@@ -505,6 +524,7 @@ function bindSettings() {
   bindText("ffmpeg-avutil", "ffmpegAvutil");
   bindText("play-dir", "playDir", () => refreshStatus());
   bindText("extra-env", "extraEnv");
+  bindText("audio-device", "audioDevice");
   syncers.push(syncPreset);
   syncPreset();
   $("preset").addEventListener("change", () => {
@@ -598,6 +618,9 @@ const DEFAULTS: Partial<Settings> = {
   mouseCapture: true,
   rumble: true,
   rumbleStrength: 100,
+  audioVolume: 100,
+  audioMute: false,
+  audioDevice: "",
   unlockFps: false,
   menu60fps: false,
   fov: "",
@@ -623,6 +646,7 @@ function syncDependent() {
   $<HTMLInputElement>("gamma").disabled = !settings.gammaOverride;
   for (const id of ["mouse-sens", "mouse-invert", "mouse-invert-x", "mouse-dz", "mouse-capture"]) $<HTMLInputElement>(id).disabled = !settings.mouse;
   $<HTMLInputElement>("rumble-strength").disabled = !settings.rumble;
+  $<HTMLInputElement>("audio-volume").disabled = settings.audioMute;
   $<HTMLInputElement>("lut-strength").disabled = !settings.lutPath;
   $<HTMLButtonElement>("lut-clear").disabled = !settings.lutPath;
   $<HTMLInputElement>("vcache-split").disabled = !settings.vertexCache;

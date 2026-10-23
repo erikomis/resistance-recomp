@@ -137,10 +137,19 @@ pub struct Settings {
     /// PS3_RUMBLE=0 when off; PS3_RUMBLE_STRENGTH in percent (0-200).
     pub rumble: bool,
     pub rumble_strength: u32,
+    /// PS3_AUDIO_VOLUME (0-100, 100 = the default), PS3_AUDIO_MUTE=1 when
+    /// muted, PS3_AUDIO_DEVICE (the output whose name contains it; empty =
+    /// the system's default; macOS/Linux).
+    pub audio_volume: u32,
+    pub audio_mute: bool,
+    pub audio_device: String,
     /// The port's optional game patches (port/patches.cpp), offered only when
-    /// the build has them: RES_UNLOCK_FPS=1 (campaign frame limiter off),
-    /// RES_MENU_60FPS=1 (menus and multiplayer), RES_FOV (the field-of-view
-    /// factor; empty = the game's 1.0).
+    /// the build has them. "60 fps" is `unlock_fps`: it passes both
+    /// RES_UNLOCK_FPS=1 (campaign frame limiter off) and RES_MENU_60FPS=1
+    /// (menus and multiplayer). `menu_60fps` is the separate menus switch of
+    /// earlier versions: a saved one still turns both on, and the window
+    /// keeps the two equal. RES_FOV is the field-of-view factor (empty = the
+    /// game's 1.0).
     pub unlock_fps: bool,
     pub menu_60fps: bool,
     pub fov: String,
@@ -217,6 +226,9 @@ impl Default for Settings {
             mouse_capture: true,
             rumble: true,
             rumble_strength: 100,
+            audio_volume: 100,
+            audio_mute: false,
+            audio_device: String::new(),
             unlock_fps: false,
             menu_60fps: false,
             fov: String::new(),
@@ -1171,11 +1183,22 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path, input: &InputEnv) -> Vec<(
     } else if s.rumble_strength != 100 {
         set("PS3_RUMBLE_STRENGTH", s.rumble_strength.min(200).to_string());
     }
-    // The optional game patches (the UI offers them only when the build has them).
-    if s.unlock_fps {
-        set("RES_UNLOCK_FPS", "1".into());
+    // Audio: only what differs from the default (full volume, the system's
+    // output). The runtime mutes on any PS3_AUDIO_MUTE value, so it is
+    // passed only when on.
+    if s.audio_mute {
+        set("PS3_AUDIO_MUTE", "1".into());
+    } else if s.audio_volume < 100 {
+        set("PS3_AUDIO_VOLUME", s.audio_volume.to_string());
     }
-    if s.menu_60fps {
+    let device = s.audio_device.trim();
+    if !device.is_empty() && !device.contains(['\n', '\r']) {
+        set("PS3_AUDIO_DEVICE", device.to_string());
+    }
+    // The optional game patches (the UI offers them only when the build has
+    // them). 60 fps is the campaign's and the front end's together.
+    if s.unlock_fps || s.menu_60fps {
+        set("RES_UNLOCK_FPS", "1".into());
         set("RES_MENU_60FPS", "1".into());
     }
     if let Some(f) = fov_value(&s.fov) {
@@ -1508,6 +1531,7 @@ const FEATURE_MARKERS: &[&str] = &[
     "PS3_MODS_DIR",      // texture packs
     "PS3_WINDOW_MODE",   // the window host's modes, display, vsync
     "PS3_UPSCALE",       // MetalFX in the window host
+    "PS3_AUDIO_VOLUME",  // volume, mute and output device
     "RES_UNLOCK_FPS",    // port/patches.cpp
     "RES_MENU_60FPS",
     "RES_FOV",
@@ -2970,7 +2994,7 @@ mod tests {
             "PS3_MOUSE_DEADZONE", "PS3_MOUSE_CAPTURE", "PS3_RUMBLE", "PS3_RUMBLE_STRENGTH", "PS3_WINDOW_MODE", "PS3_WINDOW_SIZE",
             "PS3_DISPLAY", "PS3_VSYNC", "PS3_UPSCALE", "PS3_VIBRANCE", "PS3_CONTRAST", "PS3_VIGNETTE", "PS3_GRAIN", "PS3_LUT",
             "PS3_LUT_STRENGTH", "PS3_MODS", "PS3_MODS_DIR", "PS3_MODS_DUMP", "PS3_RES_SCALE", "RES_UNLOCK_FPS", "RES_MENU_60FPS",
-            "RES_FOV",
+            "RES_FOV", "PS3_AUDIO_VOLUME", "PS3_AUDIO_MUTE", "PS3_AUDIO_DEVICE",
         ];
         for k in new_vars {
             assert!(!base.iter().any(|b| b == k), "{k} passed by default");
@@ -2999,8 +3023,9 @@ mod tests {
         st.mouse_capture = false;
         st.rumble_strength = 150;
         st.unlock_fps = true;
-        st.menu_60fps = true;
         st.fov = "0.7".into();
+        st.audio_volume = 40;
+        st.audio_device = "AirPods".into();
         let input = InputEnv { path: Some("/data/input.toml".into()), has_mouse_section: false };
         let e = env(&st, &input);
         assert_eq!(e["PS3_AA"], "smaa");
@@ -3032,6 +3057,21 @@ mod tests {
         assert_eq!(e["RES_UNLOCK_FPS"], "1");
         assert_eq!(e["RES_MENU_60FPS"], "1");
         assert_eq!(e["RES_FOV"], "0.70");
+        assert_eq!(e["PS3_AUDIO_VOLUME"], "40");
+        assert_eq!(e["PS3_AUDIO_DEVICE"], "AirPods");
+        assert!(!e.contains_key("PS3_AUDIO_MUTE"));
+        // muted: the mute alone (any value mutes); a saved menus-only switch
+        // still means 60 fps everywhere
+        st.audio_mute = true;
+        st.audio_device = " a\nb ".into();
+        st.unlock_fps = false;
+        st.menu_60fps = true;
+        let e = env(&st, &input);
+        assert_eq!(e["PS3_AUDIO_MUTE"], "1");
+        assert!(!e.contains_key("PS3_AUDIO_VOLUME"));
+        assert!(!e.contains_key("PS3_AUDIO_DEVICE"));
+        assert_eq!(e["RES_UNLOCK_FPS"], "1");
+        assert_eq!(e["RES_MENU_60FPS"], "1");
 
         // a hand-written [mouse] in the file: every mouse setting is passed
         let mut st = Settings::default();

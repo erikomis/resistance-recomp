@@ -25,6 +25,7 @@
     windowMode: "windowed", display: "", vsync: true, upscale: "", resScale: "", vibrance: 0, contrast: 1, vignette: 0, grain: 0,
     lutPath: "", lutStrength: 1, mods: ["HD Chimera"], modsDump: false, inputMode: "both", mouse: true, mouseSens: 1,
     mouseInvertY: false, mouseInvertX: false, mouseDeadzone: 30, mouseCapture: true, rumble: true, rumbleStrength: 100,
+    audioVolume: 100, audioMute: false, audioDevice: "",
     unlockFps: false, menu60fps: false, fov: "",
   };
   const features = flags.oldBuild ? [] : ["PS3_INPUT_MAP", "PS3_LUT_STRENGTH", "PS3_MODS_DIR", "PS3_RES_SCALE", "PS3_UPSCALE", "PS3_WINDOW_MODE"]
