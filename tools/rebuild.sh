@@ -123,7 +123,13 @@ for s in $steps; do
         say "launcher (the desktop app)"
         command -v npm >/dev/null || { echo "npm not found: install Node 20+ (brew install node)" >&2; exit 1; }
         command -v cargo >/dev/null || { echo "cargo not found: install Rust (https://rustup.rs)" >&2; exit 1; }
-        ( cd "$RES_ROOT/launcher" && npm ci && npx tauri build --bundles app )
+        # Release builds keep their symbols: with Cargo's default stripping
+        # (debuginfo), the macOS linker fails on some machines linking the
+        # stripped build-script libraries. Set either to override.
+        ( cd "$RES_ROOT/launcher" && npm ci &&
+          CARGO_PROFILE_RELEASE_STRIP=${CARGO_PROFILE_RELEASE_STRIP:-false} \
+          CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_STRIP=${CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_STRIP:-false} \
+          npx tauri build --bundles app )
         tgt=${CARGO_TARGET_DIR:-$RES_ROOT/launcher/src-tauri/target}
         mkdir -p "$RES_BUILD/launcher"
         rm -rf "$RES_BUILD/launcher/Resistance Launcher.app"

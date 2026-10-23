@@ -532,3 +532,12 @@ select.pad-pick { min-width: 0; width: auto; margin-left: 6px; padding: 3px 28px
 .stick i { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--accent); left: 50%; top: 50%; box-shadow: 0 0 8px var(--accent); }
 .stick-wrap { display: grid; gap: 6px; justify-items: center; font-size: 12px; color: var(--muted); }
 .pad-name { margin-top: 10px; }
+
+/* Controls: what each PS3 control does in the game, under its name */
+.bindings tbody th .act { display: block; font-family: inherit; font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.bindings tr.held th .act { color: var(--accent); }
+/* "experimental" next to a setting's name; a build that predates a feature */
+.opt-label .pill { padding: 1px 7px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 1px; margin-left: 4px; }
+.needs-rebuild { margin: 8px 0 4px; }
+.opt-text .needs-rebuild { margin: 2px 0 0; }
+#controls-default { flex: none; }

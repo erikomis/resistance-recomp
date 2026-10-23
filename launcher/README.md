@@ -60,19 +60,28 @@ next time the game starts.
   (window size, campaign, fps counter, keep the Mac awake), **Last save**,
   **Status** (state, disc, campaign, builds, play folder; links to the log,
   Updates, **Play shortcut on the Desktop**, **Add to Steam**).
-- **Graphics / Gráficos**: window size (`--size WxH` of the window host;
-  the game renders at 1280×720 and the window scales it), full screen (the
-  window's own green button), "Your disc's icon in the Dock" (and "Use as the
-  app's Finder icon"), image quality: profile, FXAA (`PS3_AA`), sharpening
-  (`PS3_SHARPEN`), anisotropic filtering (`PS3_ANISO`), gamma override
-  (`PS3_DISPLAY_GAMMA`).
+- **Graphics / Gráficos**: the window: display mode (`PS3_WINDOW_MODE=
+  fullscreen|borderless`; windowed is the default and passes nothing), window
+  size (`--size WxH` of the window host, which letterboxes the picture),
+  screen (`PS3_DISPLAY`, by the names `NSScreen` gives), vsync (`PS3_VSYNC=0`
+  when off), "Your disc's icon in the Dock" (and "Use as the app's Finder
+  icon"); image quality: profile, internal resolution (`PS3_RES_SCALE=1.5|2|3`,
+  labelled experimental), MetalFX upscaling (`PS3_UPSCALE=metalfx`), FXAA or
+  SMAA (`PS3_AA`), sharpening (`PS3_SHARPEN`), anisotropic filtering
+  (`PS3_ANISO`), gamma override (`PS3_DISPLAY_GAMMA`); filters: vibrance,
+  contrast, vignette, grain (`PS3_VIBRANCE`, `PS3_CONTRAST`, `PS3_VIGNETTE`,
+  `PS3_GRAIN`), a colour LUT file and its strength (`PS3_LUT`,
+  `PS3_LUT_STRENGTH`); texture packs: the folders in `<data>/mods`, ticked
+  and ordered (`PS3_MODS_DIR`, `PS3_MODS`, first wins), and **Dump the
+  game's textures** (`PS3_MODS_DUMP=<data>/texture-dump`).
 - **Performance / Desempenho**: vertex cache (`PS3RECOMP_ENG_VCACHE=0` when
   off) and its per-stream split (`PS3RECOMP_ENG_VCACHE_SPLIT=0`), bind only
   changed state (`PS3RECOMP_METAL_BIND_ALL=1` when off), the shader cache
   (`PS3_SHADER_CACHE=<data>/shader-cache`, on by default, with its size and
   **Clear**), async shaders (`PS3_SHADER_ASYNC=1`, opt-in), the frame clock
   (`PS3_FRAMECLOCK_US`), the frame-rate counter (`PS3RECOMP_METAL_FPS=1`, on
-  as in `play.sh`), keep the Mac awake (`caffeinate -i`, on as in `play.sh`).
+  as in `play.sh`), keep the Mac awake (`caffeinate -i`, on as in `play.sh`);
+  **60 fps and field of view** (see "Coming", below).
 - **Game / Jogo**: the disc (path, the image it is mounted from, mount,
   folder, find, eject, mount on Play); the **campaign version**: "v1.7 when
   built" (the exitspawn switches to `build/BCUS98107_game_v17` with
@@ -83,10 +92,28 @@ next time the game starts.
   `_AVUTIL` paths, Homebrew's by default); the play folder (empty =
   `~/Library/Application Support/resistance-recomp`, `play.sh`'s
   `RES_DATA`); the **saves manager** (below).
-- **Controls / Controles**: a controller test through the Gamepad API (every
-  PS3 button lights up, both sticks), and the notes: a controller is
-  required on macOS (the toolkit's keyboard and mouse input is Windows-only),
-  no rumble yet, how to pair a DualSense.
+- **Controls / Controles**: the bindings table, PS3 control by keyboard,
+  mouse button and controller, with what each does in Resistance (R1 fire,
+  L1 aim, L2 grenade, ✕ jump, ○ crouch, □ reload/use, △ switch weapon,
+  START pause, left stick move, right stick look). Click a cell and press
+  the input; it is written at once to `<data>/input.toml` (the toolkit's
+  `libs/input/pad_input_map.h` format, the same file the inFAMOUS 2 launcher
+  writes: `[keyboard]`, `[mouse_buttons]`, `[controller]`, any other section
+  kept), which Play passes as `PS3_INPUT_MAP`. Until a binding changes there
+  is no file and the game's built-in layout applies; **Restore defaults**
+  moves the file to `input.toml.bak`. Pressing keys, mouse buttons or
+  controller buttons lights the rows they drive, and the controller test
+  below shows the pad's name and both sticks. Then: what drives the game
+  (`PS3_INPUT_MODE=controller|keyboard`; both is the default), the mouse
+  (camera on/off `PS3_MOUSE=0`, `PS3_MOUSE_SENS`, `PS3_MOUSE_INVERT_Y`,
+  `PS3_MOUSE_INVERT_X`, `PS3_MOUSE_DEADZONE` 0-120, cursor capture
+  `PS3_MOUSE_CAPTURE=0`) and vibration (`PS3_RUMBLE=0`,
+  `PS3_RUMBLE_STRENGTH` 0-200 %). A hand-written `[mouse]` section in the
+  file makes Play pass every mouse setting, so the page's stand.
+- Every setting is passed only when it differs from the runtime's default:
+  with the defaults, Play starts the game exactly as before these settings
+  existed. A section whose feature the build lacks (the builds' executables
+  are searched for the variable's name) says to rebuild instead.
 - **Advanced / Avançado**, five tabs:
   - **Install / rebuild**: 1. the requirements (Homebrew installs streamed
     to the window, Apple's CLT installer); 2. the port folder (below); 3. the
@@ -275,18 +302,30 @@ The icon is an original placeholder (`scripts/make_icon.py`, then `npx
 tauri icon src-tauri/icons/app-icon.png`): a targeting reticle, no game art
 or logo. The font is Oswald (SIL Open Font License, `src/assets/fonts/`).
 
+## Coming: 60 fps and field of view
+
+The port's optional game patches (the community's RPCS3 patches carried over
+to the static recompilation: `port/patches.cpp`, in progress) are read from
+`RES_UNLOCK_FPS=1` (campaign frame limiter off), `RES_MENU_60FPS=1` (menus
+and multiplayer) and `RES_FOV=<factor>` (the game's is 1.0; RPCS3's
+"Extended FOV" is 0.7). The Performance page has the settings already, but
+shows each one only when the builds contain its variable's name; until then
+it says the patches are in progress. TODO when they land:
+
+- check the names against `port/patches.cpp` (they may still change; a
+  renamed variable just keeps its setting hidden) and the FOV choices
+  (0.85, 0.7) against the patch's range;
+- say in the hints which campaign versions (01.00, v1.7) each patch covers,
+  and whether `PS3_VBLANK_HZ=120` should go with the unlocked frame rate.
+
 ## Not done (from the inFAMOUS 2 launcher)
 
 - **App self-update** (download, verify, install, restart): it needs a
   release-signing key pair and published releases; the Updates card checks
   the newest GitHub release and links to it instead.
-- **Control remapping, mouse, vibration, button-icon settings**: the
-  toolkit has no keyboard/mouse input on macOS, no rumble and no input map
-  for this port yet; Controls is a controller test.
-- **Window modes and screen choice, MetalFX upscaling, SMAA, colour
-  grading/LUT, audio volume and output, voice/subtitle languages, community
-  patches, trophies**: this port's runtime has no such options (and the game
-  has no trophies); the window host has full screen through its own window.
+- **Button-icon settings, the built-in LUT presets, the tone curve and
+  clarity, audio volume and output, voice/subtitle languages, trophies**:
+  this port's runtime has no such options (and the game has no trophies).
 - **A bundled port and an in-app first install from a game folder**: the
   port is built from a git checkout with `tools/rebuild.sh`; the app runs
   that script rather than carrying the sources.

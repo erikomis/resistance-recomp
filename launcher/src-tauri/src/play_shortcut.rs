@@ -48,6 +48,21 @@ pub fn exit_requested(args: &[String]) -> bool {
     requested(args.iter().cloned()) && args.iter().skip(1).any(|a| a == EXIT_ARG)
 }
 
+/// `--view <page>` or `--view=<page>`: the page the window opens on (for
+/// docs screenshots and a shortcut to a page; the window checks the name).
+pub fn start_view(args: &[String]) -> Option<String> {
+    let mut it = args.iter().skip(1);
+    while let Some(a) = it.next() {
+        if let Some(v) = a.strip_prefix("--view=") {
+            return Some(v.to_string());
+        }
+        if a == "--view" {
+            return it.next().cloned();
+        }
+    }
+    None
+}
+
 /// The shortcut's own bundle id: the launcher's plus `.play` (`.steam` for
 /// the Steam one, so the two never pass for each other).
 pub fn shortcut_id(launcher_id: &str) -> String {
@@ -192,6 +207,15 @@ pub fn write_kind(dir: &Path, launcher_id: &str, icns: Option<&Path>, kind: Kind
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_view_argument() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(start_view(&a(&["app", "--view", "controls"])).as_deref(), Some("controls"));
+        assert_eq!(start_view(&a(&["app", "--play", "--view=graphics"])).as_deref(), Some("graphics"));
+        assert_eq!(start_view(&a(&["app", "--view"])), None);
+        assert_eq!(start_view(&a(&["app", "--play"])), None);
+    }
 
     const ID: &str = "io.github.erikomis.resistancerecomp";
 

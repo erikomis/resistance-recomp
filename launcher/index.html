@@ -169,15 +169,28 @@
           <span class="autosave-chip" data-i18n="ui.appliesNext">Vale no próximo Jogar</span>
         </header>
 
-        <section class="section">
+        <section class="section" data-feature="PS3_WINDOW_MODE">
           <h2 data-i18n="sec.window">Janela</h2>
+          <div class="opt mac-only">
+            <span class="opt-text"><label class="opt-label" for="window-mode" data-i18n="settings.windowMode">Modo de exibição</label><span class="hint" data-i18n="settings.windowModeHint"></span></span>
+            <select id="window-mode">
+              <option value="windowed" data-i18n="settings.windowed">Janela</option>
+              <option value="fullscreen" data-i18n="settings.fullscreenMac">Tela cheia (macOS)</option>
+              <option value="borderless" data-i18n="settings.borderless">Tela cheia sem bordas</option>
+            </select>
+          </div>
           <div class="opt mac-only">
             <span class="opt-text"><label class="opt-label" for="window-size" data-i18n="settings.windowSize">Tamanho da janela</label><span class="hint" data-i18n="settings.windowSizeHint"></span></span>
             <select id="window-size" class="size-select"></select>
           </div>
-          <div class="opt">
-            <span class="opt-text"><span class="opt-label" data-i18n="settings.fullscreen">Tela cheia</span><span class="hint" data-i18n="settings.fullscreenHint"></span></span>
+          <div class="opt mac-only">
+            <span class="opt-text"><label class="opt-label" for="display" data-i18n="settings.screen">Tela</label><span class="hint" data-i18n="settings.screenHint"></span></span>
+            <select id="display"></select>
           </div>
+          <label class="opt mac-only">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.vsync"></span><span class="hint" data-i18n="settings.vsyncHint"></span></span>
+            <span class="switch"><input id="vsync" type="checkbox" /><i></i></span>
+          </label>
           <label class="opt mac-only">
             <span class="opt-text"><span class="opt-label" data-i18n="settings.gameIcon"></span><span class="hint" data-i18n="settings.gameIconHint"></span></span>
             <span class="switch"><input id="game-icon" type="checkbox" /><i></i></span>
@@ -196,11 +209,28 @@
               <option value="quality" data-i18n="settings.presetQuality">Qualidade</option>
             </select>
           </div>
+          <div class="opt" data-feature="PS3_RES_SCALE">
+            <span class="opt-text"><label class="opt-label" for="res-scale"><span data-i18n="settings.resScale">Resolução interna</span> <span class="pill warn" data-i18n="ui.experimental">experimental</span></label><span class="hint" data-i18n="settings.resScaleHint"></span></span>
+            <select id="res-scale">
+              <option value="" data-i18n="settings.resScaleNative">720p (nativa)</option>
+              <option value="1.5">1080p (1,5×)</option>
+              <option value="2">1440p (2×)</option>
+              <option value="3">4K (3×)</option>
+            </select>
+          </div>
+          <div class="opt mac-only" data-feature="PS3_UPSCALE">
+            <span class="opt-text"><label class="opt-label" for="upscale" data-i18n="settings.upscale">Ampliação</label><span class="hint" data-i18n="settings.upscaleHint"></span></span>
+            <select id="upscale">
+              <option value="" data-i18n="settings.upscaleOff">Simples</option>
+              <option value="metalfx">MetalFX</option>
+            </select>
+          </div>
           <div class="opt">
             <span class="opt-text"><label class="opt-label" for="aa" data-i18n="settings.aa">Antisserrilhamento</label><span class="hint" data-i18n="settings.aaHint"></span></span>
             <select id="aa">
               <option value="" data-i18n="settings.off">Desligado</option>
               <option value="fxaa">FXAA</option>
+              <option value="smaa">SMAA</option>
             </select>
           </div>
           <div class="opt">
@@ -225,6 +255,48 @@
             <span class="opt-text"><label class="opt-label" for="gamma" data-i18n="settings.gammaValue">Gama</label></span>
             <span class="slider"><input id="gamma" type="range" min="0.7" max="1.3" step="0.01" /><output id="gamma-out"></output></span>
           </div>
+        </section>
+
+        <section class="section" data-feature="PS3_LUT_STRENGTH">
+          <h2 data-i18n="sec.filters">Filtros</h2>
+          <div class="opt">
+            <span class="opt-text"><label class="opt-label" for="vibrance" data-i18n="settings.vibrance">Vibrance</label><span class="hint" data-i18n="settings.vibranceHint"></span></span>
+            <span class="slider"><input id="vibrance" type="range" min="-1" max="1" step="0.05" /><output id="vibrance-out"></output></span>
+          </div>
+          <div class="opt">
+            <span class="opt-text"><label class="opt-label" for="contrast" data-i18n="settings.contrast">Contraste</label><span class="hint" data-i18n="settings.contrastHint"></span></span>
+            <span class="slider"><input id="contrast" type="range" min="0.5" max="1.5" step="0.05" /><output id="contrast-out"></output></span>
+          </div>
+          <div class="opt">
+            <span class="opt-text"><label class="opt-label" for="vignette" data-i18n="settings.vignette">Vinheta</label><span class="hint" data-i18n="settings.vignetteHint"></span></span>
+            <span class="slider"><input id="vignette" type="range" min="0" max="1" step="0.05" /><output id="vignette-out"></output></span>
+          </div>
+          <div class="opt">
+            <span class="opt-text"><label class="opt-label" for="grain" data-i18n="settings.grain">Granulado</label><span class="hint" data-i18n="settings.grainHint"></span></span>
+            <span class="slider"><input id="grain" type="range" min="0" max="1" step="0.05" /><output id="grain-out"></output></span>
+          </div>
+          <div class="opt">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.lut">LUT de cor</span><span class="hint" data-i18n="settings.lutHint"></span><span id="lut-file" class="small muted"></span></span>
+            <span class="row"><button id="lut-pick" data-i18n="settings.lutPick">Escolher…</button><button id="lut-clear" class="link" data-i18n="settings.lutClear">Tirar</button></span>
+          </div>
+          <div class="opt sub">
+            <span class="opt-text"><label class="opt-label" for="lut-strength" data-i18n="settings.lutStrength">Força do LUT</label></span>
+            <span class="slider"><input id="lut-strength" type="range" min="0" max="1" step="0.05" /><output id="lut-strength-out"></output></span>
+          </div>
+        </section>
+
+        <section class="section mac-only" id="mods-section" data-feature="PS3_MODS_DIR">
+          <div class="section-head">
+            <h2 data-i18n="sec.mods">Pacotes de texturas</h2>
+            <span class="row"><button id="mods-refresh" class="link" data-i18n="mods.refresh">Atualizar</button><button id="mods-open" class="link" data-i18n="mods.open">Abrir pasta de mods</button></span>
+          </div>
+          <p class="hint" data-i18n="mods.lead"></p>
+          <ul id="mods-list" class="list mods-list"></ul>
+          <label class="opt">
+            <span class="opt-text"><span class="opt-label" data-i18n="mods.dump"></span><span class="hint" data-i18n="mods.dumpHint"></span></span>
+            <span class="switch"><input id="mods-dump" type="checkbox" /><i></i></span>
+          </label>
+          <div class="row sub-row"><button id="mods-dump-open" class="link" data-i18n="mods.dumpOpen">Abrir pasta do dump</button></div>
         </section>
       </section>
 
@@ -286,6 +358,27 @@
             <span class="opt-text"><span class="opt-label" data-i18n="settings.keepAwake"></span><span class="hint" data-i18n="settings.keepAwakeHint"></span></span>
             <span class="switch"><input id="keep-awake" type="checkbox" /><i></i></span>
           </label>
+        </section>
+
+        <section class="section">
+          <h2 data-i18n="sec.patches">60 fps e campo de visão</h2>
+          <p id="patches-none" class="hint" data-i18n="patches.none"></p>
+          <label class="opt hidden" data-feature-hide="RES_UNLOCK_FPS">
+            <span class="opt-text"><span class="opt-label" data-i18n="patches.unlockFps"></span><span class="hint" data-i18n="patches.unlockFpsHint"></span></span>
+            <span class="switch"><input id="unlock-fps" type="checkbox" /><i></i></span>
+          </label>
+          <label class="opt hidden" data-feature-hide="RES_MENU_60FPS">
+            <span class="opt-text"><span class="opt-label" data-i18n="patches.menu60"></span><span class="hint" data-i18n="patches.menu60Hint"></span></span>
+            <span class="switch"><input id="menu-60fps" type="checkbox" /><i></i></span>
+          </label>
+          <div class="opt hidden" data-feature-hide="RES_FOV">
+            <span class="opt-text"><label class="opt-label" for="fov" data-i18n="patches.fov">Campo de visão</label><span class="hint" data-i18n="patches.fovHint"></span></span>
+            <select id="fov">
+              <option value="" data-i18n="patches.fovDefault">Do jogo (1,0)</option>
+              <option value="0.85" data-i18n="patches.fovWide">Mais aberto (0,85)</option>
+              <option value="0.7" data-i18n="patches.fovExtended">Estendido (0,7)</option>
+            </select>
+          </div>
         </section>
       </section>
 
@@ -420,22 +513,99 @@
             <h1 data-i18n="controls.title">Controles</h1>
             <p class="lead" data-i18n="controls.lead"></p>
           </div>
+          <span class="autosave-chip" data-i18n="ui.appliesNext">Vale no próximo Jogar</span>
         </header>
+
+        <section class="section" id="controls-test" data-feature="PS3_INPUT_MAP">
+          <div class="section-head">
+            <h2 data-i18n="controls.bindings">Botões</h2>
+            <button id="controls-reset" class="link" data-i18n="controls.reset">Restaurar padrões</button>
+          </div>
+          <p class="hint" data-i18n="controls.testHint"></p>
+          <table class="bindings">
+            <thead>
+              <tr>
+                <th>PS3</th>
+                <th data-i18n="controls.keyboard">Teclado</th>
+                <th data-i18n="controls.mouseCol">Mouse</th>
+                <th data-i18n="controls.controller">Controle</th>
+              </tr>
+            </thead>
+            <tbody id="controls-body"></tbody>
+          </table>
+          <p id="controls-msg" class="small accent-text"></p>
+          <p class="hint" data-i18n="controls.notes"></p>
+          <div class="row path-row">
+            <code id="controls-path" class="path"></code>
+            <span id="controls-default" class="small muted" data-i18n="controls.noFile">sem arquivo: o layout padrão do jogo</span>
+            <button id="controls-open" class="link" data-i18n="controls.open">Mostrar o arquivo</button>
+          </div>
+        </section>
 
         <section class="section">
           <h2 data-i18n="controls.test">Testar o controle</h2>
-          <p class="hint" data-i18n="controls.testHint"></p>
+          <p class="hint" data-i18n="controls.padTestHint"></p>
           <p id="pad-name" class="pad-name small"></p>
-          <div id="pad-grid" class="pad-grid"></div>
           <div class="pad-axes">
             <div class="stick-wrap"><div class="stick" id="stick-l"><i></i></div><span data-i18n="controls.leftStick">Analógico esquerdo</span></div>
             <div class="stick-wrap"><div class="stick" id="stick-r"><i></i></div><span data-i18n="controls.rightStick">Analógico direito</span></div>
           </div>
         </section>
 
+        <section class="section" data-feature="PS3_INPUT_MAP">
+          <h2 data-i18n="sec.input">Entrada</h2>
+          <div class="opt">
+            <span class="opt-text"><label class="opt-label" for="input-mode" data-i18n="settings.inputMode">O que controla o jogo</label><span class="hint" data-i18n="settings.inputModeHint"></span></span>
+            <select id="input-mode">
+              <option value="both" data-i18n="settings.inputBoth">Teclado, mouse e controle</option>
+              <option value="controller" data-i18n="settings.inputController">Só o controle</option>
+              <option value="keyboard" data-i18n="settings.inputKeyboard">Só teclado e mouse</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="section" data-feature="PS3_INPUT_MAP">
+          <h2 data-i18n="settings.mouse">Mouse</h2>
+          <label class="opt">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.mouseOn"></span><span class="hint" data-i18n="settings.mouseOnHint"></span></span>
+            <span class="switch"><input id="mouse-on" type="checkbox" /><i></i></span>
+          </label>
+          <div class="opt sub">
+            <span class="opt-text"><label class="opt-label" for="mouse-sens" data-i18n="settings.mouseSens">Sensibilidade</label></span>
+            <span class="slider"><input id="mouse-sens" type="range" min="0.25" max="4" step="0.05" /><output id="mouse-sens-out"></output></span>
+          </div>
+          <label class="opt sub">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.mouseInvert"></span></span>
+            <span class="switch"><input id="mouse-invert" type="checkbox" /><i></i></span>
+          </label>
+          <label class="opt sub">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.mouseInvertX"></span></span>
+            <span class="switch"><input id="mouse-invert-x" type="checkbox" /><i></i></span>
+          </label>
+          <div class="opt sub">
+            <span class="opt-text"><label class="opt-label" for="mouse-dz" data-i18n="settings.mouseDeadzone">Zona morta</label><span class="hint" data-i18n="settings.mouseDeadzoneHint"></span></span>
+            <span class="slider"><input id="mouse-dz" type="range" min="0" max="120" step="1" /><output id="mouse-dz-out"></output></span>
+          </div>
+          <label class="opt sub">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.mouseCapture"></span><span class="hint" data-i18n="settings.mouseCaptureHint"></span></span>
+            <span class="switch"><input id="mouse-capture" type="checkbox" /><i></i></span>
+          </label>
+        </section>
+
+        <section class="section" data-feature="PS3_INPUT_MAP">
+          <h2 data-i18n="settings.rumbleTitle">Vibração</h2>
+          <label class="opt">
+            <span class="opt-text"><span class="opt-label" data-i18n="settings.rumble"></span><span class="hint" data-i18n="settings.rumbleHint"></span></span>
+            <span class="switch"><input id="rumble-on" type="checkbox" /><i></i></span>
+          </label>
+          <div class="opt sub">
+            <span class="opt-text"><label class="opt-label" for="rumble-strength" data-i18n="settings.rumbleStrength">Intensidade</label></span>
+            <span class="slider"><input id="rumble-strength" type="range" min="0" max="200" step="10" /><output id="rumble-strength-out"></output></span>
+          </div>
+        </section>
+
         <section class="section">
           <h2 data-i18n="controls.notesTitle">No Mac</h2>
-          <p class="hint" data-i18n="controls.notes"></p>
           <p class="hint" data-i18n="controls.pairing"></p>
         </section>
       </section>

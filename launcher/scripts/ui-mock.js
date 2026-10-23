@@ -9,7 +9,9 @@
 // saves and a log, and no art (the art only ever comes from the player's
 // disc). window.__UI_MOCK__ = { noBuilds: true }, { noDisc: true },
 // { running: true } or { updateFiles: true }, set by an earlier init script,
-// shows those states instead.
+// shows those states instead; { oldBuild: true } is a build from before the
+// keyboard/mouse, filters and window modes, { patches: true } one that has the
+// 60 fps / FOV patches.
 (() => {
   const flags = window.__UI_MOCK__ || {};
   const home = "/Users/player";
@@ -20,7 +22,13 @@
     gammaOverride: false, gamma: 1, showFps: true, vertexCache: true, vertexCacheSplit: true, bindChangedOnly: true,
     shaderCache: true, shaderAsync: false, frameClockUs: 1000, keepAwake: true, video: true, ffmpegAvcodec: "", ffmpegAvutil: "",
     quietLog: true, extraEnv: "", rebuildSteps: [], jobs: 0, saveBackupsKeep: 10, autoUpdateCheck: true,
+    windowMode: "windowed", display: "", vsync: true, upscale: "", resScale: "", vibrance: 0, contrast: 1, vignette: 0, grain: 0,
+    lutPath: "", lutStrength: 1, mods: ["HD Chimera"], modsDump: false, inputMode: "both", mouse: true, mouseSens: 1,
+    mouseInvertY: false, mouseInvertX: false, mouseDeadzone: 30, mouseCapture: true, rumble: true, rumbleStrength: 100,
+    unlockFps: false, menu60fps: false, fov: "",
   };
+  const features = flags.oldBuild ? [] : ["PS3_INPUT_MAP", "PS3_LUT_STRENGTH", "PS3_MODS_DIR", "PS3_RES_SCALE", "PS3_UPSCALE", "PS3_WINDOW_MODE"]
+    .concat(flags.patches ? ["RES_FOV", "RES_MENU_60FPS", "RES_UNLOCK_FPS"] : []);
   const now = Math.floor(Date.now() / 1000);
   const root = `${home}/Developer/resistance-recomp`;
   const builds = {
@@ -56,6 +64,7 @@
       gameRunning: !!flags.running, otherGameRunning: false, rebuildRunning: false, playDir: data, dataRoot: data,
       firstBoot: false, updateFiles: flags.updateFiles ? [`${data}/dev_hdd0/game/BCUS98107/USRDIR/data/patch_06.bin`] : [],
       hostSupported: true, experimental: false, os: "macos", appBundle: "/Applications/Resistance Launcher.app", finderIcon: false, version: "0.1.0",
+      features,
     }),
     disc_status: () => disc,
     find_port_dirs: () => [builds],
@@ -91,6 +100,15 @@
     read_game_log: () => ({ path: `${data}/last.log`, exists: true, size: log.length, modified: now - 120, text: log, truncated: false }),
     log_paths: () => ({ game: `${data}/last.log`, saves: "/x/savedata", play: data, data }),
     take_play_request: () => false,
+    take_start_view: () => null,
+    get_input_map: () => ({ path: `${data}/input.toml`, exists: false, bindings: { keyboard: {}, mouseButtons: {}, controller: {} } }),
+    save_input_map: () => `${data}/input.toml`,
+    reset_input_map: () => null,
+    list_screens: () => ["Built-in Retina Display", "LG ULTRAFINE"],
+    list_mods: () => ({
+      dir: `${data}/mods`, dumpDir: `${data}/texture-dump`,
+      packs: [{ name: "HD Chimera", textures: 214, description: "Sharper Chimeran armour" }, { name: "Clean HUD", textures: 12, description: "" }],
+    }),
   };
   let cb = 0;
   window.__TAURI_INTERNALS__ = {

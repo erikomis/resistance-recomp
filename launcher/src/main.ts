@@ -7,6 +7,7 @@ import { RebuildProgress, STEP_IDS } from "./progress";
 import { initSaves, refresh as refreshSaves, render as renderSaves } from "./saves";
 import { initUpdates, refreshUpdates, renderUpdates } from "./update";
 import { initLog, renderLog, showLog } from "./gamelog";
+import { initMods, refreshMods, renderMods } from "./mods";
 import { flashSaved, human } from "./ui";
 
 // ---- types shared with src-tauri/src/lib.rs (camelCase) ----------------------
@@ -20,12 +21,37 @@ export interface Settings {
   campaign: string;
   gameLang: string;
   windowSize: string;
+  windowMode: string;
+  display: string;
+  vsync: boolean;
+  upscale: string;
+  resScale: string;
   gameIcon: boolean;
   aa: string;
   sharpen: number;
   aniso: number;
   gammaOverride: boolean;
   gamma: number;
+  vibrance: number;
+  contrast: number;
+  vignette: number;
+  grain: number;
+  lutPath: string;
+  lutStrength: number;
+  mods: string[];
+  modsDump: boolean;
+  inputMode: string;
+  mouse: boolean;
+  mouseSens: number;
+  mouseInvertY: boolean;
+  mouseInvertX: boolean;
+  mouseDeadzone: number;
+  mouseCapture: boolean;
+  rumble: boolean;
+  rumbleStrength: number;
+  unlockFps: boolean;
+  menu60fps: boolean;
+  fov: string;
   showFps: boolean;
   vertexCache: boolean;
   vertexCacheSplit: boolean;
@@ -93,6 +119,8 @@ interface Status {
   appBundle: string | null;
   finderIcon: boolean;
   version: string;
+  /** The feature markers (environment variable names) the builds contain. */
+  features: string[];
 }
 interface CheckItem {
   level: "ok" | "warn" | "fail";
@@ -154,6 +182,10 @@ function showView(view: string, tab?: string) {
   document.querySelectorAll<HTMLElement>(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.querySelector("main")!.scrollTop = 0;
   if (view === "home") refreshStatus();
+  if (view === "graphics") {
+    refreshScreens();
+    refreshMods();
+  }
   if (view === "performance") refreshShaderCache();
   if (view === "game") {
     refreshDisc();
@@ -352,6 +384,53 @@ function syncPreset() {
   $<HTMLSelectElement>("preset").value = currentPreset();
 }
 
+// ---- screens (PS3_DISPLAY) --------------------------------------------------------
+let screens: string[] = [];
+async function refreshScreens() {
+  screens = await invoke<string[]>("list_screens").catch(() => []);
+  fillScreens();
+}
+/** The main screen (the default), the connected ones, and the saved one when
+ * it is not connected now. */
+function fillScreens() {
+  const sel = $<HTMLSelectElement>("display");
+  sel.replaceChildren(new Option(t("settings.screenMain"), ""));
+  for (const n of screens) sel.append(new Option(n, n));
+  const cur = settings.display;
+  if (cur && !screens.includes(cur)) sel.append(new Option(t("settings.screenMissing", { name: cur }), cur));
+  sel.value = cur;
+}
+
+// ---- what the build supports ------------------------------------------------------
+/** Sections whose feature the build lacks say so ("rebuild"); the optional
+ * game patches are offered only when the build has them. */
+function renderFeatures() {
+  const have = new Set(status?.features ?? []);
+  const known = !!status?.builds; // no builds yet: nothing to say
+  document.querySelectorAll<HTMLElement>("[data-feature]").forEach((el) => {
+    const missing = known && !have.has(el.dataset.feature!);
+    let note = el.querySelector<HTMLElement>(":scope > .needs-rebuild");
+    if (missing && !note) {
+      note = document.createElement("p");
+      note.className = "hint hint-warn needs-rebuild";
+      const head = el.querySelector(":scope > h2, :scope > .section-head");
+      if (head) head.after(note);
+      else el.querySelector(".opt-text")?.append(note);
+    }
+    if (note) {
+      note.textContent = t("feature.rebuild");
+      show(note, missing);
+    }
+  });
+  let any = false;
+  document.querySelectorAll<HTMLElement>("[data-feature-hide]").forEach((el) => {
+    const on = have.has(el.dataset.featureHide!);
+    any ||= on;
+    show(el, on);
+  });
+  show($("patches-none"), !any);
+}
+
 function bindSettings() {
   fillFixedSelects();
   bindCheck("game-icon", "gameIcon");
@@ -369,6 +448,21 @@ function bindSettings() {
   bindCheck("auto-mount", "autoMount");
   bindCheck("quiet-log", "quietLog");
   bindCheck("update-auto", "autoUpdateCheck");
+  bindCheck("vsync", "vsync");
+  bindCheck("mods-dump", "modsDump");
+  bindCheck("mouse-on", "mouse");
+  bindCheck("mouse-invert", "mouseInvertY");
+  bindCheck("mouse-invert-x", "mouseInvertX");
+  bindCheck("mouse-capture", "mouseCapture");
+  bindCheck("rumble-on", "rumble");
+  bindCheck("unlock-fps", "unlockFps");
+  bindCheck("menu-60fps", "menu60fps");
+  bindSelect("window-mode", "windowMode");
+  bindSelect("display", "display");
+  bindSelect("res-scale", "resScale");
+  bindSelect("upscale", "upscale");
+  bindSelect("input-mode", "inputMode");
+  bindSelect("fov", "fov");
   bindSelect("window-size", "windowSize");
   bindSelect("q-window-size", "windowSize");
   bindSelect("campaign", "campaign");
@@ -379,6 +473,34 @@ function bindSettings() {
   bindSelect("frame-clock", "frameClockUs");
   bindRange("sharpen", "sharpen", (v) => (v > 0 ? `${Math.round(v * 100)}%` : t("settings.off")));
   bindRange("gamma", "gamma", (v) => v.toFixed(2));
+  const signedPct = (v: number) => (Math.abs(v) < 0.005 ? t("settings.off") : `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`);
+  const pct = (v: number) => (v > 0.005 ? `${Math.round(v * 100)}%` : t("settings.off"));
+  bindRange("vibrance", "vibrance", signedPct);
+  bindRange("contrast", "contrast", (v) => (Math.abs(v - 1) < 0.005 ? t("settings.off") : `${Math.round(v * 100)}%`));
+  bindRange("vignette", "vignette", pct);
+  bindRange("grain", "grain", pct);
+  bindRange("lut-strength", "lutStrength", (v) => `${Math.round(v * 100)}%`);
+  bindRange("mouse-sens", "mouseSens", (v) => `${v.toFixed(2)}×`);
+  bindRange("mouse-dz", "mouseDeadzone", (v) => String(v));
+  bindRange("rumble-strength", "rumbleStrength", (v) => `${v}%`);
+  const lutSync = () => {
+    $("lut-file").textContent = settings.lutPath ? tilde(settings.lutPath) : t("settings.lutNone");
+  };
+  syncers.push(lutSync);
+  lutSync();
+  $("lut-pick").addEventListener("click", async () => {
+    const p = await open({ title: t("settings.lut"), filters: [{ name: "PNG", extensions: ["png"] }] });
+    if (typeof p === "string") {
+      settings.lutPath = p;
+      syncAll();
+      persist();
+    }
+  });
+  $("lut-clear").addEventListener("click", () => {
+    settings.lutPath = "";
+    syncAll();
+    persist();
+  });
   bindText("ffmpeg-avcodec", "ffmpegAvcodec");
   bindText("ffmpeg-avutil", "ffmpegAvutil");
   bindText("play-dir", "playDir", () => refreshStatus());
@@ -448,12 +570,37 @@ const DEFAULTS: Partial<Settings> = {
   campaign: "auto",
   gameLang: "",
   windowSize: "",
+  windowMode: "windowed",
+  display: "",
+  vsync: true,
+  upscale: "",
+  resScale: "",
   gameIcon: false,
   aa: "",
   sharpen: 0,
   aniso: 0,
   gammaOverride: false,
   gamma: 1,
+  vibrance: 0,
+  contrast: 1,
+  vignette: 0,
+  grain: 0,
+  lutPath: "",
+  lutStrength: 1,
+  mods: [],
+  modsDump: false,
+  inputMode: "both",
+  mouse: true,
+  mouseSens: 1,
+  mouseInvertY: false,
+  mouseInvertX: false,
+  mouseDeadzone: 30,
+  mouseCapture: true,
+  rumble: true,
+  rumbleStrength: 100,
+  unlockFps: false,
+  menu60fps: false,
+  fov: "",
   showFps: true,
   vertexCache: true,
   vertexCacheSplit: true,
@@ -474,6 +621,10 @@ const DEFAULTS: Partial<Settings> = {
 
 function syncDependent() {
   $<HTMLInputElement>("gamma").disabled = !settings.gammaOverride;
+  for (const id of ["mouse-sens", "mouse-invert", "mouse-invert-x", "mouse-dz", "mouse-capture"]) $<HTMLInputElement>(id).disabled = !settings.mouse;
+  $<HTMLInputElement>("rumble-strength").disabled = !settings.rumble;
+  $<HTMLInputElement>("lut-strength").disabled = !settings.lutPath;
+  $<HTMLButtonElement>("lut-clear").disabled = !settings.lutPath;
   $<HTMLInputElement>("vcache-split").disabled = !settings.vertexCache;
   for (const id of ["ffmpeg-avcodec", "ffmpeg-avutil", "pick-avcodec", "pick-avutil"]) ($(id) as HTMLInputElement).disabled = !settings.video;
 }
@@ -490,6 +641,9 @@ function applyLang(l: Lang) {
   renderPort();
   renderDisc();
   renderControls();
+  renderMods();
+  fillScreens();
+  renderFeatures();
   renderSaves();
   renderReport();
   renderSessions();
@@ -533,6 +687,7 @@ async function refreshStatus() {
   renderFinderIcon();
   renderPort();
   renderDisc();
+  renderFeatures();
   refreshSteam();
 }
 
@@ -1415,6 +1570,13 @@ async function main() {
   bindSettings();
   renderStepsPick();
   initControls();
+  initMods({
+    enabled: () => settings.mods ?? [],
+    setEnabled: (names) => {
+      settings.mods = names;
+      persist();
+    },
+  });
   initLog();
   initSaves({
     keep: () => settings.saveBackupsKeep ?? 10,
@@ -1452,7 +1614,10 @@ async function main() {
   if (status && !status.builds) void findPortDirs();
   // opened by the Play shortcut (--play): start the game as the Play button would
   const playNow = await invoke<boolean>("take_play_request").catch(() => false);
+  // --view <page> on the command line (docs screenshots)
+  const view = await invoke<string | null>("take_start_view").catch(() => null);
   if (playNow && status?.builds?.ok && status.hostSupported && !gameRunning && !rebuildRunning) await startGame(false);
   else if (status && !status.builds?.ok) showView("advanced", "install");
+  else if (view && ["home", "graphics", "performance", "game", "controls", "advanced"].includes(view)) showView(view);
 }
 main();

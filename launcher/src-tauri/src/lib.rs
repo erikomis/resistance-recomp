@@ -14,6 +14,8 @@
 //! its own window; there is no window host).
 
 mod app_icon;
+mod input_map;
+mod mods;
 mod play_shortcut;
 mod report;
 mod saves;
@@ -23,6 +25,7 @@ mod update;
 mod vdf;
 mod zipfile;
 
+use input_map::{Bindings, InputEnv};
 use saves::{read_sfo, BackupMeta, Side, Slot};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -79,9 +82,22 @@ pub struct Settings {
     pub game_lang: String,
     /// The window host's --size: "<w>x<h>"; empty = 1280x720.
     pub window_size: String,
+    /// PS3_WINDOW_MODE: "windowed" (the default), "fullscreen" (macOS's own)
+    /// or "borderless".
+    pub window_mode: String,
+    /// PS3_DISPLAY: the screen's name (or its 1-based number when two share
+    /// a name); empty = the main screen.
+    pub display: String,
+    /// PS3_VSYNC=0 when off.
+    pub vsync: bool,
+    /// PS3_UPSCALE: "" (a plain scale) or "metalfx" (macOS 13+).
+    pub upscale: String,
+    /// PS3_RES_SCALE: the internal resolution as a multiple of 1280x720,
+    /// "" (native), "1.5" (1080p), "2" (1440p) or "3" (4K). Experimental.
+    pub res_scale: String,
     /// The player's own ICON0.PNG in the Dock instead of the placeholder.
     pub game_icon: bool,
-    /// PS3_AA: "" (off) or "fxaa".
+    /// PS3_AA: "" (off), "fxaa" or "smaa".
     pub aa: String,
     /// PS3_SHARPEN: 0 (off) to 1.
     pub sharpen: f32,
@@ -90,6 +106,44 @@ pub struct Settings {
     /// PS3_DISPLAY_GAMMA when set; otherwise the game's own brightness.
     pub gamma_override: bool,
     pub gamma: f32,
+    /// PS3_VIBRANCE: -1 (muted) .. 0 (off) .. 1 (vivid).
+    pub vibrance: f32,
+    /// PS3_CONTRAST: 0.5 .. 1 (off) .. 1.5.
+    pub contrast: f32,
+    /// PS3_VIGNETTE and PS3_GRAIN: 0 (off) .. 1.
+    pub vignette: f32,
+    pub grain: f32,
+    /// PS3_LUT: the player's colour LUT (ReShade's PNG layout), and how much
+    /// of it (PS3_LUT_STRENGTH, 0..1).
+    pub lut_path: String,
+    pub lut_strength: f32,
+    /// PS3_MODS: the texture packs in use (folders in <data>/mods), first
+    /// wins; empty = none.
+    pub mods: Vec<String>,
+    /// PS3_MODS_DUMP=<data>/texture-dump: the game writes every texture it
+    /// uploads there, named as a pack names it.
+    pub mods_dump: bool,
+    /// PS3_INPUT_MODE: "both" (the default), "controller" or "keyboard".
+    pub input_mode: String,
+    /// PS3_MOUSE, PS3_MOUSE_SENS, PS3_MOUSE_INVERT_Y, PS3_MOUSE_INVERT_X,
+    /// PS3_MOUSE_DEADZONE (the runtime's defaults: on, 1.0, off, off, 30).
+    pub mouse: bool,
+    pub mouse_sens: f32,
+    pub mouse_invert_y: bool,
+    pub mouse_invert_x: bool,
+    pub mouse_deadzone: u32,
+    /// PS3_MOUSE_CAPTURE: a click captures the cursor (Esc/Cmd releases it).
+    pub mouse_capture: bool,
+    /// PS3_RUMBLE=0 when off; PS3_RUMBLE_STRENGTH in percent (0-200).
+    pub rumble: bool,
+    pub rumble_strength: u32,
+    /// The port's optional game patches (port/patches.cpp), offered only when
+    /// the build has them: RES_UNLOCK_FPS=1 (campaign frame limiter off),
+    /// RES_MENU_60FPS=1 (menus and multiplayer), RES_FOV (the field-of-view
+    /// factor; empty = the game's 1.0).
+    pub unlock_fps: bool,
+    pub menu_60fps: bool,
+    pub fov: String,
     /// PS3RECOMP_METAL_FPS=1: frame rate and frame times in the window title.
     pub show_fps: bool,
     /// PS3RECOMP_ENG_VCACHE=0 / PS3RECOMP_ENG_VCACHE_SPLIT=0 when off.
@@ -135,12 +189,37 @@ impl Default for Settings {
             campaign: "auto".into(),
             game_lang: String::new(),
             window_size: String::new(),
+            window_mode: "windowed".into(),
+            display: String::new(),
+            vsync: true,
+            upscale: String::new(),
+            res_scale: String::new(),
             game_icon: false,
             aa: String::new(),
             sharpen: 0.0,
             aniso: 0,
             gamma_override: false,
             gamma: 1.0,
+            vibrance: 0.0,
+            contrast: 1.0,
+            vignette: 0.0,
+            grain: 0.0,
+            lut_path: String::new(),
+            lut_strength: 1.0,
+            mods: Vec::new(),
+            mods_dump: false,
+            input_mode: "both".into(),
+            mouse: true,
+            mouse_sens: 1.0,
+            mouse_invert_y: false,
+            mouse_invert_x: false,
+            mouse_deadzone: 30,
+            mouse_capture: true,
+            rumble: true,
+            rumble_strength: 100,
+            unlock_fps: false,
+            menu_60fps: false,
+            fov: String::new(),
             show_fps: true,
             vertex_cache: true,
             vertex_cache_split: true,
@@ -190,6 +269,32 @@ fn settings_path() -> PathBuf {
 
 fn reports_dir() -> PathBuf {
     data_root().join("reports")
+}
+
+/// The controls file (PS3_INPUT_MAP), next to launcher.json. It exists once
+/// the Controls page has changed a binding; until then the game's built-in
+/// layout applies and Play passes nothing.
+fn input_map_path() -> PathBuf {
+    data_root().join("input.toml")
+}
+
+/// Where texture packs live (PS3_MODS_DIR): <data>/mods.
+fn mods_dir() -> PathBuf {
+    data_root().join("mods")
+}
+
+/// Where "Dump textures" makes the game write them (PS3_MODS_DUMP).
+fn mods_dump_dir() -> PathBuf {
+    data_root().join("texture-dump")
+}
+
+/// The controls file as Play passes it (see `launch_env`).
+fn input_env() -> InputEnv {
+    let p = input_map_path();
+    match fs::read_to_string(&p) {
+        Ok(text) => InputEnv { path: Some(s(&p)), has_mouse_section: input_map::parse(&text).has_mouse_section },
+        Err(_) => InputEnv::default(),
+    }
 }
 
 fn rpcs3_dir() -> PathBuf {
@@ -746,6 +851,10 @@ pub struct AppState {
     dock_icon: Mutex<String>,
     play_request: Mutex<bool>,
     exit_with_game: Mutex<bool>,
+    /// `--view <page>`: the page to open on (play_shortcut::start_view).
+    start_view: Mutex<Option<String>>,
+    /// build_features' cache.
+    features: Mutex<FeatureCache>,
 }
 
 /// A GUI app on macOS starts with a bare PATH; Homebrew's tools and the
@@ -925,10 +1034,26 @@ fn valid_window_size(v: &str) -> bool {
     matches!((it.next(), it.next()), (Some(Some(w)), Some(Some(h))) if (320..=8192).contains(&w) && (180..=8192).contains(&h))
 }
 
+/// PS3_RES_SCALE for the `res_scale` setting: a multiple above 1 and up to 4
+/// (the runtime's range, in quarter steps), or None for native (also for
+/// anything unparsable).
+fn res_scale_value(v: &str) -> Option<String> {
+    let x: f32 = v.trim().parse().ok()?;
+    (x > 1.0 && x <= 4.0).then(|| format!("{}", (x * 4.0).round() / 4.0))
+}
+
+/// RES_FOV for the `fov` setting: a factor the patch accepts (0.1 .. 4) other
+/// than the game's own 1.0, or None.
+fn fov_value(v: &str) -> Option<String> {
+    let x: f32 = v.trim().parse().ok()?;
+    ((0.1..=4.0).contains(&x) && (x - 1.0).abs() > 1e-3).then(|| format!("{:.2}", x))
+}
+
 /// The environment Play gives the game, on top of the launcher's own: the
 /// disc, the play folder's dev_hdd0/dev_hdd1, FFmpeg, and every setting that
 /// differs from the port's default; the extra variables last (they win).
-fn launch_env(s: &Settings, disc: &Path, play: &Path) -> Vec<(String, String)> {
+/// `input`: the controls file, when the Controls page has written one.
+fn launch_env(s: &Settings, disc: &Path, play: &Path, input: &InputEnv) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = Vec::new();
     let mut set = |k: &str, v: String| env.push((k.to_string(), v));
     set("PS3_VFS_ROOT", s_(disc));
@@ -952,8 +1077,8 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path) -> Vec<(String, String)> {
     if !lang.is_empty() && lang.len() <= 8 && lang.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         set("PS3_LANG", lang.to_string());
     }
-    if s.aa == "fxaa" {
-        set("PS3_AA", "fxaa".into());
+    if s.aa == "fxaa" || s.aa == "smaa" {
+        set("PS3_AA", s.aa.clone());
     }
     if s.sharpen >= 0.005 {
         set("PS3_SHARPEN", format!("{:.2}", s.sharpen.min(1.0)));
@@ -963,6 +1088,98 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path) -> Vec<(String, String)> {
     }
     if s.gamma_override {
         set("PS3_DISPLAY_GAMMA", format!("{:.2}", s.gamma.clamp(0.5, 1.5)));
+    }
+    // The present pass's filters: only what differs from the game's picture.
+    if s.vibrance.abs() >= 0.005 {
+        set("PS3_VIBRANCE", format!("{:.2}", s.vibrance.clamp(-1.0, 1.0)));
+    }
+    if (s.contrast - 1.0).abs() >= 0.005 && s.contrast > 0.0 {
+        set("PS3_CONTRAST", format!("{:.2}", s.contrast.clamp(0.5, 1.5)));
+    }
+    if s.vignette >= 0.005 {
+        set("PS3_VIGNETTE", format!("{:.2}", s.vignette.min(1.0)));
+    }
+    if s.grain >= 0.005 {
+        set("PS3_GRAIN", format!("{:.2}", s.grain.min(1.0)));
+    }
+    let lut = s.lut_path.trim();
+    if !lut.is_empty() {
+        set("PS3_LUT", lut.to_string());
+        if s.lut_strength < 0.995 {
+            set("PS3_LUT_STRENGTH", format!("{:.2}", s.lut_strength.clamp(0.0, 1.0)));
+        }
+    }
+    if let Some(k) = res_scale_value(&s.res_scale) {
+        set("PS3_RES_SCALE", k);
+    }
+    // Texture packs: the folder and the enabled ones, first wins; the dump.
+    if let Some(list) = mods::env_list(&s.mods) {
+        set("PS3_MODS_DIR", s_(&mods_dir()));
+        set("PS3_MODS", list);
+    }
+    if s.mods_dump {
+        set("PS3_MODS_DUMP", s_(&mods_dump_dir()));
+    }
+    // The window (tools/host_window). The size stays the host's --size.
+    if matches!(s.window_mode.as_str(), "fullscreen" | "borderless") {
+        set("PS3_WINDOW_MODE", s.window_mode.clone());
+    }
+    let display = s.display.trim();
+    if !display.is_empty() && !display.contains(['\n', '\r']) {
+        set("PS3_DISPLAY", display.to_string());
+    }
+    if !s.vsync {
+        set("PS3_VSYNC", "0".into());
+    }
+    if s.upscale == "metalfx" {
+        set("PS3_UPSCALE", "metalfx".into());
+    }
+    // Input: the controls file, then the mouse and rumble settings. The
+    // variables win over the file's [mouse]; when the file has one (a hand
+    // edit), every mouse setting is passed so the launcher's stand.
+    if let Some(p) = &input.path {
+        set("PS3_INPUT_MAP", p.clone());
+    }
+    if matches!(s.input_mode.as_str(), "controller" | "keyboard") {
+        set("PS3_INPUT_MODE", s.input_mode.clone());
+    }
+    let all = input.has_mouse_section;
+    if !s.mouse {
+        set("PS3_MOUSE", "0".into());
+    } else {
+        if all {
+            set("PS3_MOUSE", "1".into());
+        }
+        if all || (s.mouse_sens - 1.0).abs() > 1e-3 {
+            set("PS3_MOUSE_SENS", format!("{:.2}", s.mouse_sens.clamp(0.05, 10.0)));
+        }
+        if all || s.mouse_invert_y {
+            set("PS3_MOUSE_INVERT_Y", if s.mouse_invert_y { "1" } else { "0" }.into());
+        }
+        if all || s.mouse_invert_x {
+            set("PS3_MOUSE_INVERT_X", if s.mouse_invert_x { "1" } else { "0" }.into());
+        }
+        if all || s.mouse_deadzone != 30 {
+            set("PS3_MOUSE_DEADZONE", s.mouse_deadzone.min(120).to_string());
+        }
+        if all || !s.mouse_capture {
+            set("PS3_MOUSE_CAPTURE", if s.mouse_capture { "1" } else { "0" }.into());
+        }
+    }
+    if !s.rumble {
+        set("PS3_RUMBLE", "0".into());
+    } else if s.rumble_strength != 100 {
+        set("PS3_RUMBLE_STRENGTH", s.rumble_strength.min(200).to_string());
+    }
+    // The optional game patches (the UI offers them only when the build has them).
+    if s.unlock_fps {
+        set("RES_UNLOCK_FPS", "1".into());
+    }
+    if s.menu_60fps {
+        set("RES_MENU_60FPS", "1".into());
+    }
+    if let Some(f) = fov_value(&s.fov) {
+        set("RES_FOV", f);
     }
     if s.show_fps {
         set("PS3RECOMP_METAL_FPS", "1".into()); // exactly "1"
@@ -1024,7 +1241,7 @@ fn launch_preview(settings: Settings) -> Result<String, String> {
     let b = resolve_builds(&root);
     let disc = find_disc(&settings).map(|d| s(&d)).unwrap_or_else(|| "<your mounted disc>".into());
     let play = play_dir(&settings);
-    let env = launch_env(&settings, Path::new(&disc), &play);
+    let env = launch_env(&settings, Path::new(&disc), &play, &input_env());
     let mut out = vec![format!("cd {} &&", shell_quote(&s(&play)))];
     out.extend(env.into_iter().map(|(k, v)| format!("{k}={}", shell_quote(&v))));
     out.extend(launch_argv(&settings, &b).unwrap_or_else(|e| vec![format!("# {e}")]).iter().map(|a| shell_quote(a)));
@@ -1097,7 +1314,7 @@ fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) ->
     };
 
     let argv = launch_argv(&s, &b)?;
-    let mut env = launch_env(&s, &disc, &play);
+    let mut env = launch_env(&s, &disc, &play, &input_env());
     if let Some(d) = &report_dir {
         env.extend(report::env(d)); // after the extra variables: the report's paths win
     }
@@ -1232,6 +1449,8 @@ pub struct Status {
     app_bundle: Option<String>,
     finder_icon: bool,
     version: String,
+    /// FEATURE_MARKERS found in the builds.
+    features: Vec<String>,
 }
 
 #[tauri::command]
@@ -1242,6 +1461,7 @@ async fn get_status(app: AppHandle, state: State<'_, AppState>) -> Result<Status
     let app2 = app.clone();
     let st = tauri::async_runtime::spawn_blocking(move || {
         let builds = port_root(&s).map(|r| resolve_builds(&r));
+        let features = builds.as_ref().map(|b| build_features(b, &app2.state::<AppState>().features)).unwrap_or_default();
         let (icon, pic1) = disc_art(&s);
         let play = play_dir(&s);
         sync_app_icon(&app2);
@@ -1265,11 +1485,172 @@ async fn get_status(app: AppHandle, state: State<'_, AppState>) -> Result<Status
             finder_icon: bundle.as_deref().is_some_and(app_icon::has_finder_icon),
             app_bundle: bundle.map(|b| self::s(&b)),
             version: env!("CARGO_PKG_VERSION").into(),
+            features,
         }
     })
     .await
     .map_err(|e| e.to_string())?;
     Ok(st)
+}
+
+// ---------------------------------------------------------------------------
+// What the build supports
+// ---------------------------------------------------------------------------
+
+/// Environment variables whose names in a build's executable say that it has
+/// a feature the settings drive. A build made before the feature landed lacks
+/// the name; the window then labels (or, for the optional game patches,
+/// hides) the setting rather than pass a variable nothing reads.
+const FEATURE_MARKERS: &[&str] = &[
+    "PS3_INPUT_MAP",     // keyboard/mouse bindings, mouse camera, rumble
+    "PS3_LUT_STRENGTH",  // SMAA and the present pass's filters
+    "PS3_RES_SCALE",     // internal resolution
+    "PS3_MODS_DIR",      // texture packs
+    "PS3_WINDOW_MODE",   // the window host's modes, display, vsync
+    "PS3_UPSCALE",       // MetalFX in the window host
+    "RES_UNLOCK_FPS",    // port/patches.cpp
+    "RES_MENU_60FPS",
+    "RES_FOV",
+];
+
+/// The markers found in `data` (a NUL-terminated C string in the binary).
+fn markers_in(data: &[u8], found: &mut std::collections::BTreeSet<String>) {
+    for m in FEATURE_MARKERS {
+        if found.contains(*m) {
+            continue;
+        }
+        let mut pat = m.as_bytes().to_vec();
+        pat.push(0);
+        if memchr::memmem::find(data, &pat).is_some() {
+            found.insert((*m).to_string());
+        }
+    }
+}
+
+type FeatureCache = BTreeMap<String, (u64, u64, Vec<String>)>;
+
+/// The markers in the executables of `b` (host, EBOOT, campaign builds),
+/// cached by path, size and mtime: the builds are ~90 MB each.
+fn build_features(b: &Builds, cache: &Mutex<FeatureCache>) -> Vec<String> {
+    let mut all = std::collections::BTreeSet::new();
+    for p in [&b.host, &b.eboot, &b.game, &b.game_v17].into_iter().flatten() {
+        let meta = fs::metadata(p).ok();
+        let key = (meta.as_ref().map_or(0, |m| m.len()), meta.as_ref().map_or(0, |m| mtime_of(m)));
+        let hit = cache.lock().unwrap().get(p).filter(|c| (c.0, c.1) == key).map(|c| c.2.clone());
+        let found = match hit {
+            Some(v) => v,
+            None => {
+                let mut set = std::collections::BTreeSet::new();
+                if let Ok(data) = fs::read(p) {
+                    markers_in(&data, &mut set);
+                }
+                let v: Vec<String> = set.into_iter().collect();
+                cache.lock().unwrap().insert(p.clone(), (key.0, key.1, v.clone()));
+                v
+            }
+        };
+        all.extend(found);
+    }
+    all.into_iter().collect()
+}
+
+fn mtime_of(m: &fs::Metadata) -> u64 {
+    m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+// ---------------------------------------------------------------------------
+// Controls, screens, texture packs
+// ---------------------------------------------------------------------------
+
+/// The controls file for the Controls page: what it binds (the page fills in
+/// the defaults for the rest), and where it is.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputMapView {
+    path: String,
+    exists: bool,
+    bindings: Bindings,
+}
+
+#[tauri::command]
+fn get_input_map() -> InputMapView {
+    let p = input_map_path();
+    let text = fs::read_to_string(&p);
+    InputMapView { path: s(&p), exists: text.is_ok(), bindings: text.map(|t| input_map::parse(&t).bindings).unwrap_or_default() }
+}
+
+/// Write the bindings into `path`; the file's other sections ([mouse],
+/// anything newer) stay as they were.
+fn write_input_map(path: &Path, bindings: Bindings) -> Result<(), String> {
+    input_map::validate(&bindings)?;
+    let mut file = fs::read_to_string(path).map(|t| input_map::parse(&t)).unwrap_or_default();
+    file.bindings = bindings;
+    if let Some(d) = path.parent() {
+        fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    fs::write(&tmp, input_map::render(&file)).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_input_map(bindings: Bindings) -> Result<String, String> {
+    let p = input_map_path();
+    write_input_map(&p, bindings)?;
+    Ok(s(&p))
+}
+
+/// "Restore defaults": the file goes (its other sections with it, kept in
+/// input.toml.bak), so Play passes no PS3_INPUT_MAP again.
+#[tauri::command]
+fn reset_input_map() -> Result<(), String> {
+    let p = input_map_path();
+    if p.is_file() {
+        fs::rename(&p, p.with_extension("toml.bak")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// The names in the JSON array the screen probe prints.
+fn parse_screens(json: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(json.trim()).unwrap_or_default()
+}
+
+/// The screens in the system's order (NSScreen.screens: the first has the
+/// menu bar), by the names the window host's PS3_DISPLAY matches.
+#[tauri::command]
+async fn list_screens() -> Vec<String> {
+    if !cfg!(target_os = "macos") {
+        return Vec::new();
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        command_stdout(Command::new("/usr/bin/osascript").args([
+            "-l",
+            "JavaScript",
+            "-e",
+            "ObjC.import('AppKit'); JSON.stringify($.NSScreen.screens.js.map(s => s.localizedName.js))",
+        ]))
+        .map(|s| parse_screens(&s))
+        .unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModsView {
+    dir: String,
+    dump_dir: String,
+    packs: Vec<mods::ModPack>,
+}
+
+/// The texture packs in <data>/mods (the folder is created, so "Open the
+/// mods folder" always has somewhere to go).
+#[tauri::command]
+fn list_mods() -> ModsView {
+    let dir = mods_dir();
+    ModsView { packs: mods::list(&dir), dir: s(&dir), dump_dir: s(&mods_dump_dir()) }
 }
 
 #[tauri::command]
@@ -1398,6 +1779,11 @@ async fn finder_icon(app: AppHandle, set: bool) -> Result<bool, String> {
 #[tauri::command]
 fn take_play_request(state: State<'_, AppState>) -> bool {
     std::mem::take(&mut *state.play_request.lock().unwrap())
+}
+
+#[tauri::command]
+fn take_start_view(state: State<'_, AppState>) -> Option<String> {
+    state.start_view.lock().unwrap().take()
 }
 
 /// Home > Status > "Play shortcut on the Desktop" (play_shortcut.rs).
@@ -2379,11 +2765,17 @@ pub fn run() {
             let st = app.state::<AppState>();
             *st.play_request.lock().unwrap() = play_shortcut::requested(args.iter().cloned());
             *st.exit_with_game.lock().unwrap() = play_shortcut::exit_requested(&args);
+            *st.start_view.lock().unwrap() = play_shortcut::start_view(&args);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
+            get_input_map,
+            save_input_map,
+            reset_input_map,
+            list_screens,
+            list_mods,
             get_status,
             find_port_dirs,
             builds_at,
@@ -2424,6 +2816,7 @@ pub fn run() {
             report_delete,
             finder_icon,
             take_play_request,
+            take_start_view,
             create_play_shortcut,
             steam_status,
             steam_add,
@@ -2513,7 +2906,9 @@ mod tests {
     #[test]
     fn launch_env_maps_the_settings() {
         let mut st = Settings::default();
-        let env = |st: &Settings| -> BTreeMap<String, String> { launch_env(st, Path::new("/Volumes/RESISTANCE_1"), Path::new("/p")).into_iter().collect() };
+        let env = |st: &Settings| -> BTreeMap<String, String> {
+            launch_env(st, Path::new("/Volumes/RESISTANCE_1"), Path::new("/p"), &InputEnv::default()).into_iter().collect()
+        };
         let e = env(&st);
         assert_eq!(e["PS3_VFS_ROOT"], "/Volumes/RESISTANCE_1");
         assert_eq!(e["PS3_HDD0_ROOT"], "/p/dev_hdd0");
@@ -2524,6 +2919,9 @@ mod tests {
         for k in ["RES_GAME_VERSION", "PS3_LANG", "PS3_AA", "PS3_SHARPEN", "PS3_ANISO", "PS3_DISPLAY_GAMMA", "PS3RECOMP_ENG_VCACHE", "PS3RECOMP_ENG_VCACHE_SPLIT", "PS3RECOMP_METAL_BIND_ALL", "PS3_SHADER_ASYNC", "PS3_FRAMECLOCK_US", "PS3RECOMP_FFMPEG"] {
             assert!(!e.contains_key(k), "{k} passed by default");
         }
+        // the launch is the same as before the new settings existed
+        let keys: Vec<&str> = e.keys().map(String::as_str).filter(|k| !k.starts_with("PS3RECOMP_FFMPEG_")).collect();
+        assert_eq!(keys, ["PS3RECOMP_METAL_FPS", "PS3_HDD0_ROOT", "PS3_HDD1_ROOT", "PS3_SHADER_CACHE", "PS3_VERBOSE", "PS3_VFS_ROOT"]);
         st.campaign = "100".into();
         st.game_lang = "pt-br".into();
         st.aa = "fxaa".into();
@@ -2558,6 +2956,196 @@ mod tests {
         assert_eq!(env(&st)["PS3RECOMP_ENG_VCACHE"], "0");
         st.game_lang = "x; rm".into();
         assert!(!env(&st).contains_key("PS3_LANG"));
+    }
+
+    /// Every new setting, from its default (nothing passed) to a change.
+    #[test]
+    fn launch_env_maps_the_new_settings() {
+        let env = |st: &Settings, input: &InputEnv| -> BTreeMap<String, String> {
+            launch_env(st, Path::new("/d"), Path::new("/p"), input).into_iter().collect()
+        };
+        let base: Vec<String> = env(&Settings::default(), &InputEnv::default()).into_keys().collect();
+        let new_vars = [
+            "PS3_INPUT_MAP", "PS3_INPUT_MODE", "PS3_MOUSE", "PS3_MOUSE_SENS", "PS3_MOUSE_INVERT_X", "PS3_MOUSE_INVERT_Y",
+            "PS3_MOUSE_DEADZONE", "PS3_MOUSE_CAPTURE", "PS3_RUMBLE", "PS3_RUMBLE_STRENGTH", "PS3_WINDOW_MODE", "PS3_WINDOW_SIZE",
+            "PS3_DISPLAY", "PS3_VSYNC", "PS3_UPSCALE", "PS3_VIBRANCE", "PS3_CONTRAST", "PS3_VIGNETTE", "PS3_GRAIN", "PS3_LUT",
+            "PS3_LUT_STRENGTH", "PS3_MODS", "PS3_MODS_DIR", "PS3_MODS_DUMP", "PS3_RES_SCALE", "RES_UNLOCK_FPS", "RES_MENU_60FPS",
+            "RES_FOV",
+        ];
+        for k in new_vars {
+            assert!(!base.iter().any(|b| b == k), "{k} passed by default");
+        }
+
+        let mut st = Settings::default();
+        st.aa = "smaa".into();
+        st.vibrance = -0.25;
+        st.contrast = 1.2;
+        st.vignette = 0.5;
+        st.grain = 0.1;
+        st.lut_path = "/luts/warm.png".into();
+        st.lut_strength = 0.6;
+        st.res_scale = "1.5".into();
+        st.mods = vec!["HD UI".into(), "a,b".into()];
+        st.mods_dump = true;
+        st.window_mode = "borderless".into();
+        st.window_size = "1920x1080".into();
+        st.display = "DELL U2720Q".into();
+        st.vsync = false;
+        st.upscale = "metalfx".into();
+        st.input_mode = "keyboard".into();
+        st.mouse_sens = 1.5;
+        st.mouse_invert_y = true;
+        st.mouse_deadzone = 10;
+        st.mouse_capture = false;
+        st.rumble_strength = 150;
+        st.unlock_fps = true;
+        st.menu_60fps = true;
+        st.fov = "0.7".into();
+        let input = InputEnv { path: Some("/data/input.toml".into()), has_mouse_section: false };
+        let e = env(&st, &input);
+        assert_eq!(e["PS3_AA"], "smaa");
+        assert_eq!(e["PS3_VIBRANCE"], "-0.25");
+        assert_eq!(e["PS3_CONTRAST"], "1.20");
+        assert_eq!(e["PS3_VIGNETTE"], "0.50");
+        assert_eq!(e["PS3_GRAIN"], "0.10");
+        assert_eq!(e["PS3_LUT"], "/luts/warm.png");
+        assert_eq!(e["PS3_LUT_STRENGTH"], "0.60");
+        assert_eq!(e["PS3_RES_SCALE"], "1.5");
+        assert_eq!(e["PS3_MODS"], "HD UI");
+        assert!(e["PS3_MODS_DIR"].ends_with("resistance-recomp/mods"));
+        assert!(e["PS3_MODS_DUMP"].ends_with("resistance-recomp/texture-dump"));
+        assert_eq!(e["PS3_WINDOW_MODE"], "borderless");
+        assert!(!e.contains_key("PS3_WINDOW_SIZE"), "the size stays the host's --size");
+        assert_eq!(e["PS3_DISPLAY"], "DELL U2720Q");
+        assert_eq!(e["PS3_VSYNC"], "0");
+        assert_eq!(e["PS3_UPSCALE"], "metalfx");
+        assert_eq!(e["PS3_INPUT_MAP"], "/data/input.toml");
+        assert_eq!(e["PS3_INPUT_MODE"], "keyboard");
+        assert!(!e.contains_key("PS3_MOUSE"));
+        assert_eq!(e["PS3_MOUSE_SENS"], "1.50");
+        assert_eq!(e["PS3_MOUSE_INVERT_Y"], "1");
+        assert!(!e.contains_key("PS3_MOUSE_INVERT_X"));
+        assert_eq!(e["PS3_MOUSE_DEADZONE"], "10");
+        assert_eq!(e["PS3_MOUSE_CAPTURE"], "0");
+        assert!(!e.contains_key("PS3_RUMBLE"));
+        assert_eq!(e["PS3_RUMBLE_STRENGTH"], "150");
+        assert_eq!(e["RES_UNLOCK_FPS"], "1");
+        assert_eq!(e["RES_MENU_60FPS"], "1");
+        assert_eq!(e["RES_FOV"], "0.70");
+
+        // a hand-written [mouse] in the file: every mouse setting is passed
+        let mut st = Settings::default();
+        let e = env(&st, &InputEnv { path: Some("/x.toml".into()), has_mouse_section: true });
+        assert_eq!(e["PS3_MOUSE"], "1");
+        assert_eq!(e["PS3_MOUSE_SENS"], "1.00");
+        assert_eq!(e["PS3_MOUSE_INVERT_X"], "0");
+        assert_eq!(e["PS3_MOUSE_INVERT_Y"], "0");
+        assert_eq!(e["PS3_MOUSE_DEADZONE"], "30");
+        assert_eq!(e["PS3_MOUSE_CAPTURE"], "1");
+        // mouse and rumble off; values out of range or unknown pass nothing
+        st.mouse = false;
+        st.rumble = false;
+        st.window_mode = "windowed".into();
+        st.input_mode = "both".into();
+        st.aa = "msaa".into();
+        st.res_scale = "1".into();
+        st.fov = "1.0".into();
+        st.display = "a\nb".into();
+        st.lut_strength = 0.5; // no LUT file: no strength either
+        let e = env(&st, &InputEnv::default());
+        assert_eq!(e["PS3_MOUSE"], "0");
+        assert!(!e.contains_key("PS3_MOUSE_SENS"));
+        assert_eq!(e["PS3_RUMBLE"], "0");
+        for k in ["PS3_WINDOW_MODE", "PS3_INPUT_MODE", "PS3_AA", "PS3_RES_SCALE", "RES_FOV", "PS3_DISPLAY", "PS3_LUT_STRENGTH", "PS3_INPUT_MAP"] {
+            assert!(!e.contains_key(k), "{k}");
+        }
+    }
+
+    #[test]
+    fn res_scale_and_fov_values() {
+        assert_eq!(res_scale_value(""), None);
+        assert_eq!(res_scale_value("1"), None);
+        assert_eq!(res_scale_value("1.5").as_deref(), Some("1.5"));
+        assert_eq!(res_scale_value("2").as_deref(), Some("2"));
+        assert_eq!(res_scale_value("3").as_deref(), Some("3"));
+        assert_eq!(res_scale_value("2.6").as_deref(), Some("2.5"));
+        assert_eq!(res_scale_value("5"), None);
+        assert_eq!(res_scale_value("1080p"), None);
+        assert_eq!(fov_value("0.7").as_deref(), Some("0.70"));
+        assert_eq!(fov_value("1"), None);
+        assert_eq!(fov_value("9"), None);
+        assert_eq!(fov_value("wide"), None);
+    }
+
+    /// A launcher.json from before these settings (the installed app's)
+    /// loads with the new fields at their defaults, and keeps its own.
+    #[test]
+    fn old_settings_files_still_load() {
+        let old = r#"{"portDir": "/Users/x/resistence", "discPath": "/Volumes/RESISTANCE_1", "playDir": "/p", "campaign": "auto", "aa": "fxaa"}"#;
+        let st: Settings = serde_json::from_str(old).unwrap();
+        assert_eq!(st.port_dir, "/Users/x/resistence");
+        assert_eq!(st.aa, "fxaa");
+        assert_eq!(st.window_mode, "windowed");
+        assert!(st.vsync && st.mouse && st.rumble && st.mouse_capture);
+        assert_eq!((st.mouse_sens, st.mouse_deadzone, st.rumble_strength), (1.0, 30, 100));
+        assert_eq!(st.input_mode, "both");
+        assert!(st.mods.is_empty() && !st.unlock_fps && st.fov.is_empty());
+        let e: BTreeMap<String, String> = launch_env(&st, Path::new("/d"), Path::new("/p"), &InputEnv::default()).into_iter().collect();
+        let keys: Vec<&str> = e.keys().map(String::as_str).filter(|k| !k.starts_with("PS3RECOMP_FFMPEG_")).collect();
+        assert_eq!(keys, ["PS3RECOMP_METAL_FPS", "PS3_AA", "PS3_HDD0_ROOT", "PS3_HDD1_ROOT", "PS3_SHADER_CACHE", "PS3_VERBOSE", "PS3_VFS_ROOT"]);
+    }
+
+    #[test]
+    fn input_map_file_is_written_and_kept() {
+        let d = tmp("input");
+        let p = d.join("sub/input.toml");
+        let mut b = Bindings::default();
+        b.keyboard.insert("r1".into(), vec!["X".into()]);
+        b.keyboard.insert("cross".into(), vec!["Space".into()]);
+        b.keyboard.insert("l3".into(), vec![]);
+        b.mouse_buttons.insert("r1".into(), vec!["Left".into()]);
+        b.mouse_buttons.insert("triangle".into(), vec!["WheelUp".into(), "WheelDown".into()]);
+        b.controller.insert("cross".into(), vec!["a".into()]);
+        write_input_map(&p, b.clone()).unwrap();
+        let text = fs::read_to_string(&p).unwrap();
+        assert!(text.starts_with("# Resistance recomp: controls"));
+        assert!(text.contains("[keyboard]\ncross    = \"Space\"\n"));
+        assert!(text.contains("l3       = \"\"\n"));
+        assert!(text.contains("[mouse_buttons]\ntriangle = \"WheelUp, WheelDown\"\nr1       = \"Left\"\n"));
+        assert!(text.contains("[controller]\ncross    = \"a\"\n"));
+        assert_eq!(input_map::parse(&text).bindings, b);
+        // a hand-written [mouse] survives the next save
+        fs::write(&p, format!("{text}\n[mouse]\nsensitivity = 2.0\n")).unwrap();
+        b.keyboard.insert("r1".into(), vec!["F".into()]);
+        write_input_map(&p, b.clone()).unwrap();
+        let f = input_map::parse(&fs::read_to_string(&p).unwrap());
+        assert_eq!(f.bindings.keyboard["r1"], vec!["F"]);
+        assert!(f.has_mouse_section && f.other.contains("sensitivity = 2.0"));
+        // names that could break the file are refused, and the file stays
+        b.keyboard.insert("cross".into(), vec!["Q\"\n[x]".into()]);
+        assert!(write_input_map(&p, b).is_err());
+        assert_eq!(input_map::parse(&fs::read_to_string(&p).unwrap()).bindings.keyboard["cross"], vec!["Space"]);
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn feature_markers_in_a_build() {
+        let d = tmp("features");
+        let exe = d.join("game");
+        fs::write(&exe, b"\x7fELF junk PS3_INPUT_MAP\0more RES_FOV=%s\0 RES_FOV\0 PS3_RES_SCALE_X\0").unwrap();
+        let b = Builds { eboot: Some(s(&exe)), ..Default::default() };
+        let cache = Mutex::new(FeatureCache::new());
+        assert_eq!(build_features(&b, &cache), vec!["PS3_INPUT_MAP".to_string(), "RES_FOV".to_string()]);
+        assert_eq!(cache.lock().unwrap().len(), 1);
+        assert_eq!(build_features(&b, &cache).len(), 2, "from the cache");
+        assert!(build_features(&Builds::default(), &cache).is_empty());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn screen_names() {
+        assert_eq!(parse_screens("[\"Built-in Retina Display\",\"DELL U2720Q\"]\n"), vec!["Built-in Retina Display", "DELL U2720Q"]);
+        assert!(parse_screens("oops").is_empty());
     }
 
     #[test]
