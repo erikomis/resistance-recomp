@@ -14,7 +14,8 @@
 #            the tested ELF. Skipped when game.elf is already there.
 #   analyse  toolkit tools/ppu_loader.py -> analysis/BCUS98107/game_module_v17
 #   lift     toolkit tools/ppu_lifter.py (12 chunks, as 01.00)
-#            -> recompiled/BCUS98107/game_module_v17
+#            -> recompiled/BCUS98107/game_module_v17, with the RES_UNLOCK_FPS
+#            instruction patch (port/patches/game_v17.insn.json)
 #   spu      port/spu_v17: the job-manager policy module (the same bytes as
 #            01.00: port/spu/captured is copied, so run tools/rebuild.sh spu
 #            first), the 15 WWS job modules of the v1.7 ELF (13 changed), and
@@ -100,7 +101,8 @@ for s in $steps; do
     lift)
         say "lift"; need_tk ppu_lifter.py
         "$PY" "$TK/tools/ppu_lifter.py" "$M/game.elf" -j $JOBS --chunks 12 \
-            --functions "$AN/game.functions.json" --hle-stubs "$AN/game.imports.json" --output "$RC" ;;
+            --functions "$AN/game.functions.json" --hle-stubs "$AN/game.imports.json" \
+            --insn-patches "$RES_ROOT/port/patches/game_v17.insn.json" --output "$RC" ;;
     spu)
         say "spu"; need_tk spu_lifter.py
         [ -f "$RES_ROOT/port/spu/captured/spu_recomp.c" ] ||

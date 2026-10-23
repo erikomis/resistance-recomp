@@ -1,0 +1,8 @@
+{
+  "elf": "modules/game.elf (game.self 01.00, RPCS3 PPU-0cc2ddc637def2fe22b5e89563f773e4c0cae024)",
+  "source": "RPCS3 patch.yml, \"Unlock FPS\" (Whatcookie, FlexBy, illusion, Score)",
+  "patches": [
+    {"addr": "0x001E5DB0", "orig": "0x419DFFDC", "new": "0x60000000", "guard": "g_res_unlock_fps",
+     "note": "bgt cr7 -> nop: leave the frame limiter's sleep loop after one pass"}
+  ]
+}

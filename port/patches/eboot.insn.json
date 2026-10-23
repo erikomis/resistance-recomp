@@ -1,0 +1,12 @@
+{
+  "elf": "EBOOT.elf (disc 01.00, RPCS3 PPU-cb404d48...)",
+  "source": "RPCS3 patch.yml, \"60 FPS (menus + multiplayer)\"",
+  "patches": [
+    {"addr": "0x0003F264", "orig": "0x2F800002", "new": "0x2F800001", "guard": "g_res_menu_60fps",
+     "note": "cmpwi cr7,r0,2 -> 1"},
+    {"addr": "0x0003F274", "orig": "0x38600002", "new": "0x38600001", "guard": "g_res_menu_60fps",
+     "note": "li r3,2 -> 1 (swap interval passed to func_000A0174)"},
+    {"addr": "0x0008D680", "orig": "0x38600002", "new": "0x38600001", "guard": "g_res_menu_60fps",
+     "note": "li r3,2 -> 1 (swap interval passed to func_000A0174)"}
+  ]
+}

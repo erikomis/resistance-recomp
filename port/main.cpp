@@ -158,6 +158,10 @@ extern "C" int  rsx_null_backend_pump_messages(void);
 #define WINDOW_HEIGHT 720
 static int g_rsx_ready = 0;
 
+/* patches.cpp: the optional game patches (RES_UNLOCK_FPS, RES_FOV,
+ * RES_MENU_60FPS), applied to the loaded ELF before the guest starts. */
+extern "C" void res_apply_patches(void);
+
 /* ---------------------------------------------------------------------------
  * Frame clock
  * -----------------------------------------------------------------------*/
@@ -202,7 +206,18 @@ static DWORD WINAPI frame_clock(LPVOID)
      * 4 ms after each flip request. Default 1000; 4000 is the old pacing. */
     int clock_us = 1000;
     { const char* e = getenv("PS3_FRAMECLOCK_US"); if (e && atoi(e) > 0) clock_us = atoi(e); }
-    ULONGLONG next_tick = GetTickCount64();
+    /* PS3_VBLANK_HZ=<hz> (10..1000): the vblank rate, which also bounds the
+     * flip rate. Default one tick per 16 ms (62.5 Hz). */
+    ULONGLONG vblank_us = 16000;
+    if (const char* e = getenv("PS3_VBLANK_HZ")) {
+        const double hz = atof(e);
+        if (hz >= 10 && hz <= 1000) {
+            vblank_us = (ULONGLONG)(1e6 / hz + 0.5);
+            fprintf(stderr, "[rsx] vblank %.2f Hz (%llu us)\n", hz,
+                    (unsigned long long)vblank_us);
+        }
+    }
+    ULONGLONG next_tick = GetTickCount64() * 1000;   /* us */
     ULONGLONG last_pump = 0;
 
     for (;;) {
@@ -212,9 +227,10 @@ static DWORD WINAPI frame_clock(LPVOID)
         usleep((useconds_t)clock_us);
 #endif
         ULONGLONG now = GetTickCount64();
+        const ULONGLONG now_us = now * 1000;
 
         int fired = 0;
-        while ((long long)(now - next_tick) >= 0 && fired < 240) {
+        while ((long long)(now_us - next_tick) >= 0 && fired < 240) {
             cellGcmTickVBlank();
             cellGcmTickFlip();
             /* Present a pending flip BEFORE draining any further. The flip
@@ -228,10 +244,10 @@ static DWORD WINAPI frame_clock(LPVOID)
              * labels the game's per-frame logic blocks on, so it has to keep
              * advancing at 60 Hz even while present() throttles. */
             if (rsx_ok) cellGcm_rsx_process_fifo();
-            next_tick += 16;             /* ~60 Hz */
+            next_tick += vblank_us;      /* ~60 Hz by default */
             fired++;
         }
-        if (fired >= 240) next_tick = now;   /* fell too far behind -- resync */
+        if (fired >= 240) next_tick = now_us;   /* fell too far behind -- resync */
 
         /* Drain at the outer cadence too, not only on the 16 ms tick: titles
          * fence every render pass on a label the drain writes, and one wave of
@@ -400,6 +416,8 @@ int main(int argc, char** argv)
         fprintf(stderr, "ERROR: could not load %s\n", argv[1]);
         return 1;
     }
+
+    res_apply_patches();
 
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
