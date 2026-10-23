@@ -17,10 +17,13 @@ formato do roadmap do inFAMOUS 2.
 - **Sombras e fumaça:** os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo.
 - **No limite do próprio jogo:** a campanha chega ao limite de ~30–33 fps do jogo (o Resistance roda a 30 fps no PS3); o tempo "ocupado" que resta na PPU é em boa parte o limitador de quadros do jogo. A resolução da profundidade como RGBA8 na GPU levou a thread do RSX de 54% para 12% ocupada (2026-10-23).
 - **Novo, precisa de um teste jogando:** teclado e mouse no macOS com remapeamento pelo `input.toml`, vibração, modos de janela/vsync/MetalFX, SMAA e filtros, pacotes de texturas e a resolução interna (experimental), portados do trabalho do inFAMOUS 2; os testes passam. O launcher tem páginas Controles e Gráficos para eles.
-- **Em andamento:** 60 fps e um campo de visão maior (os patches da comunidade para o RPCS3).
+- **60 fps e campo de visão (2026-10-23):** os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`, `port/patches/*.insn.json`), todos opcionais: `RES_UNLOCK_FPS=1` ~56 fps na campanha (01.00 e v1.7) na velocidade normal do jogo, `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV`; o botão "60 fps" do launcher liga os dois.
+- **Telas legais corrigidas (2026-10-23):** o boot vai dos logos ao título "Press the START button" sem texto sobreposto; o runtime dizia ao jogo que ele estava num console japonês (área de licença).
+- **Áudio (2026-10-23):** o mixer do macOS segue o tempo real (alternava 2,4× / 0,95×); volume, sem som e saída de áudio (`PS3_AUDIO_*`, também no launcher).
+- **Toolkit:** 18 correções de pull requests do ps3recomp upstream e do trabalho no inFAMOUS 2 (veja CREDITS); um run de regressão com todas elas renderiza sem erros, renascer OK.
 - **Lançado:** v0.1.0 (2026-10-23, pré-release): o launcher para macOS e uma prévia para Windows.
-- **Em aberto:** os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); o texto das telas legais anteriores se sobrepõe às seguintes; teclado, mouse e vibração ainda não foram usados jogando; sem Windows nem Linux.
-- **Próximo:** uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; 60 fps e FOV; um controle físico com o launcher; uma sessão longa; a sobreposição do texto das telas legais.
+- **Em aberto:** os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado, sem Linux; um NID desconhecido do cellSysutil (`0x76948BFC`) chamado ao sair; morrer e renascer a 60 fps ainda não exercitado.
+- **Próximo:** uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; uma morte e um renascimento com `RES_UNLOCK_FPS=1`; um controle físico com o launcher; uma sessão longa; o NID chamado ao sair.
 
 ## Estado atual (2026-10-23)
 
@@ -175,7 +178,7 @@ O que trouxe até aqui:
 - [x] **Retângulos escuros no chão (sombras) e a fumaça.** Corrigido em 2026-10-22, sumiram no jogo (conferido visualmente). A comparação de sombra das texturas estava na ordem do ARB; o console e o RPCS3 comparam profundidade gravada OP referência (a issue #19391 do RPCS3 mostra os mesmos retângulos). Corrigido junto com as outras correções da comparação com o RPCS3 (texturas de profundidade replicam a profundidade em todas as lanes, para partículas suaves e fumaça; snapshots de profundidade recortados à região da textura).
 - [x] **Taxa de quadros.** ~30 fps no gameplay (2026-10-22): 32,5 fps com o pacote do inFAMOUS 2 contra 6,0 fps com as chaves dele desligadas; 30,5 fps na cidade com todas as correções.
 - [x] **Prédios e telhados aparecem em azul forte chapado.** Corrigido em 2026-10-22: o wrap de 28 bits do offset de vértice (veja "Estado atual"); a cidade aparece com as cores certas.
-- [ ] **Texto das telas legais sobreposto.** O texto desenhado numa tela legal continua lá na seguinte.
+- [x] **Texto das telas legais sobreposto.** Corrigido em 2026-10-23: o runtime informava a área de licença de um console japonês, então o jogo desenhava as telas legais da região errada umas sobre as outras. Agora informa América do Norte (upstream [#429](https://github.com/sp00nznet/ps3recomp/pull/429); `PS3_LICENSE_AREA` a troca); o boot vai dos logos ao título "Press the START button".
 - [ ] As lanes ociosas do job manager são paradas depois de 30 s fazendo polling da mesma linha da fila (`SPU_DMA_REPEAT_SECS`); conferir se elas voltam quando chega trabalho.
 
 ### Rumo ao primeiro capítulo
@@ -195,7 +198,8 @@ O que trouxe até aqui:
 ### Vídeo e áudio
 
 - [ ] Sincronia de áudio e vídeo num vídeo longo.
-- [ ] Conferir o áudio de ouvido num run em janela (`AUDIO_WAV` para gravar).
+- [x] Ritmo do áudio no macOS: o mixer alternava entre 2,4× e 0,95× do tempo real; agora segue o tempo real (do trabalho no inFAMOUS 2, 2026-10-23). Volume, sem som e saída: `PS3_AUDIO_VOLUME`, `PS3_AUDIO_MUTE`, `PS3_AUDIO_DEVICE`.
+- [ ] Conferir o áudio de ouvido numa sessão longa em janela (`AUDIO_WAV` para gravar).
 
 ### Menu
 
@@ -231,6 +235,8 @@ O que trouxe até aqui:
 ### Estabilidade
 
 - [ ] Sessões longas em janela sem travar (a campanha v1.7 inclusive); relatório de travamento no estilo do `watch_stall.sh`.
+- [ ] Morrer e renascer com `RES_UNLOCK_FPS=1` (o jogador parado nunca morreu nos runs longos destravados).
+- [ ] O NID desconhecido do cellSysutil `0x76948BFC` que o jogo chama ao sair.
 
 ### Controles
 
@@ -265,7 +271,7 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 ### Gráficos e resolução
 
 - [ ] Resolução interna acima de 720p (`PS3_RES_SCALE`, experimental), MetalFX (`PS3_UPSCALE=metalfx`), tela cheia/sem borda (`PS3_WINDOW_MODE`, `PS3_DISPLAY`, `PS3_VSYNC`), SMAA e filtros, pacotes de texturas: portados do trabalho do inFAMOUS 2 (2026-10-23), os testes passam, precisa de um teste jogando.
-- [ ] Destravar acima de 30 fps e um campo de visão maior (em andamento: os patches da comunidade para o RPCS3; o launcher mostra os ajustes quando o build os tiver).
+- [x] Acima de 30 fps e um campo de visão maior (2026-10-23): os patches da comunidade para o RPCS3 (Whatcookie, FlexBy, illusion, Score) trazidos para a recompilação estática. A metade de dados é gravada depois que o ELF carrega; a metade de código é traduzida nas duas formas (`ppu_lifter.py --insn-patches`) e escolhida em tempo de execução, e cada conjunto só se aplica quando 7–10 palavras conhecidas batem com o ELF em execução. `RES_UNLOCK_FPS=1`: ~56 fps na campanha com a máquina ociosa, 01.00 e v1.7, velocidade do jogo normal no tempo real (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s); `PS3_VBLANK_HZ=120` ~100 fps. `RES_MENU_60FPS=1`: menus de 32 → 59 fps. `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7). O botão "60 fps" do launcher passa os dois patches de fps.
 
 ### App para instalar e jogar (launcher)
 
@@ -275,12 +281,13 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] O app launcher (`launcher/`, Tauri, 2026-10-22): escolher e montar o ISO, pasta de jogo, detecção da pasta do port, versão da campanha (v1.7/01.00), ajustes (gráficos, desempenho, jogo), um gerenciador de saves (aqui e no RPCS3), o log do jogo, modo de depuração, verificação de atualizações, atalho na Mesa e na Steam, português do Brasil e inglês. O Parar funciona: a janela agora sai quando o jogo sai.
 - [x] Página Controles (associações de teclado, mouse e controle gravadas em `input.toml`, o teste do controle, o modo de entrada, mouse, vibração) e ajustes de Gráficos (modo de janela, tela, vsync, MetalFX, resolução interna, SMAA, filtros e LUT, pacotes de texturas e a extração deles), em português do Brasil e inglês; cada ajuste passado só quando é diferente do padrão (2026-10-23; o lado do jogo precisa de um teste jogando).
 - [x] Release v0.1.0 (2026-10-23, pré-release): o launcher para macOS e uma prévia para Windows.
+- [x] Ajustes de áudio (volume, sem som, saída) e um botão "60 fps" só (2026-10-23).
 - [ ] Um controle físico com o launcher (veja Controles).
 - [ ] Ícone a partir do `ICON0.PNG` do próprio jogador, app bundle com Game Mode no macOS.
 
 ### Outras plataformas
 
-- [ ] Linux (Vulkan) e Windows (D3D12), com o launcher e o rebuild rodando nativamente.
+- [ ] Linux (Vulkan) e Windows (D3D12), com o launcher e o rebuild rodando nativamente. O carregamento do XInput em tempo de execução no Windows (upstream #494) está no patch do toolkit, sem teste no Windows.
 
 ### Fora do escopo por enquanto
 
@@ -352,6 +359,12 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] Caminho rápido do store-watch da PPU, relógios do guest pelo `mach_absolute_time`; na SPU precisão simples nativa (exata bit a bit), `goto` local para desvios calculados, `SPU_DIRECT`, retornos de chamada mais baratos (cerca de +5%). A campanha no limite do próprio jogo, ~30–33 fps.
 - [x] Teclado e mouse, vibração, modos de janela, vsync, MetalFX, SMAA, filtros e LUT, pacotes de texturas e a resolução interna portados do trabalho do inFAMOUS 2; os testes passam (falta o teste jogando, veja Controles e Gráficos).
 - [x] A página Controles e os novos ajustes de Gráficos do launcher; v0.1.0 lançado.
+
+### 60 fps, telas legais, áudio e correções do upstream (2026-10-23)
+
+- [x] Os patches de 60 fps / FOV (`port/patches.cpp`, `port/patches/*.insn.json`; `tools/rebuild.sh lift` e `tools/v17/regen_v17.sh` passam `--insn-patches`, `tools/relift.sh` traduz de novo um lift antigo).
+- [x] A sobreposição das telas legais (área de licença, #429).
+- [x] De pull requests do upstream: os bits de desvio dos vertex programs (#485, mais uma correção do slot inicial do programa; 19 dos 343 vertex programs do Resistance desviam), `WPOS` em alvos com AA 2× (#446, com a resolução interna), a condição de corrida da tabela de fds e a troca leitura/escrita (#430, #456), a nova checagem do `stwcx.` (#522), decodificação rápida de ARGB linear (#432), a memória dos slots de textura (#438), o decrementador da SPU no relógio bruto (#451), ceder a vez em DMA de SPU repetido (#448), pequenas economias de DMA de SPU (#453–#455), `getenv` uma vez por ponto de chamada (#515), XInput carregado em tempo de execução no Windows (#494). Do trabalho no inFAMOUS 2: ritmo, volume e saída do áudio, o giro opcional do `usleep` (`PS3_USLEEP_SPIN_US`). Um run de regressão de gameplay com todas elas: renderiza, sem erros, renascer OK.
 
 ### Ferramentas
 

@@ -13,8 +13,8 @@ title screen and the main menu to a new campaign. The campaign executable then
 plays the level-1 intro movie and loads "The Gauntlet" (York). In a window,
 with a DualSense, York plays in first person with the HUD: enemies and allies,
 shooting, dying and respawning from the checkpoint. The town renders with its
-proper colours at about 30 fps, in one window from the menus through the
-campaign. The campaign is the game's last update, v1.7, re-lifted from its
+proper colours at about 30 fps (about 56 fps with the optional 60 fps
+patch), in one window from the menus through the campaign. The campaign is the game's last update, v1.7, re-lifted from its
 `patch_06`; the menus stay the disc's 01.00 (see [Status](#status)).
 
 Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), following the
@@ -53,18 +53,18 @@ built or played on Windows, so treat it as experimental and untested
 
 The first release, **v0.1.0** (2026-10-23, a pre-release), is out: the macOS
 launcher and the Windows preview. The settings added since (controls, window
-modes, filters, texture packs) are in the sources and come with the next
+modes, filters, texture packs, 60 fps and field of view, audio) are in the sources and come with the next
 release; build the launcher yourself to get them now
 (`tools/rebuild.sh launcher`).
 
 ## Status
 
-As of 2026-10-23 (the campaign at the game's own frame-rate cap; keyboard, mouse and the inFAMOUS 2 settings ported), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
+As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
 
 | | |
 | --- | --- |
 | Both executables lifted to C++ and built (`EBOOT.BIN`: 25,022 functions; `game.self`: 18,994), and the v1.7 update's `game.self` (19,706 lifted functions, 19,219 for 01.00's) | ✅ |
-| Boot, legal screens | ✅ (text from an earlier legal screen overlaps the next one) |
+| Boot, legal screens | ✅ logos → title "Press the START button", no overlapping legal text (the runtime reported a Japanese console's licence area; it now reports North America, `PS3_LICENSE_AREA` overrides it) |
 | First-run "initial setup" HDD install (writes the `*.done` cache files) | ✅ |
 | Title screen, main menu (Campaign / Cooperative / Multiplayer / Options) | ✅ |
 | Campaign difficulty and invert-Y prompts | ✅ |
@@ -75,7 +75,8 @@ As of 2026-10-23 (the campaign at the game's own frame-rate cap; keyboard, mouse
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
 | Frame rate | ✅ the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
-| 60 fps and a wider field of view | ⏳ in progress (the community's RPCS3 patches, carried over to the port) |
+| 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` ~56 fps in the campaign (01.00 and v1.7, measured on an idle machine) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7), `PS3_VBLANK_HZ=120` ~100 fps; dying and respawning with the unlock on not exercised yet |
+| Audio | ✅ the macOS mixer now keeps real time (it alternated between 2.4× and 0.95×); 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` (also in the launcher) |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
 | Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names |
 | Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths |
@@ -230,7 +231,7 @@ PY=.venv/bin/python PS3_VFS_ROOT=/Volumes/<your disc> tools/rebuild.sh
 | `toolkit` | `tools/setup_toolkit.sh` | `ps3recomp/` |
 | `decrypt` | copies `EBOOT.BIN` and `game.self` from the disc and runs `rpcs3 --decrypt` (`RPCS3=<path>` if it is not in `/Applications`); skipped when the `.elf` is already there; checks the SHA-256 of the result against the tested v01.00 executables | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
 | `analyse` | the toolkit's `ppu_loader.py` (functions, imports, TOC) | `analysis/BCUS98107/` |
-| `lift` | the toolkit's `ppu_lifter.py`, 16 chunks for the EBOOT and 12 for `game.self` | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
+| `lift` | the toolkit's `ppu_lifter.py`, 16 chunks for the EBOOT and 12 for `game.self`, with the switchable instructions of the 60 fps patches (`port/patches/*.insn.json`) | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: the job-manager policy module, extracted from your EBOOT, wrapped and lifted | `port/spu/captured/` |
 | `build` | CMake + Ninja, Metal, FFmpeg runtime; also the `Resistance` window launcher | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
 | `v17` | only when named: the v1.7 campaign from your `patch_06.psarc` (`tools/v17/regen_v17.sh`, see [The v1.7 campaign](#the-v17-campaign)); `build` also rebuilds it once it is lifted | `game/BCUS98107/modules_v17/`, `recompiled/BCUS98107/game_module_v17/`, `port/spu_v17/`, `build/BCUS98107_game_v17/` |
@@ -249,6 +250,11 @@ before then were compiled unoptimised: rebuild. `tools/setup_toolkit.sh` never
 resets a checkout that carries an older patch, so delete `ps3recomp/` first,
 then run `tools/rebuild.sh toolkit build`. Until you do, the scripts still run
 an old `MyGameRecomp` build when it is the only one there.
+
+A lift made before 2026-10-23 has no 60 fps patch in it (`RES_UNLOCK_FPS` and
+`RES_MENU_60FPS` then do nothing): after updating the toolkit, run
+`tools/relift.sh` (it re-lifts the EBOOT, the 01.00 and the v1.7 campaign with
+`--insn-patches` and rebuilds; only one or two chunks change).
 
 #### The SPU policy module
 
@@ -395,12 +401,12 @@ is read from your mounted disc.
 - **Performance**: the vertex cache and its per-stream split, binding only
   changed state, the shader cache (with its size and Clear) and async
   shaders, the frame clock, the frame-rate counter, keeping the Mac awake;
-  60 fps and field-of-view options, shown once the build has them (in
-  progress).
+  **60 fps** (`RES_UNLOCK_FPS` + `RES_MENU_60FPS`) and the field of view
+  (`RES_FOV`), shown once the build has them.
 - **Game**: the disc (image or folder, mount/eject), the campaign version
   (**v1.7** when its build is there, or **01.00**: `RES_GAME_VERSION=100`),
-  the console language (`PS3_LANG`), movies (FFmpeg paths), the play folder,
-  and a saves manager (the profile and `quick.sav`, here and in RPCS3:
+  the console language (`PS3_LANG`), movies (FFmpeg paths), audio (volume,
+  mute, output device), the play folder, and a saves manager (the profile and `quick.sav`, here and in RPCS3:
   backups before every Play, restore, copy either way, .zip export/import).
 - **Controls**: the bindings for keyboard, mouse and controller with what
   each button does in the game (written to `input.toml`), a controller test,
@@ -480,6 +486,11 @@ its own window).
 | `PS3RECOMP_METAL_BIND_ALL=1` | rebind every Metal state on every draw instead of only what changed |
 | `PS3_SHADER_CACHE=<dir>` | keep the translated MSL shaders across runs; `PS3_SHADER_ASYNC=1` (opt-in) builds new pipelines on a background queue and skips their draws until ready |
 | `PS3_FRAMECLOCK_US=<µs>` | the host frame loop's tick (default 1000; 4000 is the old pacing) |
+| `PS3_VBLANK_HZ=<10..1000>` | the synthesized vblank rate (default 62.5); with `RES_UNLOCK_FPS=1`, 120 lets the campaign run at ~100 fps |
+| `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | the optional game patches ([`port/patches.cpp`](port/patches.cpp)): the campaign's frame limiter off (minimum timestep 1/30 → 1/240 s), the menus and multiplayer at one vblank per frame, the field-of-view factor (1.0 = the game's; smaller is wider). Each applies only when the running ELF holds the words it expects |
+| `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` | master volume (100), the output whose name contains `<name>` (the outputs are listed in the log when none matches; macOS/Linux), no sound (any value mutes) |
+| `PS3_LICENSE_AREA=<n>` | the licence area the console reports (`CELL_SYSUTIL_LICENSE_AREA_*`; default North America, the disc's region) |
+| `PS3_USLEEP_SPIN_US=<µs>` | a `sys_timer_usleep` of that many µs or less spins (yielding) instead of sleeping (opt-in; spinning threads cost cores the SPUs may need) |
 | `PS3_INPUT_MAP=<file>` | keyboard, mouse-button and controller bindings and the `[mouse]` settings (`input.toml`; format in the toolkit's `libs/input/pad_input_map.h`) |
 | `PS3_INPUT_MODE=both\|controller\|keyboard` | what drives the game (default both); `PS3_PAD_SDL=0` ignores physical controllers |
 | `PS3_MOUSE=0`, `PS3_MOUSE_SENS=<f>`, `PS3_MOUSE_INVERT_X=1`, `PS3_MOUSE_INVERT_Y=1`, `PS3_MOUSE_DEADZONE=0..120`, `PS3_MOUSE_CAPTURE=0` | the mouse camera: off, speed (1.0), inversion, first stick step past centre (30), no cursor capture |
@@ -505,9 +516,9 @@ its own window).
 
 | Path | What it is |
 | --- | --- |
-| [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn and the window-state hand-off, `RES_PEEK`), `CMakeLists.txt` (with the `Resistance` launcher target), `config.toml`, `spu/spu_workloads.c` (SPU registration); `spu_v17/` is generated by `tools/v17/regen_v17.sh` |
+| [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn and the window-state hand-off, `RES_PEEK`), `patches.cpp` and `patches/*.insn.json` (the optional 60 fps / FOV patches), `CMakeLists.txt` (with the `Resistance` launcher target), `config.toml`, `spu/spu_workloads.c` (SPU registration); `spu_v17/` is generated by `tools/v17/regen_v17.sh` |
 | [`patches/`](patches/) | The toolkit patch over ps3recomp v0.17.0 |
-| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` and the run scripts; `v17/` (the v1.7 campaign: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
+| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `relift.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` and the run scripts; `v17/` (the v1.7 campaign: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
 | [`launcher/`](launcher/) | The desktop launcher (Tauri): settings, disc, saves, rebuild and Play |
 | [`ROADMAP.md`](ROADMAP.md) | Status and next steps |
 

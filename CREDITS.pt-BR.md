@@ -14,6 +14,38 @@ Este port só existe por causa do trabalho abaixo. Obrigado a todos.
   `stubs.cpp`, o `CMakeLists.txt` e o `config.toml` deste port. O port compila
   contra a v0.17.0 (`a6d76c8`). MIT.
 
+## Correções do toolkit vindas de pull requests do upstream
+
+O patch do toolkit traz estes pull requests do ps3recomp (alguns adaptados à
+v0.17.0 ou a este port), com os autores mantidos nos cabeçalhos do patch:
+
+- **undecuple** — a área de licença do console, América do Norte (corrigiu o
+  texto sobreposto das telas legais; [#429](https://github.com/sp00nznet/ps3recomp/pull/429)); XInput carregado em tempo de
+  execução no Windows ([#494](https://github.com/sp00nznet/ps3recomp/pull/494)).
+- **n0madic** ([@n0madic](https://github.com/n0madic)) — os bits de desvio dos
+  vertex programs ([#485](https://github.com/sp00nznet/ps3recomp/pull/485)); `WPOS` em render targets com antisserrilhamento
+  ([#446](https://github.com/sp00nznet/ps3recomp/pull/446)).
+- **Will Tekulve** ([@tekulvw](https://github.com/tekulvw)) — a condição de
+  corrida da tabela de fds ([#430](https://github.com/sp00nznet/ps3recomp/pull/430)); decodificação rápida de A8R8G8B8 linear
+  ([#432](https://github.com/sp00nznet/ps3recomp/pull/432)); a memória dos slots de textura ([#438](https://github.com/sp00nznet/ps3recomp/pull/438)); o decrementador da
+  SPU no relógio bruto ([#451](https://github.com/sp00nznet/ps3recomp/pull/451)); ceder a vez em DMA de SPU repetido
+  ([#448](https://github.com/sp00nznet/ps3recomp/pull/448)); pequenas economias de DMA de SPU ([#453](https://github.com/sp00nznet/ps3recomp/pull/453), [#454](https://github.com/sp00nznet/ps3recomp/pull/454), [#455](https://github.com/sp00nznet/ps3recomp/pull/455)).
+- **Heitor Mendonça** — reposicionar o arquivo quando o fd alterna entre
+  leitura e escrita ([#456](https://github.com/sp00nznet/ps3recomp/pull/456)).
+- **Ryan Bagas** — a nova checagem da reserva no `stwcx.` ([#522](https://github.com/sp00nznet/ps3recomp/pull/522)).
+- **Noah Peterson** ([@NoahBPeterson](https://github.com/NoahBPeterson)) — o
+  ritmo em tempo real do mixer de áudio POSIX (do trabalho no inFAMOUS 2).
+- **erikomis** — `getenv` consultado uma vez por ponto de chamada ([#515](https://github.com/sp00nznet/ps3recomp/pull/515));
+  volume e saída de áudio; o giro opcional do `usleep`.
+
+## Patches do jogo
+
+- As opções de 60 fps e de campo de visão (`port/patches.cpp`,
+  `port/patches/*.insn.json`) são os patches da comunidade no `patch.yml` do
+  RPCS3 para este jogo, trazidos para a recompilação estática: **Whatcookie** e
+  **FlexBy** ("Unlock FPS" do `game.self` 01.00 e da atualização),
+  **illusion** ("Extended FOV") e **Score** ("60 FPS", menus e multiplayer).
+
 ## O port que serve de modelo
 
 - **[infamous2-recomp](https://github.com/erikomis/infamous2-recomp)** — o port

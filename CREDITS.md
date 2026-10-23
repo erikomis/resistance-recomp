@@ -14,6 +14,37 @@ This port only exists because of the work below. Thank you all.
   `main.cpp`, `stubs.cpp`, `CMakeLists.txt` and `config.toml` start from. The
   port builds against v0.17.0 (`a6d76c8`). MIT.
 
+## Toolkit fixes from upstream pull requests
+
+The toolkit patch carries these ps3recomp pull requests (some adapted to
+v0.17.0 or to this port), with their authors kept in the patch headers:
+
+- **undecuple** — the console's licence area, North America (it fixed the
+  overlapping legal-screen text; [#429](https://github.com/sp00nznet/ps3recomp/pull/429)); XInput loaded at run time on
+  Windows ([#494](https://github.com/sp00nznet/ps3recomp/pull/494)).
+- **n0madic** ([@n0madic](https://github.com/n0madic)) — vertex-program branch
+  bits ([#485](https://github.com/sp00nznet/ps3recomp/pull/485)); `WPOS` on antialiased render targets ([#446](https://github.com/sp00nznet/ps3recomp/pull/446)).
+- **Will Tekulve** ([@tekulvw](https://github.com/tekulvw)) — the fs fd-table
+  race ([#430](https://github.com/sp00nznet/ps3recomp/pull/430)); linear A8R8G8B8 fast decode ([#432](https://github.com/sp00nznet/ps3recomp/pull/432)); the texture-slot
+  memo ([#438](https://github.com/sp00nznet/ps3recomp/pull/438)); the SPU decrementer on the raw clock ([#451](https://github.com/sp00nznet/ps3recomp/pull/451)); the yield
+  on repeated SPU DMA ([#448](https://github.com/sp00nznet/ps3recomp/pull/448)); small SPU DMA savings ([#453](https://github.com/sp00nznet/ps3recomp/pull/453), [#454](https://github.com/sp00nznet/ps3recomp/pull/454), [#455](https://github.com/sp00nznet/ps3recomp/pull/455)).
+- **Heitor Mendonça** — repositioning a file when its fd switches between
+  reading and writing ([#456](https://github.com/sp00nznet/ps3recomp/pull/456)).
+- **Ryan Bagas** — the `stwcx.` reservation re-check ([#522](https://github.com/sp00nznet/ps3recomp/pull/522)).
+- **Noah Peterson** ([@NoahBPeterson](https://github.com/NoahBPeterson)) —
+  real-time pacing of the POSIX audio mixer (from the inFAMOUS 2 work).
+- **erikomis** — `getenv` looked up once per call site ([#515](https://github.com/sp00nznet/ps3recomp/pull/515)); audio volume
+  and output device; the opt-in `usleep` spin.
+
+## Game patches
+
+- The 60 fps and field-of-view options (`port/patches.cpp`,
+  `port/patches/*.insn.json`) are the community patches in RPCS3's
+  `patch.yml` for this game, carried over to the static recompilation:
+  **Whatcookie** and **FlexBy** ("Unlock FPS" for `game.self` 01.00 and the
+  update), **illusion** ("Extended FOV") and **Score** ("60 FPS", menus and
+  multiplayer).
+
 ## The port it follows
 
 - **[infamous2-recomp](https://github.com/erikomis/infamous2-recomp)** — the

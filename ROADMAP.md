@@ -17,10 +17,13 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Shadows and smoke:** the dark rectangles on the ground and the hard-edged smoke are gone in game.
 - **At the game's own cap:** the campaign reaches the game's ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. The GPU depth-as-RGBA8 resolve took the RSX thread from 54% to 12% busy (2026-10-23).
 - **New, needs a play test:** keyboard and mouse on macOS with `input.toml` remapping, rumble, window modes/vsync/MetalFX, SMAA and filters, texture packs and the internal resolution (experimental), ported from the inFAMOUS 2 work; tests pass. The launcher has Controls and Graphics pages for them.
-- **In progress:** 60 fps and a wider field of view (the community's RPCS3 patches).
+- **60 fps and field of view (2026-10-23):** the community's RPCS3 patches carried over (`port/patches.cpp`, `port/patches/*.insn.json`), all opt-in: `RES_UNLOCK_FPS=1` ~56 fps in the campaign (01.00 and v1.7) at the normal game speed, `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV`; the launcher's "60 fps" switch sets both.
+- **Legal screens fixed (2026-10-23):** boot goes logos → title "Press the START button" with no overlapping text; the runtime had told the game it was on a Japanese console (licence area).
+- **Audio (2026-10-23):** the macOS mixer keeps real time (it alternated 2.4× / 0.95×); volume, mute and output device (`PS3_AUDIO_*`, also in the launcher).
+- **Toolkit:** 18 fixes from upstream ps3recomp pull requests and the inFAMOUS 2 work (see CREDITS); a regression run with all of them renders with no errors, respawn OK.
 - **Released:** v0.1.0 (2026-10-23, pre-release): the macOS launcher and a Windows preview.
-- **Open:** the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); text from earlier legal screens overlaps later ones; keyboard, mouse and rumble not yet played with; no Windows or Linux.
-- **Next:** a play session with keyboard and mouse, rumble and the new graphics settings; 60 fps and FOV; a physical controller with the launcher; a long session; the legal-screen text overlap.
+- **Open:** the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested, no Linux; an unknown cellSysutil NID (`0x76948BFC`) called at quit; dying and respawning at 60 fps not exercised yet.
+- **Next:** a play session with keyboard and mouse, rumble and the new graphics settings; a death and respawn with `RES_UNLOCK_FPS=1`; a physical controller with the launcher; a long session; the quit-time NID.
 
 ## Current state (2026-10-23)
 
@@ -166,7 +169,7 @@ What got it this far:
 - [x] **Dark rectangles on the ground (shadows) and the smoke.** Fixed 2026-10-22, gone in game (checked visually). The texture shadow comparison was in ARB order; the console and RPCS3 compare stored depth OP reference (RPCS3 issue #19391 shows the same rectangles). Fixed with the other RPCS3-comparison fixes (depth textures replicate depth to every lane, for soft particles and smoke; depth snapshots cropped to the texture's region).
 - [x] **Frame rate.** ~30 fps in gameplay (2026-10-22): 32.5 fps with the inFAMOUS 2 stack vs 6.0 fps with its knobs off; 30.5 fps in the town with every fix in.
 - [x] **Buildings and roofs render solid bright blue.** Fixed 2026-10-22: the 28-bit vertex offset wrap (see "Current state"); the town renders with its proper colours.
-- [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
+- [x] **Legal-screen text overlaps.** Fixed 2026-10-23: the runtime reported the licence area of a Japanese console, so the game drew the wrong region's legal screens over each other. It now reports North America (upstream [#429](https://github.com/sp00nznet/ps3recomp/pull/429); `PS3_LICENSE_AREA` overrides it); boot goes logos → title "Press the START button".
 - [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
 
 ### Into the first chapter
@@ -186,7 +189,8 @@ What got it this far:
 ### Video and audio
 
 - [ ] A/V sync over a long movie.
-- [ ] Audio check by ear in a windowed run (`AUDIO_WAV` to record).
+- [x] Audio pacing on macOS: the mixer alternated between 2.4× and 0.95× real time; it now keeps real time (from the inFAMOUS 2 work, 2026-10-23). Volume, mute and output device: `PS3_AUDIO_VOLUME`, `PS3_AUDIO_MUTE`, `PS3_AUDIO_DEVICE`.
+- [ ] Audio check by ear over a long windowed session (`AUDIO_WAV` to record).
 
 ### Menu
 
@@ -222,6 +226,8 @@ What got it this far:
 ### Stability
 
 - [ ] Long windowed sessions without hangs (the v1.7 campaign included); a `watch_stall.sh`-style hang report.
+- [ ] Dying and respawning with `RES_UNLOCK_FPS=1` (the idle player never died in the long unlocked runs).
+- [ ] The unknown cellSysutil NID `0x76948BFC` the game calls at quit.
 
 ### Controls
 
@@ -256,7 +262,7 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 ### Graphics and resolution
 
 - [ ] Internal resolution above 720p (`PS3_RES_SCALE`, experimental), MetalFX (`PS3_UPSCALE=metalfx`), fullscreen/borderless (`PS3_WINDOW_MODE`, `PS3_DISPLAY`, `PS3_VSYNC`), SMAA and filters, texture packs: ported from the inFAMOUS 2 work (2026-10-23), tests pass, needs a play test.
-- [ ] Unlock past 30 fps and a wider field of view (in progress: the community's RPCS3 patches; the launcher shows the settings once the build has them).
+- [x] Past 30 fps and a wider field of view (2026-10-23): the community's RPCS3 patches (Whatcookie, FlexBy, illusion, Score) carried over to the static recompilation. The data half is written after the ELF loads; the code half is lifted in both forms (`ppu_lifter.py --insn-patches`) and picked at run time, and each set applies only when 7–10 known words match the running ELF. `RES_UNLOCK_FPS=1`: ~56 fps in the campaign on an idle machine, 01.00 and v1.7, game speed normal in wall-clock time (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s); `PS3_VBLANK_HZ=120` ~100 fps. `RES_MENU_60FPS=1`: menus 32 → 59 fps. `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7). The launcher's "60 fps" switch passes both fps patches.
 
 ### App to install and play (launcher)
 
@@ -266,12 +272,13 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] The launcher app (`launcher/`, Tauri, 2026-10-22): ISO pick and mount, play folder, port-folder detection, campaign version (v1.7/01.00), settings (graphics, performance, game), a saves manager (here and in RPCS3), the game log, debug mode, an updates check, a Desktop and Steam shortcut, English and Brazilian Portuguese. Stop works: the window host now exits when the game does.
 - [x] Controls page (bindings for keyboard, mouse and controller written to `input.toml`, the controller test, input mode, mouse, rumble) and Graphics settings (window mode, screen, vsync, MetalFX, internal resolution, SMAA, filters and LUT, texture packs and their dump), in English and Brazilian Portuguese; every setting passed only when it differs from the default (2026-10-23; the game side needs a play test).
 - [x] Release v0.1.0 (2026-10-23, pre-release): the macOS launcher and a Windows preview.
+- [x] Audio settings (volume, mute, output device) and one "60 fps" switch (2026-10-23).
 - [ ] A physical controller with the launcher (see Controls).
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
 
 ### Other platforms
 
-- [ ] Linux (Vulkan) and Windows (D3D12), with the launcher and the rebuild running natively.
+- [ ] Linux (Vulkan) and Windows (D3D12), with the launcher and the rebuild running natively. The Windows XInput runtime loading (upstream #494) is in the toolkit patch, untested on Windows.
 
 ### Out of scope for now
 
@@ -343,6 +350,12 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] PPU store-watch fast path, `mach_absolute_time` guest clocks; SPU native single precision (bit-exact), local `goto` for computed branches, `SPU_DIRECT`, cheaper call returns (about +5%). The campaign at the game's own ~30–33 fps cap.
 - [x] Keyboard and mouse, rumble, window modes, vsync, MetalFX, SMAA, filters and LUT, texture packs and the internal resolution ported from the inFAMOUS 2 work; tests pass (a play test is still to do, see Controls and Graphics).
 - [x] The launcher's Controls page and new Graphics settings; v0.1.0 released.
+
+### 60 fps, legal screens, audio and upstream fixes (2026-10-23)
+
+- [x] The 60 fps / FOV patches (`port/patches.cpp`, `port/patches/*.insn.json`; `tools/rebuild.sh lift` and `tools/v17/regen_v17.sh` pass `--insn-patches`, `tools/relift.sh` re-lifts an older lift).
+- [x] The legal-screen overlap (licence area, #429).
+- [x] From upstream pull requests: vertex-program branch bits (#485, plus a program start-slot fix; 19 of Resistance's 343 vertex programs branch), `WPOS` on 2× AA targets (#446, with the internal resolution), the fs fd-table race and read/write switch (#430, #456), the `stwcx.` re-check (#522), linear ARGB fast decode (#432), the texture-slot memo (#438), the SPU decrementer on the raw clock (#451), the yield on repeated SPU DMA (#448), small SPU DMA savings (#453–#455), `getenv` once per call site (#515), Windows XInput loaded at run time (#494). From the inFAMOUS 2 work: audio pacing, volume and device, the opt-in `usleep` spin (`PS3_USLEEP_SPIN_US`). A gameplay regression run with all of them: renders, no errors, respawn OK.
 
 ### Tools
 
