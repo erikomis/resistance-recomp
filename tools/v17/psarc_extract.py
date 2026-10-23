@@ -54,11 +54,16 @@ def main():
         if len(names) != len(ents) - 1:
             sys.exit(f'{path}: manifest lists {len(names)} names for {len(ents) - 1} files')
         n = 0
+        base = os.path.realpath(outdir)
         for e, name in zip(ents[1:], names):
             if want and not any(w in name for w in want):
                 continue
+            # An entry name comes from the archive: keep it inside outdir.
+            rel = name.lstrip('/')
+            op = os.path.realpath(os.path.join(base, rel))
+            if not rel or '..' in rel.split('/') or os.path.commonpath([base, op]) != base:
+                sys.exit(f'{path}: entry {name!r} escapes the output directory')
             data = read(*e)
-            op = os.path.join(outdir, name.lstrip('/'))
             os.makedirs(os.path.dirname(op), exist_ok=True)
             with open(op, 'wb') as o:
                 o.write(data)
