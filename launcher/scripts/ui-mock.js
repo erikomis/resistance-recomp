@@ -55,7 +55,7 @@
       lastSave: { name: "quick.sav", title: "", subtitle: "", modified: now - 3600 * 5, folder: "/saves" },
       gameRunning: !!flags.running, otherGameRunning: false, rebuildRunning: false, playDir: data, dataRoot: data,
       firstBoot: false, updateFiles: flags.updateFiles ? [`${data}/dev_hdd0/game/BCUS98107/USRDIR/data/patch_06.bin`] : [],
-      hostSupported: true, os: "macos", appBundle: "/Applications/Resistance Launcher.app", finderIcon: false, version: "0.1.0",
+      hostSupported: true, experimental: false, os: "macos", appBundle: "/Applications/Resistance Launcher.app", finderIcon: false, version: "0.1.0",
     }),
     disc_status: () => disc,
     find_port_dirs: () => [builds],

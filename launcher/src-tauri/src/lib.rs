@@ -6,6 +6,12 @@
 //! mapped onto the port's environment variables, as tools/play.sh does. No
 //! game code or data is part of the app: everything it shows or starts comes
 //! from the player's own disc and build folder.
+//!
+//! Windows (preview, untested with the port itself): the disc is attached
+//! with PowerShell's Mount-DiskImage and found over the drive letters, the
+//! play folder is %APPDATA%\resistance-recomp, and Play starts
+//! build\BCUS98107\ResistanceRecomp.exe directly (the D3D12 backend opens
+//! its own window; there is no window host).
 
 mod app_icon;
 mod play_shortcut;
@@ -31,10 +37,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const TITLE_ID: &str = "BCUS98107";
 /// The game's executable name (a build from before 2026-10-22 has MyGameRecomp).
-const GAME_EXE: &str = "ResistanceRecomp";
-const LEGACY_EXE: &str = "MyGameRecomp";
-/// The window host, target `Resistance` of the EBOOT build.
+const GAME_EXE: &str = if cfg!(windows) { "ResistanceRecomp.exe" } else { "ResistanceRecomp" };
+const LEGACY_EXE: &str = if cfg!(windows) { "MyGameRecomp.exe" } else { "MyGameRecomp" };
+/// The window host, target `Resistance` of the EBOOT build (macOS; on
+/// Windows the game opens its own window and there is no host).
 const HOST_EXE: &str = "Resistance";
+/// Play goes through the window host (macOS) rather than starting the EBOOT
+/// build directly (Windows).
+const USES_HOST: bool = !cfg!(windows);
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -153,7 +163,13 @@ impl Default for Settings {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(var).or_else(|| std::env::var_os("HOME")).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// %APPDATA% (Windows).
+fn appdata() -> PathBuf {
+    std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| home().join("AppData").join("Roaming"))
 }
 
 /// The launcher's own folder: launcher.json, backups, reports, the shader
@@ -161,6 +177,8 @@ fn home() -> PathBuf {
 fn data_root() -> PathBuf {
     if cfg!(target_os = "macos") {
         home().join("Library/Application Support/resistance-recomp")
+    } else if cfg!(windows) {
+        appdata().join("resistance-recomp")
     } else {
         std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/share")).join("resistance-recomp")
     }
@@ -177,6 +195,9 @@ fn reports_dir() -> PathBuf {
 fn rpcs3_dir() -> PathBuf {
     if cfg!(target_os = "macos") {
         home().join("Library/Application Support/rpcs3")
+    } else if cfg!(windows) {
+        // RPCS3 for Windows keeps dev_hdd0 next to rpcs3.exe
+        find_rpcs3().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_else(|| home().join("rpcs3"))
     } else {
         std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".config")).join("rpcs3")
     }
@@ -280,13 +301,20 @@ fn disc_title_id(root: &Path) -> Option<String> {
     read_sfo(&root.join("PS3_GAME/PARAM.SFO")).and_then(|v| v.get("TITLE_ID").cloned())
 }
 
+/// The places a disc can be mounted: the volumes under /Volumes (macOS), or
+/// the drive roots A:\ to Z:\ (Windows).
+fn volume_roots() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        (b'A'..=b'Z').map(|c| PathBuf::from(format!("{}:\\", c as char))).collect()
+    } else {
+        fs::read_dir("/Volumes").into_iter().flatten().flatten().map(|e| e.path()).collect()
+    }
+}
+
 /// Mounted volumes that are this game's disc (as tools/env.sh finds them).
 fn mounted_discs() -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> = fs::read_dir("/Volumes")
+    let mut v: Vec<PathBuf> = volume_roots()
         .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
         .filter(|p| p.join("PS3_GAME/USRDIR/game.self").is_file() && disc_title_id(p).as_deref() == Some(TITLE_ID))
         .collect();
     v.sort();
@@ -344,13 +372,71 @@ fn image_of(mount: &Path) -> Option<String> {
     attached_images().into_iter().find(|(_, mps)| mps.iter().any(|p| *p == m)).map(|(i, _)| i)
 }
 
-/// `hdiutil attach` the image (read-only) and return the disc's mount point.
-fn attach_image(image: &Path) -> Result<PathBuf, String> {
-    if !cfg!(target_os = "macos") {
-        return Err("mounting a disc image is macOS only".into());
+/// The drive letter of a drive root ("E:\\" or "E:"), Windows.
+fn drive_letter(root: &Path) -> Option<char> {
+    let t = s(root);
+    let b = t.as_bytes();
+    let ok = matches!(b.len(), 2 | 3) && b[0].is_ascii_alphabetic() && b[1] == b':' && (b.len() == 2 || b[2] == b'\\' || b[2] == b'/');
+    ok.then(|| (b[0] as char).to_ascii_uppercase())
+}
+
+/// A PowerShell string literal.
+fn ps_quote(v: &str) -> String {
+    format!("'{}'", v.replace('\'', "''"))
+}
+
+/// Run a PowerShell script (Windows) and return its output.
+fn powershell(script: &str) -> Result<String, String> {
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]).stdin(Stdio::null());
+    no_console(&mut cmd);
+    let out = cmd.output().map_err(|e| format!("powershell: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Windows: Mount-DiskImage the image (read-only; reused when it is attached
+/// already) and return the drive root it got.
+fn attach_image_windows(image: &Path) -> Result<PathBuf, String> {
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'\n\
+         $p = {}\n\
+         $i = Get-DiskImage -ImagePath $p\n\
+         if (-not $i.Attached) {{ $i = Mount-DiskImage -ImagePath $p -Access ReadOnly -PassThru }}\n\
+         $l = $null\n\
+         for ($n = 0; $n -lt 40 -and -not $l; $n++) {{\n\
+           $l = ($i | Get-Volume -ErrorAction SilentlyContinue).DriveLetter\n\
+           if (-not $l) {{ Start-Sleep -Milliseconds 250; $i = Get-DiskImage -ImagePath $p }}\n\
+         }}\n\
+         \"$l\"",
+        ps_quote(&s(image))
+    );
+    let out = powershell(&script).map_err(|e| format!("Mount-DiskImage: {e}"))?;
+    let letter = out.lines().last().unwrap_or("").trim().chars().next().filter(char::is_ascii_alphabetic).ok_or_else(|| format!("{}: mounted, but Windows gave it no drive letter", image.display()))?;
+    let root = PathBuf::from(format!("{letter}:\\"));
+    disc_root_of(&root).ok_or_else(|| format!("{}: mounted as {letter}:, but it holds no PS3_GAME folder (not a PS3 disc image?)", image.display()))
+}
+
+/// Windows: Dismount-DiskImage the image behind a drive letter.
+fn detach_windows(letter: char) -> Result<(), String> {
+    powershell(&format!("$ErrorActionPreference = 'Stop'; Get-Volume -DriveLetter {letter} | Get-DiskImage | Dismount-DiskImage | Out-Null"))
+        .map(|_| ())
+        .map_err(|e| format!("{letter}: is not a mounted disc image, or Windows could not eject it ({e})"))
+}
+
+/// Attach the image (read-only) and return the disc's mount point:
+/// `hdiutil attach` on macOS, Mount-DiskImage on Windows.
+fn attach_image(image: &Path) -> Result<PathBuf, String> {
     if !image.is_file() {
         return Err(format!("{}: no such file", image.display()));
+    }
+    if cfg!(windows) {
+        return attach_image_windows(image);
+    }
+    if !cfg!(target_os = "macos") {
+        return Err("mounting a disc image is macOS and Windows only".into());
     }
     // already attached: its mount point
     let img = s(image);
@@ -399,7 +485,13 @@ fn disc_info(s: &Settings) -> DiscInfo {
         d.title_id = v.get("TITLE_ID").cloned().unwrap_or_default();
         d.app_ver = v.get("APP_VER").or(v.get("VERSION")).cloned().unwrap_or_default();
         d.ours = d.title_id == TITLE_ID;
-        if r.starts_with("/Volumes") {
+        if cfg!(windows) {
+            // the image this launcher mounted there (no PowerShell per status poll)
+            let same = |a: &Path, b: &Path| self::s(a).trim_end_matches(['\\', '/']).eq_ignore_ascii_case(self::s(b).trim_end_matches(['\\', '/']));
+            if drive_letter(&r).is_some() && !s.disc_image.trim().is_empty() && same(Path::new(s.disc_path.trim()), &r) {
+                d.image = Some(s.disc_image.trim().to_string());
+            }
+        } else if r.starts_with("/Volumes") {
             d.image = image_of(&r);
         }
         d.root = Some(self::s(&r));
@@ -466,21 +558,21 @@ fn resolve_builds(root: &Path) -> Builds {
     let (eboot, l1) = exe_in(&b.join(TITLE_ID));
     let (game, l2) = exe_in(&b.join(format!("{TITLE_ID}_game")));
     let (game_v17, _) = exe_in(&b.join(format!("{TITLE_ID}_game_v17")));
-    let host = Some(b.join(TITLE_ID).join(HOST_EXE)).filter(|p| p.is_file());
+    let host = Some(b.join(TITLE_ID).join(HOST_EXE)).filter(|p| USES_HOST && p.is_file());
     let file = |p: PathBuf| Some(p).filter(|p| p.is_file());
     let eboot_elf = file(g.join("EBOOT.elf"));
     let game_elf = file(g.join("modules/game.elf"));
     let game_v17_elf = file(g.join("modules_v17/game.elf"));
     let mut missing = Vec::new();
     for (what, v) in [
-        ("build/BCUS98107/Resistance", host.is_some()),
-        ("build/BCUS98107/ResistanceRecomp", eboot.is_some()),
-        ("build/BCUS98107_game/ResistanceRecomp", game.is_some()),
-        ("game/BCUS98107/EBOOT.elf", eboot_elf.is_some()),
-        ("game/BCUS98107/modules/game.elf", game_elf.is_some()),
+        (format!("build/{TITLE_ID}/{HOST_EXE}"), host.is_some() || !USES_HOST),
+        (format!("build/{TITLE_ID}/{GAME_EXE}"), eboot.is_some()),
+        (format!("build/{TITLE_ID}_game/{GAME_EXE}"), game.is_some()),
+        (format!("game/{TITLE_ID}/EBOOT.elf"), eboot_elf.is_some()),
+        (format!("game/{TITLE_ID}/modules/game.elf"), game_elf.is_some()),
     ] {
         if !v {
-            missing.push(what.to_string());
+            missing.push(what);
         }
     }
     let rebuild_sh = file(root.join("tools/rebuild.sh"));
@@ -642,24 +734,27 @@ pub struct AppState {
 }
 
 /// A GUI app on macOS starts with a bare PATH; Homebrew's tools and the
-/// usual install places are added in front.
-fn tool_path() -> String {
-    let mut parts: Vec<String> = Vec::new();
+/// usual install places are added in front. Windows: PATH as it is.
+fn tool_path() -> std::ffi::OsString {
+    let mut parts: Vec<PathBuf> = Vec::new();
     if cfg!(target_os = "macos") {
-        parts.extend(["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"].map(String::from));
+        parts.extend(["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"].map(PathBuf::from));
     }
     if let Some(p) = std::env::var_os("PATH") {
-        parts.extend(std::env::split_paths(&p).map(|p| p.to_string_lossy().into_owned()));
+        parts.extend(std::env::split_paths(&p));
     }
-    parts.extend(["/usr/bin", "/bin", "/usr/sbin", "/sbin"].map(String::from));
+    if cfg!(unix) {
+        parts.extend(["/usr/bin", "/bin", "/usr/sbin", "/sbin"].map(PathBuf::from));
+    }
     let mut seen = std::collections::HashSet::new();
     parts.retain(|p| seen.insert(p.clone()));
-    parts.join(":")
+    std::env::join_paths(parts).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
 }
 
-/// The game builds and runs only on macOS (Metal).
+/// The game builds and runs on macOS (Metal). Windows is let through as a
+/// preview: the port's D3D12 build there is untested (Status.experimental).
 fn host_supported() -> bool {
-    cfg!(target_os = "macos") || std::env::var_os("RES_ANY_HOST").is_some_and(|v| !v.is_empty())
+    cfg!(target_os = "macos") || cfg!(windows) || std::env::var_os("RES_ANY_HOST").is_some_and(|v| !v.is_empty())
 }
 
 fn require_supported_host() -> Result<(), String> {
@@ -668,6 +763,18 @@ fn require_supported_host() -> Result<(), String> {
     } else {
         Err(format!("the game runs on macOS only; this is {}", std::env::consts::OS))
     }
+}
+
+/// No console window for a child of this GUI app (Windows).
+#[cfg(windows)]
+pub(crate) fn no_console(cmd: &mut Command) -> &mut Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+#[cfg(not(windows))]
+pub(crate) fn no_console(cmd: &mut Command) -> &mut Command {
+    cmd
 }
 
 fn clt_installed() -> bool {
@@ -684,7 +791,8 @@ fn clt_installed() -> bool {
 }
 
 fn find_in_path(name: &str) -> Option<PathBuf> {
-    std::env::split_paths(&std::ffi::OsString::from(tool_path())).map(|d| d.join(name)).find(|p| p.is_file())
+    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    std::env::split_paths(&tool_path()).map(|d| d.join(&file)).find(|p| p.is_file())
 }
 
 fn find_brew() -> Option<PathBuf> {
@@ -701,6 +809,11 @@ fn brew_prefix() -> PathBuf {
 /// libavcodec / libavutil for the video decoder: the settings, else
 /// Homebrew's (the unversioned link, or the newest versioned one).
 fn ffmpeg_libs(s: &Settings) -> (Option<PathBuf>, Option<PathBuf>) {
+    if cfg!(windows) {
+        // optional there: the paths set, else whatever the port finds itself
+        let over = |v: &str| Some(PathBuf::from(v.trim())).filter(|_| !v.trim().is_empty());
+        return (over(&s.ffmpeg_avcodec), over(&s.ffmpeg_avutil));
+    }
     let lib = brew_prefix().join("lib");
     let pick = |over: &str, name: &str| -> Option<PathBuf> {
         if !over.trim().is_empty() {
@@ -729,14 +842,29 @@ fn own_process_group(cmd: &mut Command) {
     cmd.process_group(0); // so a stop reaches what it started too
 }
 #[cfg(not(unix))]
-fn own_process_group(_cmd: &mut Command) {}
+fn own_process_group(cmd: &mut Command) {
+    no_console(cmd);
+}
 
-/// SIGTERM to the process group `pid` leads (only what this launcher started).
-fn kill_tree(pid: u32) {
+/// Stop what this launcher started, with what it started in turn: SIGTERM
+/// (SIGKILL when `force`) to the process group `pid` leads; on Windows
+/// `taskkill /T` (a close request to its windows; /F when `force`).
+fn kill_tree(pid: u32, force: bool) {
     #[cfg(unix)]
     {
-        let _ = Command::new("kill").arg("-TERM").arg(format!("-{pid}")).status();
+        let _ = Command::new("kill").arg(if force { "-KILL" } else { "-TERM" }).arg(format!("-{pid}")).status();
     }
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("taskkill");
+        cmd.args(["/PID", &pid.to_string(), "/T"]);
+        if force {
+            cmd.arg("/F");
+        }
+        let _ = no_console(&mut cmd).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    }
+    #[cfg(not(any(unix, windows)))]
+    let _ = (pid, force);
 }
 
 fn command_stdout(cmd: &mut Command) -> Option<String> {
@@ -749,8 +877,19 @@ fn command_stdout(cmd: &mut Command) -> Option<String> {
 
 /// A process with this exact name is running (the game started from a
 /// terminal). Only looked at, never signalled.
+#[cfg(not(windows))]
 fn process_running(name: &str) -> bool {
     Command::new("pgrep").args(["-x", name]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+}
+#[cfg(windows)]
+fn process_running(name: &str) -> bool {
+    let image = if name.to_ascii_lowercase().ends_with(".exe") { name.to_string() } else { format!("{name}.exe") };
+    let mut cmd = Command::new("tasklist");
+    cmd.args(["/FI", &format!("IMAGENAME eq {image}"), "/NH", "/FO", "CSV"]);
+    no_console(&mut cmd)
+        .stderr(Stdio::null())
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).to_ascii_lowercase().contains(&format!("\"{}\"", image.to_ascii_lowercase())))
 }
 
 fn shell_quote(v: &str) -> String {
@@ -841,12 +980,16 @@ fn s_(p: &Path) -> String {
     s(p)
 }
 
-/// The program and arguments: [caffeinate -i] host [--size WxH] -- eboot elf.
+/// The program and arguments: [caffeinate -i] host [--size WxH] -- eboot elf;
+/// on Windows the EBOOT build itself: eboot elf.
 fn launch_argv(s: &Settings, b: &Builds) -> Result<Vec<String>, String> {
     let need = |v: &Option<String>, what: &str| v.clone().ok_or_else(|| format!("{what} is missing in {} (Advanced > Install / rebuild)", b.root));
-    let host = need(&b.host, "the window host build/BCUS98107/Resistance")?;
     let eboot = need(&b.eboot, "the EBOOT build")?;
     let elf = need(&b.eboot_elf, "game/BCUS98107/EBOOT.elf")?;
+    if !USES_HOST {
+        return Ok(vec![eboot, elf]);
+    }
+    let host = need(&b.host, "the window host build/BCUS98107/Resistance")?;
     let mut argv = Vec::new();
     if s.keep_awake && Path::new("/usr/bin/caffeinate").is_file() {
         argv.extend(["/usr/bin/caffeinate".to_string(), "-i".to_string()]);
@@ -1016,14 +1159,11 @@ fn stop_game(app: AppHandle, state: State<'_, AppState>) {
         if let Some((d, true)) = state.report.lock().unwrap().clone() {
             session_event(&d, "stop", "");
         }
-        kill_tree(pid);
+        kill_tree(pid, false);
         thread::spawn(move || {
             thread::sleep(std::time::Duration::from_secs(8));
             if *app.state::<AppState>().game.lock().unwrap() == Some(pid) {
-                #[cfg(unix)]
-                {
-                    let _ = Command::new("kill").arg("-KILL").arg(format!("-{pid}")).status();
-                }
+                kill_tree(pid, true);
             }
         });
     }
@@ -1071,6 +1211,8 @@ pub struct Status {
     first_boot: bool,
     update_files: Vec<String>,
     host_supported: bool,
+    /// The port's build for this system is untested (Windows).
+    experimental: bool,
     os: String,
     app_bundle: Option<String>,
     finder_icon: bool,
@@ -1103,6 +1245,7 @@ async fn get_status(app: AppHandle, state: State<'_, AppState>) -> Result<Status
             play_dir: self::s(&play),
             data_root: self::s(&data_root()),
             host_supported: host_supported(),
+            experimental: cfg!(windows),
             os: std::env::consts::OS.into(),
             finder_icon: bundle.as_deref().is_some_and(app_icon::has_finder_icon),
             app_bundle: bundle.map(|b| self::s(&b)),
@@ -1165,6 +1308,11 @@ async fn eject_disc(state: State<'_, AppState>) -> Result<DiscInfo, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let st = load_settings_file();
         let root = find_disc(&st).ok_or("no disc mounted")?;
+        if cfg!(windows) {
+            let letter = drive_letter(&root).ok_or_else(|| format!("{}: not a mounted disc image", root.display()))?;
+            detach_windows(letter)?;
+            return Ok(disc_info(&st));
+        }
         if !root.starts_with("/Volumes") || image_of(&root).is_none() {
             return Err(format!("{}: not a mounted disc image", root.display()));
         }
@@ -1411,13 +1559,19 @@ const BREW_NEEDS: &[(&str, &[&str])] = &[
 ];
 
 fn find_rpcs3() -> Option<PathBuf> {
-    [home().join("Applications/RPCS3.app/Contents/MacOS/rpcs3"), PathBuf::from("/Applications/RPCS3.app/Contents/MacOS/rpcs3")]
-        .into_iter()
-        .find(|p| p.is_file())
-        .or_else(|| find_in_path("rpcs3"))
+    let places = if cfg!(windows) {
+        let pf = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Program Files"));
+        vec![home().join("rpcs3/rpcs3.exe"), PathBuf::from("C:\\rpcs3\\rpcs3.exe"), pf.join("RPCS3/rpcs3.exe")]
+    } else {
+        vec![home().join("Applications/RPCS3.app/Contents/MacOS/rpcs3"), PathBuf::from("/Applications/RPCS3.app/Contents/MacOS/rpcs3")]
+    };
+    places.into_iter().find(|p| p.is_file()).or_else(|| find_in_path("rpcs3"))
 }
 
 fn free_gb(p: &Path) -> Option<u64> {
+    if cfg!(windows) {
+        return None;
+    }
     let out = command_stdout(Command::new("/bin/df").arg("-k").arg(p))?;
     let kb: u64 = out.lines().nth(1)?.split_whitespace().nth(3)?.parse().ok()?;
     Some(kb / (1024 * 1024))
@@ -1432,11 +1586,22 @@ async fn check_prereqs() -> Prereqs {
         if !p.supported {
             return p;
         }
-        add(if p.clt { "ok" } else { "fail" }, "xcode-clt", if p.clt { "installed".into() } else { "not installed".into() });
-        let prefix = brew_prefix();
-        add(if p.homebrew.is_some() { "ok" } else { "fail" }, "homebrew", p.homebrew.clone().unwrap_or_else(|| "not installed".into()));
         let mut missing = Vec::new();
-        for (formula, marks) in BREW_NEEDS {
+        if cfg!(windows) {
+            // the rebuild on Windows is untested: what tools/rebuild.sh calls,
+            // found on PATH (a POSIX shell with zsh, e.g. MSYS2)
+            for tool in ["git", "zsh", "cmake", "ninja", "python"] {
+                match find_in_path(tool) {
+                    Some(f) => add("ok", tool, s(&f)),
+                    None => add("warn", tool, "not found on PATH (needed only to rebuild)".into()),
+                }
+            }
+        } else {
+            add(if p.clt { "ok" } else { "fail" }, "xcode-clt", if p.clt { "installed".into() } else { "not installed".into() });
+            add(if p.homebrew.is_some() { "ok" } else { "fail" }, "homebrew", p.homebrew.clone().unwrap_or_else(|| "not installed".into()));
+        }
+        let prefix = brew_prefix();
+        for (formula, marks) in BREW_NEEDS.iter().filter(|_| !cfg!(windows)) {
             let found = marks.iter().map(|m| prefix.join(m)).find(|p| p.exists());
             match found {
                 Some(f) => add("ok", formula, s(&f)),
@@ -1557,7 +1722,7 @@ fn install_brew(app: AppHandle, state: State<'_, AppState>, packages: Vec<String
 #[tauri::command]
 fn cancel_setup(state: State<'_, AppState>) {
     if let Some(pid) = *state.setup.lock().unwrap() {
-        kill_tree(pid);
+        kill_tree(pid, cfg!(windows));
     }
 }
 
@@ -1609,9 +1774,18 @@ fn start_rebuild(app: AppHandle, state: State<'_, AppState>, req: RebuildRequest
     if !root.join("tools/rebuild.sh").is_file() {
         return Err(format!("{}: no tools/rebuild.sh (pick the resistance-recomp checkout)", root.display()));
     }
-    let mut cmd = Command::new("/usr/bin/nice");
-    cmd.args(["-n", "10", "/bin/zsh", "-c", &rebuild_script(&req.steps)])
-        .current_dir(&root)
+    let mut cmd = if cfg!(windows) {
+        // untested: tools/rebuild.sh is a zsh script (MSYS2's zsh on PATH)
+        let zsh = find_in_path("zsh").ok_or("the rebuild needs zsh on PATH on Windows (e.g. MSYS2); the Windows rebuild is untested")?;
+        let mut c = Command::new(zsh);
+        c.args(["-c", &rebuild_script(&req.steps)]);
+        c
+    } else {
+        let mut c = Command::new("/usr/bin/nice");
+        c.args(["-n", "10", "/bin/zsh", "-c", &rebuild_script(&req.steps)]);
+        c
+    };
+    cmd.current_dir(&root)
         .env("PATH", tool_path())
         .env("TERM", "dumb")
         .stdin(Stdio::null())
@@ -1635,7 +1809,7 @@ fn start_rebuild(app: AppHandle, state: State<'_, AppState>, req: RebuildRequest
 #[tauri::command]
 fn cancel_rebuild(state: State<'_, AppState>) {
     if let Some(pid) = *state.rebuild.lock().unwrap() {
-        kill_tree(pid);
+        kill_tree(pid, cfg!(windows));
     }
 }
 
@@ -1711,13 +1885,41 @@ fn open_url(url: String) -> Result<(), String> {
     if !URL_ALLOWED.iter().any(|p| url.starts_with(p)) || url.chars().any(|c| c.is_whitespace() || c == '"') {
         return Err(format!("{url}: not a link this app opens"));
     }
+    if cfg!(windows) {
+        return Command::new("rundll32").arg("url.dll,FileProtocolHandler").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string());
+    }
     Command::new("open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Explorer: open a folder, or select a file in its folder (Windows).
+#[cfg(windows)]
+fn reveal_windows(p: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = Command::new("explorer");
+    if p.is_dir() {
+        cmd.arg(p);
+    } else if p.exists() {
+        cmd.raw_arg(format!("/select,\"{}\"", p.display()));
+    } else {
+        cmd.arg(p.parent().unwrap_or(p));
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Show a folder or file in Finder (never opens an .app: that would run it).
 #[tauri::command]
 fn reveal(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
+    #[cfg(windows)]
+    {
+        reveal_windows(&p)
+    }
+    #[cfg(not(windows))]
+    reveal_unix(p)
+}
+
+#[cfg(not(windows))]
+fn reveal_unix(p: PathBuf) -> Result<(), String> {
     if !p.exists() {
         let parent = p.parent().map(Path::to_path_buf).unwrap_or(p);
         return Command::new("open").arg(&parent).spawn().map(|_| ()).map_err(|e| e.to_string());
@@ -2335,6 +2537,16 @@ mod tests {
         assert_eq!(env(&st)["PS3RECOMP_ENG_VCACHE"], "0");
         st.game_lang = "x; rm".into();
         assert!(!env(&st).contains_key("PS3_LANG"));
+    }
+
+    #[test]
+    fn windows_drive_roots_and_quoting() {
+        assert_eq!(drive_letter(Path::new("e:\\")), Some('E'));
+        assert_eq!(drive_letter(Path::new("F:")), Some('F'));
+        assert_eq!(drive_letter(Path::new("F:/")), Some('F'));
+        assert_eq!(drive_letter(Path::new("F:\\PS3_GAME")), None);
+        assert_eq!(drive_letter(Path::new("/Volumes/X")), None);
+        assert_eq!(ps_quote("C:\\a b\\it's.iso"), "'C:\\a b\\it''s.iso'");
     }
 
     #[test]

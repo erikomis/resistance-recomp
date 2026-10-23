@@ -87,6 +87,8 @@ interface Status {
   firstBoot: boolean;
   updateFiles: string[];
   hostSupported: boolean;
+  /** The port's build for this system is untested (Windows). */
+  experimental: boolean;
   os: string;
   appBundle: string | null;
   finderIcon: boolean;
@@ -605,6 +607,8 @@ function renderHome() {
   $("run-state-text").textContent = t(gameRunning ? "home.running" : "home.otherRunning");
   show($("make-shortcut"), !!status.appBundle && status.os === "macos" && !!b?.ok);
   show($("home-unsupported"), !status.hostSupported);
+  show($("home-experimental"), status.experimental);
+  document.body.classList.toggle("os-windows", status.os === "windows");
   renderSteam();
   renderStatusList();
   renderReport();
@@ -1139,6 +1143,7 @@ function renderPrereqs() {
   list.innerHTML = "";
   const supported = status?.hostSupported ?? p?.supported ?? true;
   show($("install-unsupported"), !supported);
+  show($("install-experimental"), !!status?.experimental);
   for (const id of ["card-prereqs", "card-port", "card-run"]) $(id).classList.toggle("disabled", !supported);
   if (!p || !p.supported) {
     $("prereq-summary").textContent = "";

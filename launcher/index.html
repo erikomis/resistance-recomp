@@ -75,6 +75,10 @@
                 <strong data-i18n="unsupported.title"></strong>
                 <p data-i18n="unsupported.body"></p>
               </div>
+              <div id="home-experimental" class="banner hidden">
+                <strong data-i18n="experimental.title"></strong>
+                <p data-i18n="experimental.body"></p>
+              </div>
               <p id="home-msg" class="home-msg"></p>
             </div>
           </div>
@@ -104,7 +108,7 @@
         <div class="home-grid">
           <div class="card">
             <h3 class="card-title" data-i18n="home.quick">Ajustes rápidos</h3>
-            <div class="opt compact">
+            <div class="opt compact mac-only">
               <label class="opt-label" for="q-window-size" data-i18n="settings.windowSize">Tamanho da janela</label>
               <select id="q-window-size" class="size-select"></select>
             </div>
@@ -116,7 +120,7 @@
               <span class="opt-label" data-i18n="settings.showFpsShort">Contador de fps</span>
               <span class="switch"><input id="q-fps" type="checkbox" /><i></i></span>
             </label>
-            <label class="opt compact">
+            <label class="opt compact mac-only">
               <span class="opt-label" data-i18n="settings.keepAwakeShort">Manter o Mac acordado</span>
               <span class="switch"><input id="q-awake" type="checkbox" /><i></i></span>
             </label>
@@ -167,14 +171,14 @@
 
         <section class="section">
           <h2 data-i18n="sec.window">Janela</h2>
-          <div class="opt">
+          <div class="opt mac-only">
             <span class="opt-text"><label class="opt-label" for="window-size" data-i18n="settings.windowSize">Tamanho da janela</label><span class="hint" data-i18n="settings.windowSizeHint"></span></span>
             <select id="window-size" class="size-select"></select>
           </div>
           <div class="opt">
             <span class="opt-text"><span class="opt-label" data-i18n="settings.fullscreen">Tela cheia</span><span class="hint" data-i18n="settings.fullscreenHint"></span></span>
           </div>
-          <label class="opt">
+          <label class="opt mac-only">
             <span class="opt-text"><span class="opt-label" data-i18n="settings.gameIcon"></span><span class="hint" data-i18n="settings.gameIconHint"></span></span>
             <span class="switch"><input id="game-icon" type="checkbox" /><i></i></span>
           </label>
@@ -278,7 +282,7 @@
             <span class="opt-text"><span class="opt-label" data-i18n="settings.showFps"></span><span class="hint" data-i18n="settings.showFpsHint"></span></span>
             <span class="switch"><input id="show-fps" type="checkbox" /><i></i></span>
           </label>
-          <label class="opt">
+          <label class="opt mac-only">
             <span class="opt-text"><span class="opt-label" data-i18n="settings.keepAwake"></span><span class="hint" data-i18n="settings.keepAwakeHint"></span></span>
             <span class="switch"><input id="keep-awake" type="checkbox" /><i></i></span>
           </label>
@@ -342,7 +346,8 @@
           <div class="field"><input id="ffmpeg-avcodec" type="text" spellcheck="false" /><div class="buttons"><button id="pick-avcodec" data-i18n="ui.pick">Escolher…</button></div></div>
           <label class="field-label" for="ffmpeg-avutil">libavutil</label>
           <div class="field"><input id="ffmpeg-avutil" type="text" spellcheck="false" /><div class="buttons"><button id="pick-avutil" data-i18n="ui.pick">Escolher…</button></div></div>
-          <p class="hint" data-i18n="settings.ffmpegHint"></p>
+          <p class="hint mac-only" data-i18n="settings.ffmpegHint"></p>
+          <p class="hint win-only" data-i18n="settings.ffmpegHintWin"></p>
         </section>
 
         <section class="section">
@@ -457,6 +462,10 @@
           <div id="install-unsupported" class="banner hidden">
             <strong data-i18n="unsupported.title"></strong>
             <p data-i18n="unsupported.body"></p>
+          </div>
+          <div id="install-experimental" class="banner hidden">
+            <strong data-i18n="experimental.title"></strong>
+            <p data-i18n="experimental.body"></p>
           </div>
 
           <div id="card-prereqs" class="card step">

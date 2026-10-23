@@ -11,8 +11,8 @@ It is modelled on the [inFAMOUS 2 port's
 launcher](https://github.com/erikomis/infamous2-recomp/tree/main/launcher)
 and keeps its look, its layout and most of its code (Play shortcut, Add to
 Steam, the Dock icon from the player's copy, debug mode, the saves manager,
-the log viewer), adapted to this port. Apple-silicon macOS only, like the
-game.
+the log viewer), adapted to this port. Made for Apple-silicon macOS, like
+the game; a Windows x64 build is published as an untested preview (below).
 
 ## What the player does
 
@@ -242,8 +242,34 @@ earlier init script shows those states.
 
 `scripts/check_bundle.py <.app|.dmg>` fails when a bundle carries anything
 from the game (names, PS3 file headers, PowerPC/SPU ELFs, big files);
-`.github/workflows/launcher.yml` builds the app on `macos-14`, runs the
-tests and the check, and uploads the zipped `.app` and the `.dmg`.
+`.github/workflows/launcher.yml` builds the app on `macos-14` and on
+`windows-latest`, runs the tests and the check, and uploads the zipped
+`.app` and the `.dmg`, and the Windows installers (NSIS `.exe`, `.msi`); on a
+`v*` tag it attaches them to that GitHub release. The builds are unsigned:
+on macOS right-click the app and choose Open the first time (Gatekeeper);
+on Windows SmartScreen may warn ("More info" > "Run anyway").
+
+## Windows (preview)
+
+The launcher compiles and runs on Windows x64; the port itself has only been
+built and played on macOS, so the app shows an "experimental" banner there.
+What differs from macOS:
+
+- **Disc**: an `.iso` is attached with PowerShell (`Mount-DiskImage`, read
+  only) and ejected with `Dismount-DiskImage`; a disc is found on any drive
+  letter that holds `PS3_GAME\PARAM.SFO` with `BCUS98107`.
+- **Play**: `build\BCUS98107\ResistanceRecomp.exe EBOOT.elf` is started
+  directly: there is no window host (the D3D12 backend opens its own window),
+  so the window size, the Dock icon and "keep awake" settings are hidden. The
+  EBOOT's exitspawn into `build\BCUS98107_game[_v17]\ResistanceRecomp.exe` is
+  not verified on Windows.
+- **Play folder**: `%APPDATA%\resistance-recomp` (saves, caches, `last.log`).
+- **FFmpeg**: the `avcodec-*.dll` / `avutil-*.dll` paths are optional.
+- **Stop**: `taskkill /T`, then `/T /F` after 8 s.
+- **Rebuild**: `tools/rebuild.sh` is a zsh script; the app runs it with a
+  `zsh` found on `PATH` (e.g. MSYS2). Untested.
+- Not on Windows: the Play shortcut, Add to Steam, the Finder/Dock icon, the
+  crash-report pickup.
 
 The icon is an original placeholder (`scripts/make_icon.py`, then `npx
 tauri icon src-tauri/icons/app-icon.png`): a targeting reticle, no game art
@@ -264,4 +290,4 @@ or logo. The font is Oswald (SIL Open Font License, `src/assets/fonts/`).
 - **A bundled port and an in-app first install from a game folder**: the
   port is built from a git checkout with `tools/rebuild.sh`; the app runs
   that script rather than carrying the sources.
-- Windows and Linux bundles: the game is macOS-only.
+- A Linux bundle, and a tested Windows one: the game is macOS-only so far.

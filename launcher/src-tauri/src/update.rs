@@ -20,7 +20,7 @@ use std::process::{Command, Stdio};
 pub const REPO: &str = "erikomis/resistance-recomp";
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+    let out = crate::no_console(&mut Command::new("git"))
         .arg("-C")
         .arg(root)
         .args(args)
@@ -75,7 +75,7 @@ pub fn sources(root: &Path, fetch: bool) -> Sources {
     }
     if fetch {
         let remote = s.upstream.split('/').next().unwrap_or("origin").to_string();
-        match Command::new("git")
+        match crate::no_console(&mut Command::new("git"))
             .arg("-C")
             .arg(root)
             .args(["fetch", "--quiet", &remote])
@@ -119,7 +119,8 @@ pub fn parse_version(v: &str) -> Option<(u32, u32, u32)> {
     Some((it.next()??, it.next().unwrap_or(Some(0))?, it.next().unwrap_or(Some(0))?))
 }
 
-/// The newest release on GitHub (curl, which every Mac has; no token).
+/// The newest release on GitHub (curl, which every Mac and Windows 10+ has;
+/// no token).
 pub fn check_app(current: &str) -> AppUpdate {
     let mut u = AppUpdate { current: current.into(), ..Default::default() };
     if std::env::var_os("RES_NO_UPDATE_CHECK").is_some_and(|v| !v.is_empty() && v != "0") {
@@ -127,7 +128,8 @@ pub fn check_app(current: &str) -> AppUpdate {
         return u;
     }
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let out = Command::new("/usr/bin/curl")
+    let curl = if cfg!(windows) { "curl.exe" } else { "/usr/bin/curl" };
+    let out = crate::no_console(&mut Command::new(curl))
         .args(["-fsSL", "--max-time", "15", "-H", "Accept: application/vnd.github+json", "-A", "resistance-launcher", &url])
         .stdin(Stdio::null())
         .stderr(Stdio::piped())

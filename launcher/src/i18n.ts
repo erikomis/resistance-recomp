@@ -155,6 +155,7 @@ const en = {
   "settings.video": "Play the movies",
   "settings.videoHint": "The intro and cut-scene movies go through FFmpeg (Homebrew's, loaded at runtime). Off: PS3RECOMP_FFMPEG=0.",
   "settings.ffmpegHint": "Empty: Homebrew's libavcodec.dylib / libavutil.dylib. Point these at another FFmpeg only if movies fail to play.",
+  "settings.ffmpegHintWin": "Optional: avcodec-*.dll / avutil-*.dll of an FFmpeg build. Empty: whatever the port finds on its own.",
   "settings.quietLog": "Quiet log",
   "settings.quietLogHint": "Keeps the runtime's per-event lines out of last.log (PS3_VERBOSE=0). Debug mode turns them back on.",
   "settings.extraEnv": "Extra variables",
@@ -270,6 +271,8 @@ const en = {
   "install.askMissing": "Some requirements are still missing, so the rebuild will probably stop early. Start anyway?",
   "unsupported.title": "This system cannot build or play the game",
   "unsupported.body": "The port runs on Apple-silicon Macs only (Metal).",
+  "experimental.title": "Experimental: the Windows build of the port is untested",
+  "experimental.body": "This launcher runs on Windows as a preview. The game itself has only been built and played on macOS: build\\BCUS98107\\ResistanceRecomp.exe is started directly (the D3D12 backend opens its own window) and may not get far, the switch from the EBOOT to the campaign is not verified, and the rebuild (tools/rebuild.sh, a zsh script) is untested here.",
 
   "prereq.title": "What this computer needs",
   "prereq.lead": "The tools the rebuild and the game use. Homebrew installs the missing ones with your OK.",
@@ -598,6 +601,7 @@ const ptBR: Partial<Record<Key, string>> = {
   "settings.video": "Tocar os vídeos",
   "settings.videoHint": "A abertura e as cenas em vídeo passam pelo FFmpeg (o do Homebrew, carregado na hora). Desligado: PS3RECOMP_FFMPEG=0.",
   "settings.ffmpegHint": "Vazio: libavcodec.dylib / libavutil.dylib do Homebrew. Aponte para outro FFmpeg só se os vídeos não tocarem.",
+  "settings.ffmpegHintWin": "Opcional: avcodec-*.dll / avutil-*.dll de um build do FFmpeg. Vazio: o que o port encontrar sozinho.",
   "settings.quietLog": "Log enxuto",
   "settings.quietLogHint": "Deixa as linhas de cada evento do runtime fora do last.log (PS3_VERBOSE=0). O modo de depuração as liga de novo.",
   "settings.extraEnv": "Variáveis extras",
@@ -713,6 +717,8 @@ const ptBR: Partial<Record<Key, string>> = {
   "install.askMissing": "Ainda faltam requisitos, então a recompilação provavelmente vai parar cedo. Começar mesmo assim?",
   "unsupported.title": "Este sistema não compila nem roda o jogo",
   "unsupported.body": "O port roda só em Macs com Apple silicon (Metal).",
+  "experimental.title": "Experimental: o build do port para Windows não foi testado",
+  "experimental.body": "Este launcher roda no Windows como prévia. O jogo em si só foi compilado e jogado no macOS: o build\\BCUS98107\\ResistanceRecomp.exe é iniciado direto (o backend D3D12 abre a própria janela) e pode não ir longe, a troca do EBOOT para a campanha não foi verificada e o rebuild (tools/rebuild.sh, um script zsh) não foi testado aqui.",
 
   "prereq.title": "O que este computador precisa",
   "prereq.lead": "As ferramentas que a recompilação e o jogo usam. O Homebrew instala as que faltam com o seu OK.",

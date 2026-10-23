@@ -52,6 +52,8 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: 
 p { margin: 0; }
 code { font-family: var(--mono); }
 .hidden { display: none !important; }
+/* macOS-only settings (window host, Dock, caffeinate) and their Windows counterparts */
+body.os-windows .mac-only, body:not(.os-windows) .win-only { display: none !important; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 .tiny { font-size: 11px; color: var(--dim); margin: 6px 0 0; }
