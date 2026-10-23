@@ -36,5 +36,5 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     exit 1
 fi
 git checkout --quiet --detach "$TOOLKIT_COMMIT"
-git apply "$PATCH"
+git apply --whitespace=nowarn "$PATCH"   # third_party/smaa/AreaTex.h is a generated table
 echo "toolkit ready: $dest (ps3recomp v0.17.0 $(git rev-parse --short HEAD) + resistance patch)"
