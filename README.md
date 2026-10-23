@@ -23,8 +23,9 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 > [!WARNING]
 > **Early work in progress.** Chapter 1 can be played, with rendering bugs
-> still open. There is no release: you build it yourself from your own disc
-> (the [launcher](#launcher) can run the rebuild and the game for you).
+> still open. The [releases](#releases--download) carry only the launcher:
+> you build the game yourself from your own disc (the [launcher](#launcher)
+> can run the rebuild and the game for you).
 > Apple-silicon macOS only, and a controller is required. What is missing is
 > in [ROADMAP.md](ROADMAP.md).
 
@@ -32,6 +33,22 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 > nothing translated from them.** Everyone generates all of that locally from
 > their own legitimate copy. A fan project, not affiliated with Sony
 > Interactive Entertainment or Insomniac Games.
+
+## Releases / Download
+
+The [releases page](https://github.com/erikomis/resistance-recomp/releases)
+has the [launcher](#launcher) for Apple-silicon macOS (a zipped `.app` and a
+`.dmg`), the toolkit patch and the sources. **The game is not in it**: the
+port's executables are code converted from the game, so you build them from
+your own disc ([Building from source](#building-from-source)). The builds are
+unsigned: right-click the app and choose Open the first time.
+
+A **Windows x64 launcher** (NSIS `.exe` and `.msi`) is published as a
+**preview**: it compiles and starts, mounts an ISO and runs
+`build\BCUS98107\ResistanceRecomp.exe`, but the port itself has never been
+built or played on Windows, so treat it as experimental and untested
+(SmartScreen may warn; "More info" > "Run anyway"). Details in
+[launcher/README.md](launcher/README.md#windows-preview).
 
 ## Status
 

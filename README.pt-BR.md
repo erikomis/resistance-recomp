@@ -24,15 +24,32 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
 > **Trabalho em andamento, bem no começo.** O capítulo 1 dá para jogar, ainda
-> com erros de renderização em aberto. Não há release: você mesmo compila a
-> partir do seu disco (o [launcher](#launcher) roda a compilação e o jogo
-> por você). Só macOS com Apple silicon, e é preciso um controle. O que falta
+> com erros de renderização em aberto. Os [releases](#releases--download)
+> trazem só o launcher: você mesmo compila o jogo a partir do seu disco (o
+> [launcher](#launcher) roda a compilação e o jogo por você). Só macOS com Apple silicon, e é preciso um controle. O que falta
 > está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
 > **Este repositório não contém dados do jogo, firmware, chaves da Sony nem
 > nada traduzido a partir deles.** Cada um gera tudo isso localmente a partir
 > da própria cópia legítima. Projeto de fã, sem afiliação com a Sony
 > Interactive Entertainment ou a Insomniac Games.
+
+## Releases / Download
+
+A [página de releases](https://github.com/erikomis/resistance-recomp/releases)
+tem o [launcher](#launcher) para macOS com Apple silicon (um `.app` zipado e
+um `.dmg`), o patch do toolkit e o código-fonte. **O jogo não vem junto**: os
+executáveis do port são código convertido do jogo, então você os compila a
+partir do seu próprio disco ([Compilando a partir do código](#compilando-a-partir-do-código)).
+Os builds não são assinados: clique com o botão direito no app e escolha
+Abrir na primeira vez.
+
+Um **launcher para Windows x64** (`.exe` NSIS e `.msi`) é publicado como
+**prévia**: ele compila e abre, monta uma ISO e roda o
+`build\BCUS98107\ResistanceRecomp.exe`, mas o port em si nunca foi compilado
+nem jogado no Windows, então trate-o como experimental e não testado (o
+SmartScreen pode avisar; "Mais informações" > "Executar assim mesmo").
+Detalhes em [launcher/README.md](launcher/README.md#windows-preview).
 
 ## Estado
 
