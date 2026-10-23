@@ -26,8 +26,9 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 > still open. The [releases](#releases--download) carry only the launcher:
 > you build the game yourself from your own disc (the [launcher](#launcher)
 > can run the rebuild and the game for you).
-> Apple-silicon macOS only, and a controller is required. What is missing is
-> in [ROADMAP.md](ROADMAP.md).
+> Apple-silicon macOS only. A controller is the tested way to play; keyboard
+> and mouse are new and still need a play test. What is missing is in
+> [ROADMAP.md](ROADMAP.md).
 
 > **This repository contains no game data, no firmware, no Sony keys and
 > nothing translated from them.** Everyone generates all of that locally from
@@ -50,9 +51,15 @@ built or played on Windows, so treat it as experimental and untested
 (SmartScreen may warn; "More info" > "Run anyway"). Details in
 [launcher/README.md](launcher/README.md#windows-preview).
 
+The first release, **v0.1.0** (2026-10-23, a pre-release), is out: the macOS
+launcher and the Windows preview. The settings added since (controls, window
+modes, filters, texture packs) are in the sources and come with the next
+release; build the launcher yourself to get them now
+(`tools/rebuild.sh launcher`).
+
 ## Status
 
-As of 2026-10-22 (the v1.7 campaign, the launcher app, shadows and smoke fixed), every item verified in runs on an Apple-silicon Mac with Metal.
+As of 2026-10-23 (the campaign at the game's own frame-rate cap; keyboard, mouse and the inFAMOUS 2 settings ported), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
 
 | | |
 | --- | --- |
@@ -67,17 +74,19 @@ As of 2026-10-22 (the v1.7 campaign, the launcher app, shadows and smoke fixed),
 | Raw SPUs (two programs `game.self` starts after the intro) | ✅ lifted and running |
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
-| Frame rate | ✅ ~30 fps in gameplay: 32.5 fps with the inFAMOUS 2 performance stack vs 6.0 fps with its knobs off (A/B, same build, first 60 s of gameplay); 30.5 fps in the town with every fix in, the respawn fix included |
+| Frame rate | ✅ the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
+| 60 fps and a wider field of view | ⏳ in progress (the community's RPCS3 patches, carried over to the port) |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
 | Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names |
 | Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths |
 | Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's guest FPS counts the game's flips |
 | SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
 | After the intro movie | ✅ the old intermittent hang is fixed (shared callback stack) |
-| Controller | ✅ DualSense, DualShock or Xbox through SDL2 (input with the game process in the background is enabled for the launcher; not yet tested with a physical controller that way); rumble not verified yet |
-| Keyboard and mouse | ⏳ not on macOS (the toolkit's keyboard fallback is Windows-only): a controller is required |
+| Controller | ✅ DualSense, DualShock or Xbox through SDL2 (input with the game process in the background is enabled for the launcher; not yet tested with a physical controller that way); 🧪 rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported, needs a play test |
+| Keyboard and mouse | 🧪 ported from the inFAMOUS 2 work: an FPS layout (WASD, mouse look, left click fires), remappable in `input.toml` (`PS3_INPUT_MAP`, the launcher's Controls page); tests pass, needs a play test |
+| Window modes, vsync, MetalFX, SMAA and filters, texture packs, internal resolution | 🧪 ported from the inFAMOUS 2 work (see [Environment](#environment)); tests pass, needs a play test; the internal resolution is experimental |
 | Game update v1.7 | ✅ the campaign runs the update's `game.self`, re-lifted from `patch_06`: menus → New campaign → the York intro, gameplay and respawn verified; the menus stay the disc's 01.00 EBOOT (see [The v1.7 campaign](#the-v17-campaign)); rumble with a physical controller, a long session and a v1.7 fps measurement not verified yet |
-| Launcher app | ✅ [`launcher/`](launcher/) (Tauri): disc, builds, rebuild, settings, saves, Play/Stop, in English and Brazilian Portuguese |
+| Launcher app | ✅ [`launcher/`](launcher/) (Tauri): disc, builds, rebuild, settings, saves, Play/Stop, in English and Brazilian Portuguese; 🧪 the new Controls page (remapping, mouse, rumble) and Graphics settings (window, filters, texture packs) |
 | Linux and Windows | ⏳ not supported |
 | Online multiplayer | ❌ out of scope (the official servers are gone) |
 
@@ -143,6 +152,21 @@ The fixes that got it this far:
   pid and attaches again. Closing the window ends the game; if the launcher
   dies the game exits within ~2 s; without the launcher the backend opens its
   own window as before.
+- **Performance** (2026-10-23): the game samples its 2560×720 depth
+  buffer as an A8R8G8B8 texture every frame. That was a GPU→CPU readback and
+  a 7.4 MB re-upload per frame; it is now resolved on the GPU
+  (`PS3RECOMP_ENG_ZRGBA_GPU=0` turns it off): the RSX thread went from 54% to 12% busy and
+  texture re-uploads per 120 frames from ~100 to 0. The PPU's store-watch
+  check has a fast path (it was 28% of the main thread) and the guest clocks
+  read `mach_absolute_time`. In the SPU code: native single-precision
+  arithmetic in round-toward-zero (bit-exact; `SPU_FP_NATIVE=0` turns it
+  off), a local `goto` for computed branches inside a function
+  (`SPU_LOCAL_IB=0`), direct calls to known lifted targets (`SPU_DIRECT`) and
+  cheaper call returns, measured at about +5% (32.2/33.0 fps on vs 30.7 off,
+  noisy). The campaign now reaches the game's own ~30–33 fps cap; the PPU's
+  remaining "busy" time is largely the game's frame limiter. The hot SPU jobs
+  run on one SPU because the game pins them there (workload 5, contention
+  1..1), as on the hardware.
 - **The v1.7 campaign:** the update's `patch_06` carries a new `game.self`.
   It is lifted like the disc's and built as `build/BCUS98107_game_v17`; at
   the exitspawn `port/stubs.cpp` runs it instead of the 01.00 build when it
@@ -161,7 +185,12 @@ raw-SPU stop and restart through `SPU_RunCntl`, the shared-IOSurface window
 (`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; the
 host reaps the game with a blocking `waitpid`, so it exits when the game
 does, which the launcher's Stop relies on; the title's guest FPS counts each
-flip), the window-state hand-off across exitspawn, and diagnostics (`VDEC_PICLOG`,
+flip), the window-state hand-off across exitspawn, the GPU depth-as-RGBA8
+resolve and the PPU/SPU speed-ups above, what the inFAMOUS 2 work added
+since (keyboard and mouse with `input.toml` remapping, rumble, window modes,
+vsync and MetalFX in the window host, SMAA with its MIT-licensed shaders in
+`third_party/smaa`, the present pass's filters and LUT, texture packs, the
+internal resolution), and diagnostics (`VDEC_PICLOG`,
 `PPU_STACKINFO_LOG`, `SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`,
 `RSX_ENGINE_PASS_DUMP_TRIGGER`, `RSX_ENGINE_PASS_DUMP_DRAWS`, `RSX_VPC_LOG`,
 `PAD_FILE` stick commands, a fuller `AddWorkload` log line).
@@ -302,7 +331,7 @@ never mounts the patch archives. At the exitspawn the log says
 ## Playing
 
 Mount your disc image, plug in or pair a controller (DualSense, DualShock or
-Xbox; on macOS keyboard and mouse do not work yet), then:
+Xbox) or use the keyboard and mouse, then:
 
 ```sh
 tools/play.sh
@@ -322,6 +351,24 @@ changes that). The window title shows the frame rate. Close the window, or
 press Ctrl+C in the terminal, to quit. If a build is missing, `play.sh` says
 so: run `tools/rebuild.sh`.
 
+Keyboard and mouse (new, not yet play-tested; a click in the window captures
+the mouse, Esc releases it):
+
+| Action | Keys and mouse | PS3 |
+| --- | --- | --- |
+| Move / look | W A S D / the mouse (or I J K L) | left / right stick |
+| Fire / aim | left click or X / right click or Z | R1 / L1 |
+| Grenade | G or mouse button 4 | L2 |
+| R2 | middle click or 1 | R2 |
+| Jump / crouch | Space / C, Ctrl or Backspace | ✕ / ○ |
+| Reload, use | R, E or mouse button 5 | □ |
+| Switch weapon | Q or the wheel | △ |
+| L3 / R3 | Shift / V | L3 / R3 |
+| Start / select | Return, Esc or P / Tab or M | START / SELECT |
+
+Rebind them on the launcher's Controls page, or in an `input.toml` passed as
+`PS3_INPUT_MAP` (the format is in the toolkit's `libs/input/pad_input_map.h`).
+
 ## Launcher
 
 [`launcher/`](launcher/) is a desktop app (Tauri) that does what
@@ -339,17 +386,27 @@ is read from your mounted disc.
   with; one click moves them aside), the first-boot hint (two STARTs), quick
   settings, the last save, status, a Play shortcut on the Desktop and Add to
   Steam.
-- **Graphics**: window size (the host's `--size`), the Dock icon from your
-  disc, FXAA, sharpening, anisotropic filtering, a gamma override, profiles.
+- **Graphics**: display mode (window, macOS fullscreen, borderless), window
+  size (the host's `--size`), screen, vsync, the Dock icon from your disc;
+  internal resolution (experimental), MetalFX upscaling, FXAA or SMAA,
+  sharpening, anisotropic filtering, a gamma override, profiles; filters
+  (vibrance, contrast, vignette, grain, a colour LUT file); texture packs
+  (enable and order the packs in the mods folder, dump the game's textures).
 - **Performance**: the vertex cache and its per-stream split, binding only
   changed state, the shader cache (with its size and Clear) and async
-  shaders, the frame clock, the frame-rate counter, keeping the Mac awake.
+  shaders, the frame clock, the frame-rate counter, keeping the Mac awake;
+  60 fps and field-of-view options, shown once the build has them (in
+  progress).
 - **Game**: the disc (image or folder, mount/eject), the campaign version
   (**v1.7** when its build is there, or **01.00**: `RES_GAME_VERSION=100`),
   the console language (`PS3_LANG`), movies (FFmpeg paths), the play folder,
   and a saves manager (the profile and `quick.sav`, here and in RPCS3:
   backups before every Play, restore, copy either way, .zip export/import).
-- **Controls**: a controller test (the game needs a controller on macOS).
+- **Controls**: the bindings for keyboard, mouse and controller with what
+  each button does in the game (written to `input.toml`), a controller test,
+  what drives the game (both, controller only, keyboard and mouse only), mouse
+  sensitivity, inversion, dead zone and capture, vibration and its strength.
+  Every setting reaches the game only when it differs from the default.
 - **Advanced**: Install / rebuild (requirements with Homebrew installs, the
   port folder, `tools/rebuild.sh` with chosen steps and a progress bar),
   Updates (`git fetch` of the checkout, "builds older than the sources", the
@@ -423,6 +480,15 @@ its own window).
 | `PS3RECOMP_METAL_BIND_ALL=1` | rebind every Metal state on every draw instead of only what changed |
 | `PS3_SHADER_CACHE=<dir>` | keep the translated MSL shaders across runs; `PS3_SHADER_ASYNC=1` (opt-in) builds new pipelines on a background queue and skips their draws until ready |
 | `PS3_FRAMECLOCK_US=<µs>` | the host frame loop's tick (default 1000; 4000 is the old pacing) |
+| `PS3_INPUT_MAP=<file>` | keyboard, mouse-button and controller bindings and the `[mouse]` settings (`input.toml`; format in the toolkit's `libs/input/pad_input_map.h`) |
+| `PS3_INPUT_MODE=both\|controller\|keyboard` | what drives the game (default both); `PS3_PAD_SDL=0` ignores physical controllers |
+| `PS3_MOUSE=0`, `PS3_MOUSE_SENS=<f>`, `PS3_MOUSE_INVERT_X=1`, `PS3_MOUSE_INVERT_Y=1`, `PS3_MOUSE_DEADZONE=0..120`, `PS3_MOUSE_CAPTURE=0` | the mouse camera: off, speed (1.0), inversion, first stick step past centre (30), no cursor capture |
+| `PS3_RUMBLE=0`, `PS3_RUMBLE_STRENGTH=0..200` | vibration off / its strength in percent (100) |
+| `PS3_WINDOW_MODE=windowed\|fullscreen\|borderless`, `PS3_WINDOW_SIZE=WxH`, `PS3_DISPLAY=<n\|name>`, `PS3_VSYNC=0`, `PS3_UPSCALE=metalfx` | the window host: how the window opens (letterboxed; `--size` still works), on which screen, vsync off, MetalFX upscaling |
+| `PS3_AA=fxaa\|smaa`, `PS3_SHARPEN`, `PS3_ANISO`, `PS3_DISPLAY_GAMMA` | anti-aliasing, sharpening (0–1), anisotropic filtering, display gamma |
+| `PS3_VIBRANCE=-1..1`, `PS3_CONTRAST=0.5..1.5`, `PS3_VIGNETTE=0..1`, `PS3_GRAIN=0..1`, `PS3_LUT=<png>`, `PS3_LUT_STRENGTH=0..1` | the present pass's filters and a colour LUT (ReShade's PNG layout) |
+| `PS3_MODS=<pack,...>`, `PS3_MODS_DIR=<dir>`, `PS3_MODS_DUMP=<dir>` | texture packs (folders of `<key>.png`, first wins) and a dump of every texture under its key |
+| `PS3_RES_SCALE=1\|1.5\|2\|3\|4` (or `720p`, `1080p`, `1440p`, `4k`) | internal resolution (experimental) |
 | `SPURS_PM_TRACE=1` | log the job manager's policy-module polls (`[spurs-pm]`; off by default, it costs frame rate) |
 | `PS3_TITLE` | window title |
 | `RES_GAME_VERSION=100` | the 01.00 campaign even when the v1.7 build is there |

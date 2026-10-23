@@ -35,6 +35,10 @@ Este port só existe por causa do trabalho abaixo. Obrigado a todos.
 - [SDL2](https://www.libsdl.org/), [glslang](https://github.com/KhronosGroup/glslang),
   [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross),
   [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools), CMake, Ninja.
+- [SMAA](https://github.com/iryoku/smaa) — Jorge Jimenez, Jose I. Echevarria,
+  Belen Masia, Fernando Navarro e Diego Gutierrez: o antisserrilhamento do
+  `PS3_AA=smaa` (`third_party/smaa` no patch do toolkit, com o arquivo de
+  licença). MIT.
 - A [PS3 Developer Wiki](https://www.psdevwiki.com/ps3/).
 
 ## Jogo

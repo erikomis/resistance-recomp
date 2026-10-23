@@ -7,7 +7,7 @@ campaign from the v1.7 update) port to macOS/arm64 and what comes next.
 Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
-## Status at a glance (2026-10-22)
+## Status at a glance (2026-10-23)
 
 - **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
 - **v1.7 campaign:** the campaign is the game's last update. Its `game.self` (from `patch_06`) is re-lifted and runs from the 01.00 menus: New campaign → York intro, gameplay and respawn verified. The menus stay 01.00.
@@ -15,12 +15,14 @@ Same layout as the inFAMOUS 2 roadmap.
 - **One window:** the `Resistance` launcher owns the window and the game draws into it through shared IOSurfaces; the same window stays up from the menus through the campaign intro (~33 fps).
 - **Launcher app:** `launcher/` (Tauri) finds the builds and the disc, rebuilds, keeps the settings and the saves, and plays and stops the game.
 - **Shadows and smoke:** the dark rectangles on the ground and the hard-edged smoke are gone in game.
-- **Faster:** ~30 fps in gameplay. The inFAMOUS 2 performance stack gives 32.5 fps vs 6.0 fps with its knobs off (A/B, same build, first 60 s of gameplay); 30.5 fps in the town with every fix in, the respawn fix included.
-- **Released:** nothing yet.
-- **Open:** the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); rumble not tested; no Windows or Linux.
-- **Next:** rumble with a physical controller; a physical controller with the launcher; a v1.7 fps measurement and a long session; keyboard and mouse on macOS; the legal-screen text overlap.
+- **At the game's own cap:** the campaign reaches the game's ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. The GPU depth-as-RGBA8 resolve took the RSX thread from 54% to 12% busy (2026-10-23).
+- **New, needs a play test:** keyboard and mouse on macOS with `input.toml` remapping, rumble, window modes/vsync/MetalFX, SMAA and filters, texture packs and the internal resolution (experimental), ported from the inFAMOUS 2 work; tests pass. The launcher has Controls and Graphics pages for them.
+- **In progress:** 60 fps and a wider field of view (the community's RPCS3 patches).
+- **Released:** v0.1.0 (2026-10-23, pre-release): the macOS launcher and a Windows preview.
+- **Open:** the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); text from earlier legal screens overlaps later ones; keyboard, mouse and rumble not yet played with; no Windows or Linux.
+- **Next:** a play session with keyboard and mouse, rumble and the new graphics settings; 60 fps and FOV; a physical controller with the launcher; a long session; the legal-screen text overlap.
 
-## Current state (2026-10-22)
+## Current state (2026-10-23)
 
 The whole pipeline runs from the player's own disc (`tools/rebuild.sh`): the
 disc image is mounted and used as the VFS root (`PS3_VFS_ROOT`), both PPU
@@ -125,6 +127,32 @@ What got it this far:
   from the RPCS3 comparison: the shadow comparison runs stored depth OP
   reference, depth textures replicate depth to every lane, and depth
   snapshots are cropped to the region the texture names.
+- **Performance (2026-10-23):** the game samples its 2560×720 depth buffer
+  as an A8R8G8B8 texture every frame; that was a GPU→CPU readback and a
+  7.4 MB re-upload per frame and is now resolved on the GPU
+  (`PS3RECOMP_ENG_ZRGBA_GPU=0` turns it off): RSX thread 54% → 12% busy,
+  texture re-uploads per 120 frames ~100 → 0. A fast path for the PPU's
+  store-watch check (it was 28% of the main thread) and guest clocks on
+  `mach_absolute_time`. SPU: native single precision in round-toward-zero
+  (bit-exact; `SPU_FP_NATIVE=0` off), a local `goto` for computed branches
+  inside a function (`SPU_LOCAL_IB=0`), `SPU_DIRECT` calls and cheaper call
+  returns, measured at about +5% (32.2/33.0 fps on vs 30.7 off, noisy). The
+  campaign now reaches the game's own ~30–33 fps cap; the PPU's remaining
+  "busy" time is largely the game's frame limiter. The hot SPU jobs run on
+  one SPU because the game pins them there (workload 5, contention 1..1),
+  the same as on the hardware.
+- **The inFAMOUS 2 settings (2026-10-23, needs a play test):** keyboard and
+  mouse on macOS (the window host records them for the game's cellPad; an
+  FPS layout by default, remapped with `PS3_INPUT_MAP=<input.toml>`, the
+  inFAMOUS 2 launcher's format; mouse speed, inversion, dead zone, capture;
+  `PS3_INPUT_MODE`), rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`), window
+  modes, screen choice, vsync and MetalFX in the window host (which now
+  letterboxes), SMAA (MIT shaders in `third_party/smaa`) and the present
+  pass's filters and LUT, texture packs (`PS3_MODS`, `PS3_MODS_DUMP`) and the
+  internal resolution (`PS3_RES_SCALE`, experimental). The toolkit tests
+  pass; none of it has been verified in a play session yet. The launcher
+  exposes them on its Controls and Graphics pages and passes each one only
+  when it differs from the default.
 
 ---
 
@@ -173,7 +201,7 @@ What got it this far:
 ### Gameplay
 
 - [x] The first chapter (York) with a controller, in a window (2026-10-22; with the rendering bugs above).
-- [ ] The first chapter (York) with keyboard and mouse.
+- [ ] The first chapter (York) with keyboard and mouse (ported 2026-10-23, needs a play test).
 - [ ] Play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
 - [ ] Offline split-screen (co-op and versus): two pads, two viewports.
 
@@ -187,6 +215,7 @@ What got it this far:
 - [x] The cross-frame vertex cache from the inFAMOUS 2 port: 5.9 → 14 fps (2026-10-22; `PS3RECOMP_ENG_VCACHE=0` turns it off).
 - [x] Optimised builds: runtime -O2 and lifted PPU code -O1 in every configuration but Debug (it had been -O0) (2026-10-22).
 - [x] An fps A/B of the inFAMOUS 2 performance stack: 32.5 fps on vs 6.0 fps with its knobs off (`PS3RECOMP_ENG_VCACHE_SPLIT=0`, `PS3RECOMP_METAL_BIND_ALL=1`, `PS3_FRAMECLOCK_US=4000`), same build, first 60 s of gameplay (2026-10-22).
+- [x] The campaign at the game's own ~30–33 fps cap (2026-10-23): the GPU depth-as-RGBA8 resolve (RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0), the PPU store-watch fast path (it was 28% of the main thread), `mach_absolute_time` guest clocks, and SPU native single precision, local `goto` for computed branches, `SPU_DIRECT` and cheaper call returns (about +5%, 32.2/33.0 vs 30.7 fps, noisy). What is left of the PPU's "busy" time is largely the game's frame limiter; the hot SPU jobs are pinned by the game to one SPU (workload 5, contention 1..1), as on the hardware.
 - [ ] A proper fps measurement of the v1.7 campaign (same A/B as 01.00).
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
@@ -196,10 +225,10 @@ What got it this far:
 
 ### Controls
 
-- [ ] Keyboard and mouse on macOS (the toolkit's keyboard fallback in `cellPad` is Windows-only), configurable mapping (`PS3_INPUT_MAP`).
+- [ ] Keyboard and mouse on macOS with a configurable mapping (`PS3_INPUT_MAP`): ported from the inFAMOUS 2 work and exposed in the launcher's Controls page (2026-10-23); tests pass, needs a play test.
 - [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
 - [ ] A physical controller with the launcher: the game process is in the background, so `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` is set; not tested with a controller yet.
-- [ ] Rumble with a physical controller: the v1.7 `game.self` calls `cellPadSetActDirect`; not tested yet.
+- [ ] Rumble with a physical controller: the v1.7 `game.self` calls `cellPadSetActDirect`; rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported 2026-10-23, needs a play test.
 - [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode`; find what it uses motion for and map it to a button.
 
 ### Game update (v1.7)
@@ -226,8 +255,8 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 
 ### Graphics and resolution
 
-- [ ] Internal resolution above 720p, MetalFX/FSR, widescreen FOV, fullscreen/borderless (reuse the inFAMOUS 2 toolkit patch: `PS3_WINDOW_MODE`, `PS3_DISPLAY`, `PS3_ANISO`, FXAA, CAS, `PS3_UPSCALE=metalfx`).
-- [ ] Unlock past 30 fps where the game logic allows.
+- [ ] Internal resolution above 720p (`PS3_RES_SCALE`, experimental), MetalFX (`PS3_UPSCALE=metalfx`), fullscreen/borderless (`PS3_WINDOW_MODE`, `PS3_DISPLAY`, `PS3_VSYNC`), SMAA and filters, texture packs: ported from the inFAMOUS 2 work (2026-10-23), tests pass, needs a play test.
+- [ ] Unlock past 30 fps and a wider field of view (in progress: the community's RPCS3 patches; the launcher shows the settings once the build has them).
 
 ### App to install and play (launcher)
 
@@ -235,6 +264,8 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] One persistent window (2026-10-22): the `Resistance` launcher (`tools/host_window/host_window.m`) owns the window and the menu and campaign executables draw into IOSurfaces shared with it; no window or Dock icon of the game's own. Closing the window ends the game; if the launcher dies the game exits within ~2 s; without it the backend opens its own window. Verified from the menus through the campaign intro at ~33 fps.
 - [x] The window title's guest FPS counts each flip (it read 0 with the window host) (2026-10-22).
 - [x] The launcher app (`launcher/`, Tauri, 2026-10-22): ISO pick and mount, play folder, port-folder detection, campaign version (v1.7/01.00), settings (graphics, performance, game), a saves manager (here and in RPCS3), the game log, debug mode, an updates check, a Desktop and Steam shortcut, English and Brazilian Portuguese. Stop works: the window host now exits when the game does.
+- [x] Controls page (bindings for keyboard, mouse and controller written to `input.toml`, the controller test, input mode, mouse, rumble) and Graphics settings (window mode, screen, vsync, MetalFX, internal resolution, SMAA, filters and LUT, texture packs and their dump), in English and Brazilian Portuguese; every setting passed only when it differs from the default (2026-10-23; the game side needs a play test).
+- [x] Release v0.1.0 (2026-10-23, pre-release): the macOS launcher and a Windows preview.
 - [ ] A physical controller with the launcher (see Controls).
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
 
@@ -305,6 +336,13 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] Shadows and smoke fixed in game (checked visually).
 - [x] The launcher app (`launcher/`), with a working Stop (the window host reaps the game reliably).
 - [x] The title's guest FPS counts each flip.
+
+### Performance and the inFAMOUS 2 settings (2026-10-23)
+
+- [x] GPU depth-as-RGBA8 resolve: RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0.
+- [x] PPU store-watch fast path, `mach_absolute_time` guest clocks; SPU native single precision (bit-exact), local `goto` for computed branches, `SPU_DIRECT`, cheaper call returns (about +5%). The campaign at the game's own ~30–33 fps cap.
+- [x] Keyboard and mouse, rumble, window modes, vsync, MetalFX, SMAA, filters and LUT, texture packs and the internal resolution ported from the inFAMOUS 2 work; tests pass (a play test is still to do, see Controls and Graphics).
+- [x] The launcher's Controls page and new Graphics settings; v0.1.0 released.
 
 ### Tools
 
