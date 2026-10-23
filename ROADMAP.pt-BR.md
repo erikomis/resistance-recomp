@@ -2,19 +2,23 @@
 
 🌐 [English](ROADMAP.md) · **Português (BR)**
 
-Estado do port nativo de Resistance: Fall of Man (`BCUS98107`, disco, v01.00)
-para macOS/arm64 e o que vem a seguir. Mesmo formato do roadmap do inFAMOUS 2.
+Estado do port nativo de Resistance: Fall of Man (`BCUS98107`, disco v01.00,
+campanha da atualização v1.7) para macOS/arm64 e o que vem a seguir. Mesmo
+formato do roadmap do inFAMOUS 2.
 `[x]` = feito e verificado; `[ ]` = a fazer; "(em andamento)" = sendo feito.
 
 ## Resumo (2026-10-22)
 
 - **Roda até o gameplay:** os dois executáveis estão traduzidos, compilam e rodam no macOS/arm64 com Metal. Boot, telas legais, instalação da primeira execução, tela de título e menu principal levam a uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 e carrega o capítulo 1, "The Gauntlet" (York).
+- **Campanha v1.7:** a campanha é a da última atualização do jogo. O `game.self` dela (do `patch_06`) foi traduzido de novo e roda a partir dos menus da 01.00: Nova campanha → abertura de York, gameplay e renascimento verificados. Os menus continuam os da 01.00.
 - **Jogado:** o capítulo 1 numa janela com um DualSense (SDL2), `tools/play.sh`: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer no chão, no checkpoint (o bug do renascimento foi corrigido). A cidade aparece com as cores certas (o mundo azul foi corrigido).
 - **Uma janela:** o launcher `Resistance` é dono da janela e o jogo desenha nela por IOSurfaces compartilhadas; a mesma janela fica aberta dos menus até a abertura da campanha (~33 fps).
+- **App launcher:** o `launcher/` (Tauri) acha os builds e o disco, recompila, guarda os ajustes e os saves, e abre e fecha o jogo.
+- **Sombras e fumaça:** os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo.
 - **Mais rápido:** ~30 fps no gameplay. O pacote de desempenho do inFAMOUS 2 dá 32,5 fps contra 6,0 fps com as chaves dele desligadas (A/B, mesmo build, primeiros 60 s de gameplay); 30,5 fps na cidade com todas as correções, inclusive a do renascimento.
 - **Lançado:** nada ainda.
-- **Em aberto:** retângulos escuros no chão (sombras) e a fumaça, a conferir no jogo depois das correções da comparação com o RPCS3; o texto das telas legais anteriores se sobrepõe às seguintes; teclado e mouse não funcionam no macOS (é preciso um controle); sem vibração; o título da janela do launcher mostra "guest FPS" 0; sem Windows nem Linux.
-- **Próximo:** conferir no jogo as sombras, os retângulos no chão e a fumaça; o port para a v1.7 (em andamento); um controle físico com o launcher; vibração do DualShock; teclado e mouse no macOS; a sobreposição do texto das telas legais; o "guest FPS" no título.
+- **Em aberto:** os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); o texto das telas legais anteriores se sobrepõe às seguintes; teclado e mouse não funcionam no macOS (é preciso um controle); vibração não testada; sem Windows nem Linux.
+- **Próximo:** vibração com um controle físico; um controle físico com o launcher; uma medição de fps da v1.7 e uma sessão longa; teclado e mouse no macOS; a sobreposição do texto das telas legais.
 
 ## Estado atual (2026-10-22)
 
@@ -88,7 +92,47 @@ O que trouxe até aqui:
   Mach vai em `PS3RECOMP_HOST_SURFACES`) e não tem janela nem ícone no Dock. A
   janela continua aberta no exitspawn do EBOOT para o `game.self` (o `execv`
   mantém o pid e a imagem nova se conecta de novo). ~0,35 ms de GPU por frame,
-  sem cópia na CPU, sem latência a mais mensurável.
+  sem cópia na CPU, sem latência a mais mensurável. A janela recolhe o jogo
+  com um `waitpid` bloqueante: um recolhimento sem bloqueio podia rodar um
+  instante antes de o jogo poder ser recolhido, e a janela continuava aberta
+  depois de o jogo ter saído (o Parar do launcher esbarrava nisso). Agora um
+  SIGTERM ao grupo de processos fecha os dois em ~3 s. O "guest FPS" do
+  título conta cada flip (mostrava 0).
+- **A campanha v1.7:** a última atualização do jogo são sete arquivos,
+  `patch_01`…`patch_07.psarc`; o `patch_06` traz um `game.self` novo
+  (`/data/new_game.self`; o SHA-256 do ELF descriptografado é
+  `e1d75e6d4afe…144f`, o "game.self Updated" do RPCS3, PPU-a08a187d…). Ele foi
+  traduzido de novo (19.706 funções contra 19.219 da 01.00) e é compilado como
+  `build/BCUS98107_game_v17`; 13 dos 15 módulos de job WWS e os dois
+  programas das SPUs raw mudaram e foram traduzidos de novo (fingerprints
+  novas `6D03497950639952` e `47C9CB480016D493`; o policy module é idêntico
+  byte a byte). Imports novos: `cellSaveDataAutoSave2`/`AutoLoad2`,
+  `_sys_process_atexitspawn`, `cellPadSetActDirect` (vibração). No exitspawn
+  o `port/stubs.cpp` roda o build v1.7 quando ele e o ELF dele existem
+  (`RES_GAME_VERSION=100` mantém a 01.00). O `tools/v17/regen_v17.sh`
+  (`tools/rebuild.sh v17`) extrai o `patch_06`, descriptografa o
+  `new_game.self` com `rpcs3 --decrypt`, traduz, traduz os programas de SPU
+  (os das SPUs raw depois de um run de captura) e compila. Verificado: menus
+  (EBOOT 01.00) → Nova campanha → o log mostra `campaign = v1.7 game.self` →
+  a abertura de York, "The Gauntlet"; gameplay e renascimento funcionam com a
+  correção do `SPU_RunCntl`.
+- **Os menus continuam os da 01.00:** o `EBOOT.BIN` da atualização só existe
+  na forma NPDRM (edição digital). O EBOOT 01.00 do disco não roda com os
+  dados da atualização v1.7 montados (`patch_04`/`patch_06`: cai ao carregar
+  as fontes do menu; 1/2/3/5/7: trava no exitspawn), então os arquivos da
+  atualização não podem estar na pasta de jogo; o `tools/play.sh` e o
+  launcher se recusam a começar enquanto houver um `patch_NN.bin` lá. A
+  campanha não precisa deles: são dados do front end e do multiplayer, e o
+  `game.self` nunca monta os arquivos da atualização. Os arquivos da
+  atualização são as atualizações oficiais e gratuitas do jogo; cada jogador
+  guarda os seus (o PSRewired, psrewired.com, deixa quem tem o jogo baixar a
+  atualização pelo próprio jogo no RPCS3).
+- **Sombras e fumaça:** os retângulos escuros no chão e a fumaça de bordas
+  duras sumiram no jogo (conferido visualmente) depois das correções de
+  profundidade da comparação com o RPCS3: a comparação das sombras é
+  profundidade gravada OP referência, as texturas de profundidade replicam a
+  profundidade em todas as lanes e os snapshots de profundidade são
+  recortados à região que a textura indica.
 
 ---
 
@@ -99,7 +143,7 @@ O que trouxe até aqui:
 - [x] **Jobs de SPU estouram o tempo no gameplay.** Corrigido em 2026-10-22: os 15 módulos de job WWS traduzidos, seleção no estilo do kernel SPURS e eventos de SPU atômicos (veja "Gameplay" em Feito). O job manager carrega o código dos jobs na LS (por volta de 0x7C00–0x14000 da imagem dele) e o interpretador roda a uns 8–9 M passos/s. Os jobs que o primeiro frame precisa não cumprem os timeouts de 2 s do jogo. Capturar o código de cada job quando ele chega por DMA, traduzir (os `lift_spu_jobs.sh` / `relift_jobmod.py` do inFAMOUS 2 são o modelo) e registrar.
 - [x] **Travamento depois do vídeo de abertura (intermitente).** Corrigido em 2026-10-22: pilha de callback HLE→jogo compartilhada (veja "Gameplay" em Feito). Uma thread do player de vídeo (`func_005F0360 → … → func_005EEFE4`) fica em `sys_mutex_lock`, o player nunca avisa que terminou e a thread principal fica no laço de carregamento (`func_00044DE0`, estado 2). `MUTEX_WATCH=2` mantém o lock bloqueante e informa quem espera há mais de 5 s e o dono do mutex. Até agora o travamento não se reproduziu com nenhum modo de watch. A política de mutex fair-share no macOS não resolveu.
 - [x] **O jogador renasce acima do mapa.** Corrigido em 2026-10-22: uma parada e um reinício de SPU raw que o runtime descartava (veja "Estado atual"). Depois de morrer, a recarga do checkpoint mandava o jogador direto para o céu (~30–40 draws: céu, terreno distante e água); o save estava certo. Num teste com 12 mortes e renascimentos a câmera voltou sempre à posição da primeira vida (0 de 666 amostras da câmera fora da faixa, contra 193 de 292 antes); um run separado confirmou (de volta ao chão no mesmo lugar, andando normalmente).
-- [ ] **Retângulos escuros no chão (sombras) e a fumaça** (próximo). A comparação de sombra das texturas estava na ordem do ARB; o console e o RPCS3 comparam profundidade gravada OP referência (a issue #19391 do RPCS3 mostra os mesmos retângulos). Corrigido junto com as outras correções da comparação com o RPCS3 (texturas de profundidade replicam a profundidade em todas as lanes, para partículas suaves e fumaça); todos os testes de vídeo passam, falta conferir no jogo.
+- [x] **Retângulos escuros no chão (sombras) e a fumaça.** Corrigido em 2026-10-22, sumiram no jogo (conferido visualmente). A comparação de sombra das texturas estava na ordem do ARB; o console e o RPCS3 comparam profundidade gravada OP referência (a issue #19391 do RPCS3 mostra os mesmos retângulos). Corrigido junto com as outras correções da comparação com o RPCS3 (texturas de profundidade replicam a profundidade em todas as lanes, para partículas suaves e fumaça; snapshots de profundidade recortados à região da textura).
 - [x] **Taxa de quadros.** ~30 fps no gameplay (2026-10-22): 32,5 fps com o pacote do inFAMOUS 2 contra 6,0 fps com as chaves dele desligadas; 30,5 fps na cidade com todas as correções.
 - [x] **Prédios e telhados aparecem em azul forte chapado.** Corrigido em 2026-10-22: o wrap de 28 bits do offset de vértice (veja "Estado atual"); a cidade aparece com as cores certas.
 - [ ] **Texto das telas legais sobreposto.** O texto desenhado numa tela legal continua lá na seguinte.
@@ -151,29 +195,32 @@ O que trouxe até aqui:
 - [x] O cache de vértices entre frames do port do inFAMOUS 2: 5,9 → 14 fps (2026-10-22; `PS3RECOMP_ENG_VCACHE=0` desliga).
 - [x] Builds otimizados: runtime -O2 e código PPU traduzido -O1 em toda configuração menos Debug (era -O0) (2026-10-22).
 - [x] Um A/B de fps do pacote de desempenho do inFAMOUS 2: 32,5 fps ligado contra 6,0 fps com as chaves dele desligadas (`PS3RECOMP_ENG_VCACHE_SPLIT=0`, `PS3RECOMP_METAL_BIND_ALL=1`, `PS3_FRAMECLOCK_US=4000`), mesmo build, primeiros 60 s de gameplay (2026-10-22).
+- [ ] Uma medição de fps de verdade da campanha v1.7 (o mesmo A/B da 01.00).
 - [ ] Medir quanto do tempo de SPU é interpretado e cortar (traduzir o que sobrar).
 
 ### Estabilidade
 
-- [ ] Sessões longas em janela sem travar; relatório de travamento no estilo do `watch_stall.sh`.
+- [ ] Sessões longas em janela sem travar (a campanha v1.7 inclusive); relatório de travamento no estilo do `watch_stall.sh`.
 
 ### Controles
 
 - [ ] Teclado e mouse no macOS (o fallback de teclado do `cellPad` do toolkit é só para Windows), mapeamento configurável (`PS3_INPUT_MAP`).
 - [x] DualSense/DualShock/Xbox via SDL2 (um DualSense jogou o capítulo 1, 2026-10-22).
 - [ ] Um controle físico com o launcher: o processo do jogo fica em segundo plano, então `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` está ligado; ainda não testado com um controle.
-- [ ] Vibração (DualShock 3; a atualização v1.7 a adicionou, também na campanha).
+- [ ] Vibração com um controle físico: o `game.self` da v1.7 chama `cellPadSetActDirect`; ainda não testada.
 - [ ] SIXAXIS: o jogo chama `cellPadSetSensorMode`/`cellPadInfoSensorMode`; descobrir para que usa o movimento e mapear num botão.
 
 ### Atualização do jogo (v1.7)
 
 O servidor de atualizações da Sony não lista pacotes para nenhum ID de título do Resistance: o jogo se atualizava pelos próprios servidores de multiplayer (desligados em 2014-04-08). A última versão é a v1.7 (Patch 7), `patch_01`…`patch_07.psarc` em `USRDIR/data`; o `patch_06` traz um `game.self` novo (`/data/new_game.self`, ~8,7 MB), dados de colisão novos para as fases 200–320, menus, fontes, traduções, vibração e suporte a map packs. As notas das atualizações são quase todas de multiplayer. O servidor de revival PSRewired (psrewired.com) serve o Resistance online e, segundo a wiki do RPCS3, a atualização v1.7.
 
-Decidido em 2026-10-22: o port passa para a v1.7 (em andamento).
+Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 
-- [ ] Traduzir de novo o `game.self` atualizado do `patch_06` (em andamento).
-- [ ] Ligar o carregador de patches do EBOOT 01.00 (em andamento).
-- [ ] Revalidar o código que depende de endereços e voltar a ficar jogável.
+- [x] Traduzir de novo o `game.self` atualizado do `patch_06` (19.706 funções), os 13 módulos de job que mudaram e os dois programas das SPUs raw; `tools/v17/regen_v17.sh`.
+- [x] Rodá-lo a partir dos menus da 01.00: o exitspawn escolhe o build v1.7; Nova campanha → abertura de York, gameplay e renascimento verificados.
+- [x] Manter os arquivos da atualização fora da pasta de jogo (o EBOOT 01.00 não roda com eles): o `tools/play.sh` e o launcher se recusam a começar.
+- [ ] Menus da v1.7: precisam de um `EBOOT.BIN` v1.7 que não seja NPDRM, e ele parece não existir (o EBOOT da atualização só existe em NPDRM); provavelmente impossível.
+- [ ] Vibração, uma sessão longa e uma medição de fps na v1.7 (veja Controles, Estabilidade, Desempenho).
 
 ### Rebuild
 
@@ -194,8 +241,9 @@ Decidido em 2026-10-22: o port passa para a v1.7 (em andamento).
 
 - [x] A janela mantém posição, tamanho e tela cheia no exitspawn do menu para a campanha (`PS3RECOMP_WINDOW_STATE`, 2026-10-22).
 - [x] Uma janela única e persistente (2026-10-22): o launcher `Resistance` (`tools/host_window/host_window.m`) é dono da janela e os executáveis do menu e da campanha desenham em IOSurfaces compartilhadas com ele; o jogo não tem janela nem ícone no Dock próprios. Fechar a janela encerra o jogo; se o launcher morre, o jogo sai em ~2 s; sem ele o backend abre a própria janela. Verificado dos menus até a abertura da campanha a ~33 fps.
-- [ ] O "guest FPS" no título da janela mostra 0 com o launcher.
-- [ ] O launcher do inFAMOUS 2 (Tauri) adaptado: instalar/rebuild a partir da imagem do disco, configurações, controles, saves, reportar problema, atualizações.
+- [x] O "guest FPS" no título da janela conta cada flip (mostrava 0 com a janela do launcher) (2026-10-22).
+- [x] O app launcher (`launcher/`, Tauri, 2026-10-22): escolher e montar o ISO, pasta de jogo, detecção da pasta do port, versão da campanha (v1.7/01.00), ajustes (gráficos, desempenho, jogo), um gerenciador de saves (aqui e no RPCS3), o log do jogo, modo de depuração, verificação de atualizações, atalho na Mesa e na Steam, português do Brasil e inglês. O Parar funciona: a janela agora sai quando o jogo sai.
+- [ ] Um controle físico com o launcher (veja Controles).
 - [ ] Ícone a partir do `ICON0.PNG` do próprio jogador, app bundle com Game Mode no macOS.
 
 ### Outras plataformas
@@ -257,6 +305,15 @@ Decidido em 2026-10-22: o port passa para a v1.7 (em andamento).
 - [x] Renascimento corrigido: `SPU_RunCntl`=0 para de fato uma SPU raw e `SPU_RunCntl`=1 a começa do zero (no modelo do `RawSPUThread.cpp` do RPCS3); 12 mortes num teste, a câmera de volta à posição da primeira vida todas as vezes.
 - [x] Uma janela persistente pelo launcher `Resistance` e IOSurfaces compartilhadas (~0,35 ms de GPU por frame, sem cópia na CPU); a janela sobrevive ao exitspawn.
 
+### A campanha v1.7 e o launcher (2026-10-22)
+
+- [x] O `game.self` da v1.7 (`/data/new_game.self` do `patch_06`) traduzido de novo e compilado como `build/BCUS98107_game_v17`; 13 dos 15 módulos de job e os dois programas das SPUs raw traduzidos de novo (`6D03497950639952`, `47C9CB480016D493`); o policy module não mudou.
+- [x] O exitspawn roda o build v1.7 quando ele e o ELF dele existem (`RES_GAME_VERSION=100` mantém a 01.00); menus → Nova campanha → abertura de York, gameplay e renascimento verificados.
+- [x] `tools/v17/regen_v17.sh` (`tools/rebuild.sh v17`), `tools/v17/psarc_extract.py`; o `tools/play.sh` diz qual campanha roda e se recusa a começar com os `patch_NN.bin` da atualização na pasta de jogo.
+- [x] Sombras e fumaça corrigidas no jogo (conferido visualmente).
+- [x] O app launcher (`launcher/`), com o Parar funcionando (a janela recolhe o jogo de forma confiável).
+- [x] O "guest FPS" do título conta cada flip.
+
 ### Ferramentas
 
 - [x] `RES_PEEK` (leitura de memória do guest pelo `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
@@ -284,4 +341,10 @@ Pull requests para o [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recom
 - [ ] [#491](https://github.com/sp00nznet/ps3recomp/pull/491) Diagnóstico `SPU_IRQWAIT_DIAG`.
 - [ ] [#492](https://github.com/sp00nznet/ps3recomp/pull/492) Eventos de SPU atômicos (o primeiro frame de gameplay).
 - [x] [#493](https://github.com/sp00nznet/ps3recomp/pull/493) Seleção no estilo do kernel SPURS: fechado; fica no patch do toolkit deste repositório.
+- [ ] [#504](https://github.com/sp00nznet/ps3recomp/pull/504) Endereços de array de vértices fazem wrap em 28 bits (o mundo azul).
+- [ ] [#505](https://github.com/sp00nznet/ps3recomp/pull/505) `SPU_RunCntl`=0 para uma SPU raw rodando (o renascimento; em cima do #473).
+- [ ] [#506](https://github.com/sp00nznet/ps3recomp/pull/506) Otimizar um build configurado sem `CMAKE_BUILD_TYPE`.
+- [ ] [#507](https://github.com/sp00nznet/ps3recomp/pull/507) Um snapshot de profundidade é a região que a textura indica (em cima do #502).
+- [ ] [#508](https://github.com/sp00nznet/ps3recomp/pull/508) Uma textura comprimida nunca é a saída de um render target.
+- [ ] [#509](https://github.com/sp00nznet/ps3recomp/pull/509) macOS: uma janela só através do exitspawn (`tools/host_window`, modo host-surface do Metal).
 - [x] Repositório próprio (`resistance-recomp`): fontes do port, um patch do toolkit, `tools/setup_toolkit.sh`, README, créditos e um `.gitignore` que bloqueia dados do jogo, firmware e saves.

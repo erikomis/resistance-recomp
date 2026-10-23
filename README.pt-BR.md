@@ -14,7 +14,9 @@ campanha então toca o vídeo de abertura da fase 1 e carrega "The Gauntlet"
 (York). Numa janela, com um DualSense, York roda em primeira pessoa com o
 HUD: inimigos e aliados, tiros, morrer e renascer no checkpoint. A cidade
 aparece com as cores certas a uns 30 fps, numa janela só dos menus até a
-campanha (veja [Estado](#estado)).
+campanha. A campanha é a da última atualização do jogo, a v1.7, traduzida de
+novo a partir do `patch_06`; os menus continuam os da 01.00 do disco (veja
+[Estado](#estado)).
 
 Construído sobre o [ps3recomp](https://github.com/sp00nznet/ps3recomp),
 seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
@@ -34,11 +36,11 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 ## Estado
 
-Em 2026-10-22 (renascimento corrigido, uma janela persistente, gameplay a ~30 fps), cada item verificado em execuções num Mac com Apple silicon e Metal.
+Em 2026-10-22 (a campanha v1.7, o app launcher, sombras e fumaça corrigidas), cada item verificado em execuções num Mac com Apple silicon e Metal.
 
 | | |
 | --- | --- |
-| Os dois executáveis traduzidos para C++ e compilados (`EBOOT.BIN`: 25.022 funções; `game.self`: 18.994) | ✅ |
+| Os dois executáveis traduzidos para C++ e compilados (`EBOOT.BIN`: 25.022 funções; `game.self`: 18.994), e o `game.self` da atualização v1.7 (19.706 funções traduzidas, contra 19.219 do da 01.00) | ✅ |
 | Boot, telas legais | ✅ (o texto de uma tela legal anterior se sobrepõe à seguinte) |
 | Instalação no HDD da primeira execução ("initial setup", grava os arquivos de cache `*.done`) | ✅ |
 | Tela de título, menu principal (Campanha / Cooperativo / Multiplayer / Opções) | ✅ |
@@ -51,14 +53,15 @@ Em 2026-10-22 (renascimento corrigido, uma janela persistente, gameplay a ~30 fp
 | Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
 | Taxa de quadros | ✅ ~30 fps no gameplay: 32,5 fps com o pacote de desempenho do inFAMOUS 2 contra 6,0 fps com as chaves dele desligadas (A/B, mesmo build, primeiros 60 s de gameplay); 30,5 fps na cidade com todas as correções, inclusive a do renascimento |
 | Cores do mundo (prédios, telhados, ruas) | ✅ corretas: o mundo azul era um wrap do offset de vértice que o RSX faz e o port não fazia (veja [Como funciona](#como-funciona)) |
-| Sombras e fumaça | 🚧 retângulos escuros no chão; a comparação de profundidade das sombras estava invertida e as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça); as duas coisas corrigidas depois de uma comparação com o RPCS3, falta conferir no jogo |
+| Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica |
 | Renascimento | ✅ depois de morrer o jogador volta no chão, onde fica o checkpoint (antes ia parar no céu; um reinício de SPU raw que o runtime descartava, veja [Como funciona](#como-funciona)); verificado em 12 mortes |
-| Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título ainda mostra 0 |
+| Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título conta os flips do jogo |
 | Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
 | Depois do vídeo de abertura | ✅ o travamento intermitente foi corrigido (pilha de callback compartilhada) |
-| Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 (a entrada com o processo do jogo em segundo plano está ligada para o launcher; ainda não testada assim com um controle físico); ainda sem vibração |
+| Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 (a entrada com o processo do jogo em segundo plano está ligada para o launcher; ainda não testada assim com um controle físico); vibração ainda não verificada |
 | Teclado e mouse | ⏳ não no macOS (o fallback de teclado do toolkit é só para Windows): é preciso um controle |
-| Atualização v1.7 do jogo | 🚧 em andamento: traduzindo de novo o `game.self` atualizado do `patch_06` e ligando o carregador de patches do EBOOT 01.00; hoje o port roda a 01.00 do disco (veja o [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md)) |
+| Atualização v1.7 do jogo | ✅ a campanha roda o `game.self` da atualização, traduzido de novo a partir do `patch_06`: menus → Nova campanha → a abertura de York, gameplay e renascimento verificados; os menus continuam o EBOOT 01.00 do disco (veja [A campanha v1.7](#a-campanha-v17)); vibração com um controle físico, uma sessão longa e uma medição de fps da v1.7 ainda não verificadas |
+| App launcher | ✅ [`launcher/`](launcher/) (Tauri): disco, builds, recompilação, ajustes, saves, Jogar/Parar, em português do Brasil e inglês |
 | Linux e Windows | ⏳ sem suporte |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram) |
 
@@ -128,6 +131,12 @@ As correções que trouxeram o port até aqui:
   se conecta de novo. Fechar a janela encerra o jogo; se o launcher morre, o
   jogo sai em ~2 s; sem o launcher o backend abre a própria janela, como
   antes.
+- **A campanha v1.7:** o `patch_06` da atualização traz um `game.self` novo.
+  Ele é traduzido como o do disco e compilado como `build/BCUS98107_game_v17`;
+  no exitspawn o `port/stubs.cpp` o executa no lugar do build 01.00 quando ele
+  e o ELF dele existem. 13 dos 15 módulos de job WWS e os dois programas das
+  SPUs raw mudaram e são traduzidos a partir do ELF v1.7; o policy module é
+  o mesmo.
 
 As mudanças no toolkit são um único patch sobre o ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -139,8 +148,10 @@ liberados, profundidade replicada em todas as lanes, texturas comprimidas
 nunca resolvidas a partir de render targets, threads PPU começando com
 VSCR[NJ]=1, sem `getenv` a cada escrita em canal MFC da SPU), a parada e o
 reinício das SPUs raw pelo `SPU_RunCntl`, a janela por IOSurface compartilhada
-(`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`), a
-passagem do estado da janela pelo exitspawn e diagnósticos (`VDEC_PICLOG`,
+(`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; a
+janela recolhe o jogo com um `waitpid` bloqueante, então sai quando o jogo
+sai, que é do que o Parar do launcher depende; o "guest FPS" do título conta
+cada flip), a passagem do estado da janela pelo exitspawn e diagnósticos (`VDEC_PICLOG`,
 `PPU_STACKINFO_LOG`, `SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`,
 `RSX_ENGINE_PASS_DUMP_TRIGGER`, `RSX_ENGINE_PASS_DUMP_DRAWS`, `RSX_VPC_LOG`,
 comandos de analógico no `PAD_FILE`, uma linha de log mais completa no
@@ -185,13 +196,17 @@ exemplo `tools/rebuild.sh lift build`):
 | `lift` | o `ppu_lifter.py` do toolkit, 16 pedaços para o EBOOT e 12 para o `game.self` | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: o policy module do job manager, extraído do seu EBOOT, embrulhado e traduzido | `port/spu/captured/` |
 | `build` | CMake + Ninja, Metal, FFmpeg em runtime; também o launcher da janela, `Resistance` | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
+| `v17` | só quando pedida: a campanha v1.7 a partir do seu `patch_06.psarc` (`tools/v17/regen_v17.sh`, veja [A campanha v1.7](#a-campanha-v17)); o `build` também a recompila depois de traduzida | `game/BCUS98107/modules_v17/`, `recompiled/BCUS98107/game_module_v17/`, `port/spu_v17/`, `build/BCUS98107_game_v17/` |
 | `launcher` | só quando pedida: o app de desktop [launcher](#launcher) (`npm ci`, `tauri build`; Node 20+ e Rust) | `build/launcher/Resistance Launcher.app` |
 
 Tudo na última coluna é gerado a partir da sua cópia e está no `.gitignore`.
 Mantenha essa organização: quando o EBOOT passa para a campanha, o
 `port/stubs.cpp` executa `build/BCUS98107_game/ResistanceRecomp` com
-`game/BCUS98107/modules/game.elf` ao lado do build do EBOOT
-(`RES_SPAWN_BIN` / `RES_SPAWN_ELF` mudam isso).
+`game/BCUS98107/modules/game.elf` ao lado do build do EBOOT, ou
+`build/BCUS98107_game_v17/ResistanceRecomp` com
+`game/BCUS98107/modules_v17/game.elf` quando os dois existem
+(`RES_GAME_VERSION=100` mantém a 01.00; `RES_SPAWN_BIN` / `RES_SPAWN_ELF`
+mudam tudo isso).
 
 O executável se chamava `MyGameRecomp` até 2026-10-22, e os builds feitos
 antes disso eram compilados sem otimização: compile de novo. O
@@ -237,6 +252,52 @@ O `port/spu/spu_workloads.c` registra os dois como imagens SPU 2
 (`1894F66385AFD052`) e 3 (`5A10969E466A2298`). Como o policy module, o C
 traduzido é código do jogo e fica fora do git.
 
+#### A campanha v1.7
+
+A última atualização do jogo, a v1.7, são sete arquivos,
+`patch_01`…`patch_07.psarc`; o `patch_06` traz um executável de campanha
+novo (`/data/new_game.self`). O port o roda. O ELF descriptografado dele
+(SHA-256 `e1d75e6d4afe…144f`, o "game.self Updated" do RPCS3,
+PPU-a08a187d…) é traduzido como o do disco (19.706 funções contra 19.219), e
+13 dos 15 módulos de job WWS e os dois programas das SPUs raw mudaram e são
+traduzidos a partir dele (fingerprints novas `6D03497950639952` e
+`47C9CB480016D493`; o policy module é idêntico byte a byte). Ele importa
+`cellSaveDataAutoSave2`/`AutoLoad2`, `_sys_process_atexitspawn` e
+`cellPadSetActDirect` (vibração), que a 01.00 não importa.
+
+Os arquivos da atualização são as atualizações oficiais e gratuitas do jogo
+e não estão neste repositório. Se você tem o jogo, o
+[PSRewired](https://psrewired.com) deixa ele baixar a própria atualização no
+RPCS3; copie os `patch_01`…`patch_07.psarc` do
+`dev_hdd0/game/BCUS98107/USRDIR/data` do RPCS3 para `update/` neste checkout
+(ou aponte `RES_UPDATE_DIR` para eles) e:
+
+```sh
+tools/rebuild.sh v17                                  # tools/v17/regen_v17.sh
+SPU_RAW_DUMP_DIR=$PWD/out/rawspu_v17 tools/play.sh    # uma vez: campanha nova, deixe o vídeo de abertura acabar, feche a janela
+tools/v17/regen_v17.sh spu build                      # traduz os dois programas das SPUs raw recém-capturados
+```
+
+O `regen_v17.sh` extrai o `new_game.self` do `patch_06`
+(`tools/v17/psarc_extract.py`), descriptografa com `rpcs3 --decrypt` para
+`game/BCUS98107/modules_v17/game.elf` (conferindo o SHA-256), traduz para
+`recompiled/BCUS98107/game_module_v17/`, traduz o código de SPU dele para
+`port/spu_v17/` (o policy module é copiado de `port/spu/captured/`, então
+rode antes a etapa `spu`) e compila `build/BCUS98107_game_v17/`. Os programas
+das SPUs raw são capturados num run, como na 01.00; até serem traduzidos, a
+campanha v1.7 para depois do vídeo de abertura.
+
+Os menus continuam os da 01.00. O `EBOOT.BIN` da atualização só existe na
+forma NPDRM (edição digital), e o EBOOT 01.00 do disco não roda com os dados
+da atualização montados (com o `patch_04` ou o `patch_06` ele cai ao carregar
+as fontes do menu; com os outros ele trava no exitspawn). Então **não instale
+os arquivos da atualização na pasta de jogo**: o `tools/play.sh` e o launcher
+se recusam a começar enquanto houver um `patch_NN.bin` no `USRDIR/data`
+dela. A campanha não precisa deles: são dados do front end e do multiplayer,
+e o `game.self` nunca monta os arquivos da atualização. No exitspawn o log
+mostra `campaign = v1.7 game.self`; `RES_GAME_VERSION=100` joga a campanha
+01.00.
+
 ## Jogando
 
 Monte a imagem do seu disco, conecte ou pareie um controle (DualSense,
@@ -248,7 +309,11 @@ tools/play.sh
 
 Ele abre o front end numa janela do launcher `Resistance` (o `play.sh` o
 compila em segundos se um build anterior a ele não o tiver); começar uma
-campanha passa para o build do `game.self` na mesma janela. No **primeiro boot aperte START duas vezes**: na
+campanha passa para o build do `game.self` na mesma janela. O `play.sh` diz
+qual campanha é essa: a v1.7 quando ela está compilada (e ele a compila
+quando o código v1.7 já foi traduzido mas não compilado), senão a 01.00
+(veja [A campanha v1.7](#a-campanha-v17)). Ele se recusa a começar enquanto
+os `patch_NN.bin` da atualização v1.7 estiverem na pasta de jogo. No **primeiro boot aperte START duas vezes**: na
 tela legal e depois na pergunta do "initial setup" (a instalação no HDD, feita
 uma vez só). Saves, o cache da instalação e o log (`last.log`) ficam em
 `~/Library/Application Support/resistance-recomp/` (`RES_DATA` muda isso). O
@@ -264,7 +329,8 @@ ele acha os seus builds e o seu disco, monta a imagem do disco por você
 (`hdiutil`, só leitura) e a lembra, guarda os ajustes, e o **Jogar** abre a
 janela `Resistance` com o build do EBOOT, a pasta de jogo
 (`PS3_HDD0_ROOT`/`PS3_HDD1_ROOT`, `last.log`), o FFmpeg e o `caffeinate`, como
-o `play.sh`. Ele não leva nada do jogo: a capa da tela inicial é lida do seu
+o `play.sh`. O **Parar** encerra o jogo e a janela dele (a janela agora sai
+quando o jogo sai). Ele não leva nada do jogo: a capa da tela inicial é lida do seu
 disco montado.
 
 - **Início**: Jogar/Parar, o que ainda impede o Jogar (sem build, sem disco,
@@ -361,6 +427,8 @@ própria janela).
 | `PS3_FRAMECLOCK_US=<µs>` | o tick do laço de frame do host (padrão 1000; 4000 é o ritmo antigo) |
 | `SPURS_PM_TRACE=1` | registra os polls do policy module do job manager (`[spurs-pm]`; desligado por padrão, custa taxa de quadros) |
 | `PS3_TITLE` | título da janela |
+| `RES_GAME_VERSION=100` | a campanha 01.00 mesmo quando o build v1.7 existe |
+| `RES_UPDATE_DIR=<pasta>` | onde o `tools/v17/regen_v17.sh` acha o `patch_06.psarc` (padrão `update/`) |
 | `RES_SPAWN_BIN`, `RES_SPAWN_ELF` | o build e o ELF que a passagem do exitspawn executa (padrão: a pasta de build irmã e `game/BCUS98107/…`) |
 | `PS3RECOMP_HOST_SURFACES` | definida pelo launcher `Resistance`: o nome de bootstrap Mach das superfícies compartilhadas da janela; não é para definir à mão |
 | `PS3RECOMP_WINDOW_STATE` | definida pelo port no exitspawn para a próxima janela abrir onde estava a anterior; não é para definir à mão |
@@ -373,9 +441,9 @@ própria janela).
 
 | Caminho | O que é |
 | --- | --- |
-| [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn e a passagem do estado da janela, `RES_PEEK`), `CMakeLists.txt` (com o alvo do launcher `Resistance`), `config.toml`, `spu/spu_workloads.c` (registro das SPUs) |
+| [`port/`](port/) | O port: `main.cpp` (boot, thread do guest, bloco de dados do exitspawn), `stubs.cpp` (exitspawn e a passagem do estado da janela, `RES_PEEK`), `CMakeLists.txt` (com o alvo do launcher `Resistance`), `config.toml`, `spu/spu_workloads.c` (registro das SPUs); `spu_v17/` é gerado pelo `tools/v17/regen_v17.sh` |
 | [`patches/`](patches/) | O patch do toolkit sobre o ps3recomp v0.17.0 |
-| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` e os scripts de execução |
+| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` e os scripts de execução; `v17/` (a campanha v1.7: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
 | [`launcher/`](launcher/) | O launcher de desktop (Tauri): ajustes, disco, saves, recompilação e Jogar |
 | [`ROADMAP.pt-BR.md`](ROADMAP.pt-BR.md) | Estado e próximos passos |
 

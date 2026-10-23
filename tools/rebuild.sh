@@ -4,7 +4,7 @@
 #   tools/rebuild.sh [step ...]
 #
 # Steps, in order (default: all of them): toolkit decrypt analyse lift spu build
-# (and launcher, only when named)
+# (and v17 and launcher, only when named)
 #
 #   toolkit  tools/setup_toolkit.sh (./ps3recomp at the pinned commit + patch)
 #   decrypt  copies PS3_GAME/USRDIR/EBOOT.BIN and game.self from the disc to
@@ -21,13 +21,19 @@
 #            tools/regen_rawspu.sh when a raw-SPU capture exists
 #   build    cmake + ninja -> build/BCUS98107/ResistanceRecomp (EBOOT) and
 #            build/BCUS98107_game/ResistanceRecomp (game.self), Metal, FFmpeg video,
-#            and build/BCUS98107/Resistance, the window launcher tools/play.sh runs
+#            and build/BCUS98107/Resistance, the window launcher tools/play.sh runs;
+#            also build/BCUS98107_game_v17 when the lifted v1.7 code is there
+#   v17      only when named (tools/rebuild.sh v17): the v1.7 campaign, the
+#            update's game.self, from your patch_06.psarc (RES_UPDATE_DIR):
+#            tools/v17/regen_v17.sh -> game/BCUS98107/modules_v17/game.elf,
+#            recompiled/BCUS98107/game_module_v17, port/spu_v17,
+#            build/BCUS98107_game_v17. Needs the spu step's port/spu/captured.
 #   launcher only when named (tools/rebuild.sh launcher): the desktop app in
 #            launcher/ (Tauri; needs Node 20+ and Rust) -> build/launcher/
 #            Resistance Launcher.app. CARGO_TARGET_DIR is honoured.
 #
 # Everything it writes (game/, analysis/, recompiled/, build/, out/,
-# port/spu/captured/) is game-derived and .gitignore'd.
+# port/spu/captured/, port/spu_v17/) is game-derived and .gitignore'd.
 # Environment: PS3_VFS_ROOT (the mounted disc), PS3RECOMP_DIR, PY, RPCS3, JOBS.
 set -e
 here=${0:A:h}; source "$here/env.sh"
@@ -66,10 +72,10 @@ decrypt_one() {   # <disc file> <dest dir> <name.elf> <expected sha>
     fi
 }
 
-configure_build() {   # <build dir> <recompiled dir>
+configure_build() {   # <build dir> <recompiled dir> [SPU dir]
     local bp=${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null)}
     cmake -S "$RES_ROOT/port" -B "$1" -G Ninja \
-          -DPS3RECOMP_DIR="$TK" -DRECOMP_DIR="$2" -DSPU_DIR="$RES_ROOT/port/spu" \
+          -DPS3RECOMP_DIR="$TK" -DRECOMP_DIR="$2" -DSPU_DIR="${3:-$RES_ROOT/port/spu}" \
           -DPS3RECOMP_FFMPEG_RUNTIME=ON -DPS3RECOMP_FFMPEG_INCLUDE_DIR="${bp:-/opt/homebrew}/include"
     cmake --build "$1" "${jobs[@]}"
 }
@@ -105,7 +111,14 @@ for s in $steps; do
     build)
         say "build"
         configure_build "$RES_BUILD/BCUS98107" "$RC"
-        configure_build "$RES_BUILD/BCUS98107_game" "$RC/game_module" ;;
+        configure_build "$RES_BUILD/BCUS98107_game" "$RC/game_module"
+        if [ -f "$RC/game_module_v17/ppu_recomp.h" ] && [ -f "$RES_ROOT/port/spu_v17/spu_workloads.c" ]; then
+            echo "  the v1.7 campaign (build/BCUS98107_game_v17)"
+            configure_build "$RES_BUILD/BCUS98107_game_v17" "$RC/game_module_v17" "$RES_ROOT/port/spu_v17"
+        fi ;;
+    v17)
+        say "v17 (the update's game.self: extract, decrypt, analyse, lift, spu, build)"
+        PS3RECOMP_DIR=$TK "$here/v17/regen_v17.sh" ;;
     launcher)
         say "launcher (the desktop app)"
         command -v npm >/dev/null || { echo "npm not found: install Node 20+ (brew install node)" >&2; exit 1; }
@@ -117,7 +130,7 @@ for s in $steps; do
         cp -R "$tgt/release/bundle/macos/Resistance Launcher.app" "$RES_BUILD/launcher/"
         echo "$RES_BUILD/launcher/Resistance Launcher.app" ;;
     *)
-        echo "unknown step '$s' (toolkit decrypt analyse lift spu build launcher)" >&2; exit 2 ;;
+        echo "unknown step '$s' (toolkit decrypt analyse lift spu build v17 launcher)" >&2; exit 2 ;;
     esac
 done
 say "done"

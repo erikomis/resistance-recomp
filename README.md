@@ -14,7 +14,8 @@ plays the level-1 intro movie and loads "The Gauntlet" (York). In a window,
 with a DualSense, York plays in first person with the HUD: enemies and allies,
 shooting, dying and respawning from the checkpoint. The town renders with its
 proper colours at about 30 fps, in one window from the menus through the
-campaign (see [Status](#status)).
+campaign. The campaign is the game's last update, v1.7, re-lifted from its
+`patch_06`; the menus stay the disc's 01.00 (see [Status](#status)).
 
 Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), following the
 author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
@@ -34,11 +35,11 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 ## Status
 
-As of 2026-10-22 (respawn fixed, one persistent window, gameplay at ~30 fps), every item verified in runs on an Apple-silicon Mac with Metal.
+As of 2026-10-22 (the v1.7 campaign, the launcher app, shadows and smoke fixed), every item verified in runs on an Apple-silicon Mac with Metal.
 
 | | |
 | --- | --- |
-| Both executables lifted to C++ and built (`EBOOT.BIN`: 25,022 functions; `game.self`: 18,994) | ✅ |
+| Both executables lifted to C++ and built (`EBOOT.BIN`: 25,022 functions; `game.self`: 18,994), and the v1.7 update's `game.self` (19,706 lifted functions, 19,219 for 01.00's) | ✅ |
 | Boot, legal screens | ✅ (text from an earlier legal screen overlaps the next one) |
 | First-run "initial setup" HDD install (writes the `*.done` cache files) | ✅ |
 | Title screen, main menu (Campaign / Cooperative / Multiplayer / Options) | ✅ |
@@ -51,14 +52,15 @@ As of 2026-10-22 (respawn fixed, one persistent window, gameplay at ~30 fps), ev
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
 | Frame rate | ✅ ~30 fps in gameplay: 32.5 fps with the inFAMOUS 2 performance stack vs 6.0 fps with its knobs off (A/B, same build, first 60 s of gameplay); 30.5 fps in the town with every fix in, the respawn fix included |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
-| Shadows and smoke | 🚧 dark rectangles on the ground; the shadow depth comparison ran in the wrong direction and depth textures now feed every lane (soft particles, smoke); both fixed after a comparison with RPCS3, the in-game check is pending |
+| Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names |
 | Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths |
-| Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's "guest FPS" still reads 0 |
+| Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's guest FPS counts the game's flips |
 | SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
 | After the intro movie | ✅ the old intermittent hang is fixed (shared callback stack) |
-| Controller | ✅ DualSense, DualShock or Xbox through SDL2 (input with the game process in the background is enabled for the launcher; not yet tested with a physical controller that way); no rumble yet |
+| Controller | ✅ DualSense, DualShock or Xbox through SDL2 (input with the game process in the background is enabled for the launcher; not yet tested with a physical controller that way); rumble not verified yet |
 | Keyboard and mouse | ⏳ not on macOS (the toolkit's keyboard fallback is Windows-only): a controller is required |
-| Game update v1.7 | 🚧 in progress: re-lifting the patched `game.self` from `patch_06` and wiring the 01.00 EBOOT's patch loader; today the port runs the disc's 01.00 (see [ROADMAP.md](ROADMAP.md)) |
+| Game update v1.7 | ✅ the campaign runs the update's `game.self`, re-lifted from `patch_06`: menus → New campaign → the York intro, gameplay and respawn verified; the menus stay the disc's 01.00 EBOOT (see [The v1.7 campaign](#the-v17-campaign)); rumble with a physical controller, a long session and a v1.7 fps measurement not verified yet |
+| Launcher app | ✅ [`launcher/`](launcher/) (Tauri): disc, builds, rebuild, settings, saves, Play/Stop, in English and Brazilian Portuguese |
 | Linux and Windows | ⏳ not supported |
 | Online multiplayer | ❌ out of scope (the official servers are gone) |
 
@@ -124,6 +126,11 @@ The fixes that got it this far:
   pid and attaches again. Closing the window ends the game; if the launcher
   dies the game exits within ~2 s; without the launcher the backend opens its
   own window as before.
+- **The v1.7 campaign:** the update's `patch_06` carries a new `game.self`.
+  It is lifted like the disc's and built as `build/BCUS98107_game_v17`; at
+  the exitspawn `port/stubs.cpp` runs it instead of the 01.00 build when it
+  and its ELF exist. 13 of the 15 WWS job modules and both raw-SPU programs
+  changed and are lifted from the v1.7 ELF; the policy module is the same.
 
 The toolkit changes are one patch over ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -134,8 +141,10 @@ direction, depth snapshots cropped and released, depth replicated to every
 lane, compressed textures never resolved from render targets, PPU threads
 starting with VSCR[NJ]=1, no `getenv` on every SPU MFC channel write), the
 raw-SPU stop and restart through `SPU_RunCntl`, the shared-IOSurface window
-(`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`), the
-window-state hand-off across exitspawn, and diagnostics (`VDEC_PICLOG`,
+(`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; the
+host reaps the game with a blocking `waitpid`, so it exits when the game
+does, which the launcher's Stop relies on; the title's guest FPS counts each
+flip), the window-state hand-off across exitspawn, and diagnostics (`VDEC_PICLOG`,
 `PPU_STACKINFO_LOG`, `SPURS_PM_R4_WORD0`, `SPURS_PM_TRACE`,
 `RSX_ENGINE_PASS_DUMP_TRIGGER`, `RSX_ENGINE_PASS_DUMP_DRAWS`, `RSX_VPC_LOG`,
 `PAD_FILE` stick commands, a fuller `AddWorkload` log line).
@@ -178,13 +187,16 @@ PY=.venv/bin/python PS3_VFS_ROOT=/Volumes/<your disc> tools/rebuild.sh
 | `lift` | the toolkit's `ppu_lifter.py`, 16 chunks for the EBOOT and 12 for `game.self` | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: the job-manager policy module, extracted from your EBOOT, wrapped and lifted | `port/spu/captured/` |
 | `build` | CMake + Ninja, Metal, FFmpeg runtime; also the `Resistance` window launcher | `build/BCUS98107/ResistanceRecomp`, `build/BCUS98107_game/ResistanceRecomp`, `build/BCUS98107/Resistance` |
+| `v17` | only when named: the v1.7 campaign from your `patch_06.psarc` (`tools/v17/regen_v17.sh`, see [The v1.7 campaign](#the-v17-campaign)); `build` also rebuilds it once it is lifted | `game/BCUS98107/modules_v17/`, `recompiled/BCUS98107/game_module_v17/`, `port/spu_v17/`, `build/BCUS98107_game_v17/` |
 | `launcher` | only when named: the desktop [launcher](#launcher) app (`npm ci`, `tauri build`; Node 20+ and Rust) | `build/launcher/Resistance Launcher.app` |
 
 Everything in that last column is generated from your copy and is
 `.gitignore`d. Keep the layout: when the EBOOT hands off to the campaign,
 `port/stubs.cpp` runs `build/BCUS98107_game/ResistanceRecomp` with
-`game/BCUS98107/modules/game.elf` next to the EBOOT build
-(`RES_SPAWN_BIN` / `RES_SPAWN_ELF` override that).
+`game/BCUS98107/modules/game.elf` next to the EBOOT build, or
+`build/BCUS98107_game_v17/ResistanceRecomp` with
+`game/BCUS98107/modules_v17/game.elf` when both exist (`RES_GAME_VERSION=100`
+keeps 01.00; `RES_SPAWN_BIN` / `RES_SPAWN_ELF` override all of that).
 
 The executable was called `MyGameRecomp` until 2026-10-22, and builds made
 before then were compiled unoptimised: rebuild. `tools/setup_toolkit.sh` never
@@ -227,6 +239,49 @@ lifted C is translated game code and stays out of git.
 `port/spu/spu_workloads.c` registers the lifted entry
 (`resistance_spu_spu_func_00000A00`) under that fingerprint as SPU image 1.
 
+#### The v1.7 campaign
+
+The game's last update, v1.7, is seven archives, `patch_01`…`patch_07.psarc`;
+`patch_06` carries a new campaign executable (`/data/new_game.self`). The
+port runs it. Its decrypted ELF (SHA-256 `e1d75e6d4afe…144f`, RPCS3's
+"game.self Updated", PPU-a08a187d…) is lifted like the disc's (19,706
+functions against 19,219), and 13 of the 15 WWS job modules and both raw-SPU
+programs changed and are lifted from it (new fingerprints `6D03497950639952`
+and `47C9CB480016D493`; the policy module is byte-identical). It imports
+`cellSaveDataAutoSave2`/`AutoLoad2`, `_sys_process_atexitspawn` and
+`cellPadSetActDirect` (rumble), which 01.00 does not.
+
+The patch files are the game's official free updates and are not in this
+repository. If you own the game, [PSRewired](https://psrewired.com) lets it
+download its own update in RPCS3; copy `patch_01`…`patch_07.psarc` from
+RPCS3's `dev_hdd0/game/BCUS98107/USRDIR/data` to `update/` in this checkout
+(or point `RES_UPDATE_DIR` at them), then:
+
+```sh
+tools/rebuild.sh v17                                  # tools/v17/regen_v17.sh
+SPU_RAW_DUMP_DIR=$PWD/out/rawspu_v17 tools/play.sh    # once: new campaign, let the intro movie end, close the window
+tools/v17/regen_v17.sh spu build                      # lifts the two raw-SPU programs just captured
+```
+
+`regen_v17.sh` extracts `new_game.self` from `patch_06`
+(`tools/v17/psarc_extract.py`), decrypts it with `rpcs3 --decrypt` into
+`game/BCUS98107/modules_v17/game.elf` (checking the SHA-256), lifts it to
+`recompiled/BCUS98107/game_module_v17/`, lifts its SPU code into
+`port/spu_v17/` (the policy module is copied from `port/spu/captured/`, so
+run the `spu` step first) and builds `build/BCUS98107_game_v17/`. The raw-SPU
+programs are captured from one run, as for 01.00; until they are lifted the
+v1.7 campaign stops after the intro movie.
+
+The menus stay 01.00. The update's `EBOOT.BIN` is only available in NPDRM
+(digital-edition) form, and the disc's 01.00 EBOOT cannot run with the
+update's data mounted (with `patch_04` or `patch_06` it crashes loading the
+menu fonts; with the others it hangs at the exitspawn). So **do not install
+the patch files in the play folder**: `tools/play.sh` and the launcher refuse
+to start while a `patch_NN.bin` is in its `USRDIR/data`. The campaign does
+not need them: they hold front-end and multiplayer data, and `game.self`
+never mounts the patch archives. At the exitspawn the log says
+`campaign = v1.7 game.self`; `RES_GAME_VERSION=100` plays the 01.00 campaign.
+
 ## Playing
 
 Mount your disc image, plug in or pair a controller (DualSense, DualShock or
@@ -238,7 +293,11 @@ tools/play.sh
 
 It starts the front end in a window owned by the `Resistance` launcher
 (`play.sh` builds it in seconds if a build from before it lacks it); starting
-a campaign hands off to the `game.self` build in the same window. On the **first boot press START
+a campaign hands off to the `game.self` build in the same window. `play.sh`
+says which campaign that is: v1.7 when it is built (and it builds it when the
+v1.7 code is lifted but not compiled), else 01.00 (see
+[The v1.7 campaign](#the-v17-campaign)). It refuses to start while the v1.7
+update's `patch_NN.bin` files are in the play folder. On the **first boot press START
 twice**: on the legal screen, then on the "initial setup" prompt (the HDD
 install, done once). Saves, the install cache and the log (`last.log`) are
 kept in `~/Library/Application Support/resistance-recomp/` (`RES_DATA`
@@ -254,7 +313,8 @@ launcher: it finds your builds and your disc, mounts the disc image for you
 (`hdiutil`, read-only) and remembers it, keeps the settings, and **Play**
 starts the `Resistance` window host with the EBOOT build, the play folder
 (`PS3_HDD0_ROOT`/`PS3_HDD1_ROOT`, `last.log`), FFmpeg and `caffeinate`, as
-`play.sh` does. It ships nothing from the game: the cover on its home screen
+`play.sh` does. **Stop** ends the game and its window (the window host now
+exits when the game does). It ships nothing from the game: the cover on its home screen
 is read from your mounted disc.
 
 - **Home**: Play/Stop, what still blocks Play (no build, no disc, the v1.7
@@ -348,6 +408,8 @@ its own window).
 | `PS3_FRAMECLOCK_US=<µs>` | the host frame loop's tick (default 1000; 4000 is the old pacing) |
 | `SPURS_PM_TRACE=1` | log the job manager's policy-module polls (`[spurs-pm]`; off by default, it costs frame rate) |
 | `PS3_TITLE` | window title |
+| `RES_GAME_VERSION=100` | the 01.00 campaign even when the v1.7 build is there |
+| `RES_UPDATE_DIR=<dir>` | where `tools/v17/regen_v17.sh` finds `patch_06.psarc` (default `update/`) |
 | `RES_SPAWN_BIN`, `RES_SPAWN_ELF` | the build and ELF the exitspawn hand-off runs (default: the sibling build directory and `game/BCUS98107/…`) |
 | `PS3RECOMP_HOST_SURFACES` | set by the `Resistance` launcher: the Mach bootstrap name of the shared window surfaces; not meant to be set by hand |
 | `PS3RECOMP_WINDOW_STATE` | set by the port across exitspawn so the next window opens where the last one was; not meant to be set by hand |
@@ -360,9 +422,9 @@ its own window).
 
 | Path | What it is |
 | --- | --- |
-| [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn and the window-state hand-off, `RES_PEEK`), `CMakeLists.txt` (with the `Resistance` launcher target), `config.toml`, `spu/spu_workloads.c` (SPU registration) |
+| [`port/`](port/) | The port: `main.cpp` (boot, guest thread, exitspawn data block), `stubs.cpp` (exitspawn and the window-state hand-off, `RES_PEEK`), `CMakeLists.txt` (with the `Resistance` launcher target), `config.toml`, `spu/spu_workloads.c` (SPU registration); `spu_v17/` is generated by `tools/v17/regen_v17.sh` |
 | [`patches/`](patches/) | The toolkit patch over ps3recomp v0.17.0 |
-| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` and the run scripts |
+| [`tools/`](tools/) | `setup_toolkit.sh`, `rebuild.sh`, `regen_spu_pm.sh`, `extract_pm.py`, `play.sh` and the run scripts; `v17/` (the v1.7 campaign: `regen_v17.sh`, `psarc_extract.py`, `spu_workloads.c`) |
 | [`launcher/`](launcher/) | The desktop launcher (Tauri): settings, disc, saves, rebuild and Play |
 | [`ROADMAP.md`](ROADMAP.md) | Status and next steps |
 

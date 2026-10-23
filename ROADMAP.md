@@ -2,19 +2,23 @@
 
 🌐 **English** · [Português (BR)](ROADMAP.pt-BR.md)
 
-Status of the native Resistance: Fall of Man (`BCUS98107`, disc, v01.00) port
-to macOS/arm64 and what comes next. Same layout as the inFAMOUS 2 roadmap.
+Status of the native Resistance: Fall of Man (`BCUS98107`, disc v01.00,
+campaign from the v1.7 update) port to macOS/arm64 and what comes next.
+Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
 ## Status at a glance (2026-10-22)
 
 - **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
+- **v1.7 campaign:** the campaign is the game's last update. Its `game.self` (from `patch_06`) is re-lifted and runs from the 01.00 menus: New campaign → York intro, gameplay and respawn verified. The menus stay 01.00.
 - **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning on the ground at the checkpoint (the respawn bug is fixed). The town renders with its proper colours (the blue world is fixed).
 - **One window:** the `Resistance` launcher owns the window and the game draws into it through shared IOSurfaces; the same window stays up from the menus through the campaign intro (~33 fps).
+- **Launcher app:** `launcher/` (Tauri) finds the builds and the disc, rebuilds, keeps the settings and the saves, and plays and stops the game.
+- **Shadows and smoke:** the dark rectangles on the ground and the hard-edged smoke are gone in game.
 - **Faster:** ~30 fps in gameplay. The inFAMOUS 2 performance stack gives 32.5 fps vs 6.0 fps with its knobs off (A/B, same build, first 60 s of gameplay); 30.5 fps in the town with every fix in, the respawn fix included.
 - **Released:** nothing yet.
-- **Open:** dark rectangles on the ground (shadows) and the smoke, to check in game after the RPCS3-comparison fixes; text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); no rumble; the launcher's window title shows "guest FPS" 0; no Windows or Linux.
-- **Next:** the in-game check of shadows, ground rectangles and smoke; the v1.7 port (in progress); a physical controller with the launcher; DualShock rumble; keyboard and mouse on macOS; the legal-screen text overlap; the guest-FPS title nit.
+- **Open:** the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); text from earlier legal screens overlaps later ones; keyboard and mouse do not work on macOS (a controller is required); rumble not tested; no Windows or Linux.
+- **Next:** rumble with a physical controller; a physical controller with the launcher; a v1.7 fps measurement and a long session; keyboard and mouse on macOS; the legal-screen text overlap.
 
 ## Current state (2026-10-22)
 
@@ -83,7 +87,44 @@ What got it this far:
   is passed in `PS3RECOMP_HOST_SURFACES`) and has no window or Dock icon of
   its own. The window stays up across the EBOOT → `game.self` exitspawn
   (`execv` keeps the pid and the new image reconnects). ~0.35 ms of GPU per
-  frame, no CPU copy, no measurable added latency.
+  frame, no CPU copy, no measurable added latency. The host reaps the game
+  with a blocking `waitpid`: a non-blocking reap could run a moment before
+  the game was reapable, and the host then stayed up with its window open
+  after the game had gone (the launcher's Stop hit it). Now a SIGTERM to the
+  process group closes both in ~3 s. The title's guest FPS counts each flip
+  (it read 0).
+- **The v1.7 campaign:** the game's last update is seven archives,
+  `patch_01`…`patch_07.psarc`; `patch_06` carries a new `game.self`
+  (`/data/new_game.self`; the decrypted ELF's SHA-256 is
+  `e1d75e6d4afe…144f`, RPCS3's "game.self Updated", PPU-a08a187d…). It is
+  re-lifted (19,706 functions against 19,219 for 01.00) and built as
+  `build/BCUS98107_game_v17`; 13 of the 15 WWS job modules and both raw-SPU
+  programs changed and are re-lifted (new fingerprints `6D03497950639952` and
+  `47C9CB480016D493`; the policy module is byte-identical). New imports:
+  `cellSaveDataAutoSave2`/`AutoLoad2`, `_sys_process_atexitspawn`,
+  `cellPadSetActDirect` (rumble). At the exitspawn `port/stubs.cpp` runs the
+  v1.7 build when it and its ELF exist (`RES_GAME_VERSION=100` keeps 01.00).
+  `tools/v17/regen_v17.sh` (`tools/rebuild.sh v17`) extracts `patch_06`,
+  decrypts `new_game.self` with `rpcs3 --decrypt`, lifts it, lifts the SPU
+  programs (the raw-SPU ones after one capture run) and builds. Verified:
+  menus (01.00 EBOOT) → New campaign → the log says
+  `campaign = v1.7 game.self` → the York intro, "The Gauntlet"; gameplay and
+  respawn work with the `SPU_RunCntl` fix.
+- **Menus stay 01.00:** the update's `EBOOT.BIN` is only available in NPDRM
+  (digital-edition) form. The disc's 01.00 EBOOT cannot run with the v1.7
+  patch data mounted (`patch_04`/`patch_06`: it crashes loading the menu
+  fonts; 1/2/3/5/7: it hangs at the exitspawn), so the patch files must not
+  be in the play folder; `tools/play.sh` and the launcher refuse to start
+  while a `patch_NN.bin` is there. The campaign does not need them: the
+  patch data is front-end and multiplayer data, and `game.self` never mounts
+  the patch archives. The patch files are the game's official free updates;
+  players keep their own (PSRewired, psrewired.com, lets owners have the game
+  download its update in RPCS3).
+- **Shadows and smoke:** the dark rectangles on the ground and the
+  hard-edged smoke are gone in game (checked visually) after the depth fixes
+  from the RPCS3 comparison: the shadow comparison runs stored depth OP
+  reference, depth textures replicate depth to every lane, and depth
+  snapshots are cropped to the region the texture names.
 
 ---
 
@@ -94,7 +135,7 @@ What got it this far:
 - [x] **SPU jobs time out in gameplay.** Fixed 2026-10-22: the 15 WWS job modules lifted, SPURS kernel-style selection and atomic SPU events (see "Gameplay" under Done). The job manager loads job code into LS (around 0x7C00–0x14000 in its image) and the interpreter runs it at about 8–9 M steps/s. The jobs the first frame needs miss the game's 2 s timeouts. Capture each job's code as it is DMA'd in, lift it (inFAMOUS 2's `lift_spu_jobs.sh` / `relift_jobmod.py` are the model) and register it.
 - [x] **Hang after the intro movie (intermittent).** Fixed 2026-10-22: a shared HLE→guest callback stack (see "Gameplay" under Done). A movie-player thread (`func_005F0360 → … → func_005EEFE4`) stays in `sys_mutex_lock`, so the player never reports done and the main thread stays in its load loop (`func_00044DE0`, state 2). `MUTEX_WATCH=2` keeps the lock blocking and reports waiters older than 5 s with the mutex owner; so far the hang has not reproduced under any watch mode. The fair-share mutex policy on macOS did not fix it.
 - [x] **The player respawns above the map.** Fixed 2026-10-22: a raw-SPU stop and restart the runtime dropped (see "Current state"). After dying the checkpoint reload sent the player straight up into the sky (draw count ~30–40: sky, far terrain and water); the save was fine. In a test with 12 deaths and respawns the camera always came back to the first life's position (0 of 666 camera samples out of range, 193 of 292 before); a separate run confirmed it (back on the ground at the same spot, then walking normally).
-- [ ] **Dark rectangles on the ground (shadows) and the smoke** (next). The texture shadow comparison was in ARB order; the console and RPCS3 compare stored depth OP reference (RPCS3 issue #19391 shows the same rectangles). Fixed with the other RPCS3-comparison fixes (depth textures replicate depth to every lane, for soft particles and smoke); all video tests pass, the in-game check is pending.
+- [x] **Dark rectangles on the ground (shadows) and the smoke.** Fixed 2026-10-22, gone in game (checked visually). The texture shadow comparison was in ARB order; the console and RPCS3 compare stored depth OP reference (RPCS3 issue #19391 shows the same rectangles). Fixed with the other RPCS3-comparison fixes (depth textures replicate depth to every lane, for soft particles and smoke; depth snapshots cropped to the texture's region).
 - [x] **Frame rate.** ~30 fps in gameplay (2026-10-22): 32.5 fps with the inFAMOUS 2 stack vs 6.0 fps with its knobs off; 30.5 fps in the town with every fix in.
 - [x] **Buildings and roofs render solid bright blue.** Fixed 2026-10-22: the 28-bit vertex offset wrap (see "Current state"); the town renders with its proper colours.
 - [ ] **Legal-screen text overlaps.** Text drawn on one legal screen is still there on the next.
@@ -146,29 +187,32 @@ What got it this far:
 - [x] The cross-frame vertex cache from the inFAMOUS 2 port: 5.9 → 14 fps (2026-10-22; `PS3RECOMP_ENG_VCACHE=0` turns it off).
 - [x] Optimised builds: runtime -O2 and lifted PPU code -O1 in every configuration but Debug (it had been -O0) (2026-10-22).
 - [x] An fps A/B of the inFAMOUS 2 performance stack: 32.5 fps on vs 6.0 fps with its knobs off (`PS3RECOMP_ENG_VCACHE_SPLIT=0`, `PS3RECOMP_METAL_BIND_ALL=1`, `PS3_FRAMECLOCK_US=4000`), same build, first 60 s of gameplay (2026-10-22).
+- [ ] A proper fps measurement of the v1.7 campaign (same A/B as 01.00).
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
 
-- [ ] Long windowed sessions without hangs; a `watch_stall.sh`-style hang report.
+- [ ] Long windowed sessions without hangs (the v1.7 campaign included); a `watch_stall.sh`-style hang report.
 
 ### Controls
 
 - [ ] Keyboard and mouse on macOS (the toolkit's keyboard fallback in `cellPad` is Windows-only), configurable mapping (`PS3_INPUT_MAP`).
 - [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
 - [ ] A physical controller with the launcher: the game process is in the background, so `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` is set; not tested with a controller yet.
-- [ ] Rumble (DualShock 3; the v1.7 update added it, also in the campaign).
+- [ ] Rumble with a physical controller: the v1.7 `game.self` calls `cellPadSetActDirect`; not tested yet.
 - [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode`; find what it uses motion for and map it to a button.
 
 ### Game update (v1.7)
 
 Sony's update server lists no packages for any Resistance title ID: the game patched itself through its multiplayer servers (shut down 2014-04-08). The last version is v1.7 (Patch 7), `patch_01`…`patch_07.psarc` in `USRDIR/data`; `patch_06` carries a new `game.self` (`/data/new_game.self`, ~8.7 MB), new collision data for levels 200–320, menus, fonts, translations, rumble and map-pack support. The patch notes are almost all multiplayer. The PSRewired revival server (psrewired.com) serves Resistance online and, per the RPCS3 wiki, the v1.7 update.
 
-Decided 2026-10-22: the port moves to v1.7 (in progress).
+Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 
-- [ ] Re-lift the patched `game.self` from `patch_06` (in progress).
-- [ ] Wire the 01.00 EBOOT's patch loader (in progress).
-- [ ] Revalidate the address-specific code and get back to playable.
+- [x] Re-lift the patched `game.self` from `patch_06` (19,706 functions), its 13 changed job modules and both raw-SPU programs; `tools/v17/regen_v17.sh`.
+- [x] Run it from the 01.00 menus: the exitspawn picks the v1.7 build; New campaign → York intro, gameplay and respawn verified.
+- [x] Keep the patch files out of the play folder (the 01.00 EBOOT cannot run with them): `tools/play.sh` and the launcher refuse to start.
+- [ ] v1.7 menus: they need a non-NPDRM v1.7 `EBOOT.BIN`, which does not seem to exist (the update's EBOOT is NPDRM only); likely impossible.
+- [ ] Rumble, a long session and an fps measurement on v1.7 (see Controls, Stability, Performance).
 
 ### Rebuild
 
@@ -189,8 +233,9 @@ Decided 2026-10-22: the port moves to v1.7 (in progress).
 
 - [x] The window keeps its position, size and fullscreen across the menu → campaign exitspawn (`PS3RECOMP_WINDOW_STATE`, 2026-10-22).
 - [x] One persistent window (2026-10-22): the `Resistance` launcher (`tools/host_window/host_window.m`) owns the window and the menu and campaign executables draw into IOSurfaces shared with it; no window or Dock icon of the game's own. Closing the window ends the game; if the launcher dies the game exits within ~2 s; without it the backend opens its own window. Verified from the menus through the campaign intro at ~33 fps.
-- [ ] The window title's "guest FPS" reads 0 with the launcher.
-- [ ] The inFAMOUS 2 launcher (Tauri) adapted: install/rebuild from the disc image, settings, controls, saves, report a problem, updates.
+- [x] The window title's guest FPS counts each flip (it read 0 with the window host) (2026-10-22).
+- [x] The launcher app (`launcher/`, Tauri, 2026-10-22): ISO pick and mount, play folder, port-folder detection, campaign version (v1.7/01.00), settings (graphics, performance, game), a saves manager (here and in RPCS3), the game log, debug mode, an updates check, a Desktop and Steam shortcut, English and Brazilian Portuguese. Stop works: the window host now exits when the game does.
+- [ ] A physical controller with the launcher (see Controls).
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
 
 ### Other platforms
@@ -252,6 +297,15 @@ Decided 2026-10-22: the port moves to v1.7 (in progress).
 - [x] Respawn fixed: `SPU_RunCntl`=0 really stops a raw SPU and `SPU_RunCntl`=1 starts it fresh (modelled on RPCS3's `RawSPUThread.cpp`); 12 deaths in a test, the camera back at the first life's position every time.
 - [x] One persistent window through the `Resistance` launcher and shared IOSurfaces (~0.35 ms GPU per frame, no CPU copy); the window survives the exitspawn.
 
+### The v1.7 campaign and the launcher (2026-10-22)
+
+- [x] The v1.7 `game.self` (`patch_06` `/data/new_game.self`) re-lifted and built as `build/BCUS98107_game_v17`; 13 of the 15 job modules and both raw-SPU programs re-lifted (`6D03497950639952`, `47C9CB480016D493`); the policy module unchanged.
+- [x] The exitspawn runs the v1.7 build when it and its ELF exist (`RES_GAME_VERSION=100` keeps 01.00); menus → New campaign → York intro, gameplay and respawn verified.
+- [x] `tools/v17/regen_v17.sh` (`tools/rebuild.sh v17`), `tools/v17/psarc_extract.py`; `tools/play.sh` says which campaign runs and refuses to start with the update's `patch_NN.bin` in the play folder.
+- [x] Shadows and smoke fixed in game (checked visually).
+- [x] The launcher app (`launcher/`), with a working Stop (the window host reaps the game reliably).
+- [x] The title's guest FPS counts each flip.
+
 ### Tools
 
 - [x] `RES_PEEK` (guest memory peeks from `port/stubs.cpp`), `MUTEX_WATCH=1|2`, `VDEC_PICLOG`, `PPU_STACKINFO_LOG`, `SPU_RAW_DUMP_DIR`.
@@ -279,4 +333,10 @@ Pull requests to [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp), 
 - [ ] [#491](https://github.com/sp00nznet/ps3recomp/pull/491) `SPU_IRQWAIT_DIAG` diagnostic.
 - [ ] [#492](https://github.com/sp00nznet/ps3recomp/pull/492) Atomic SPU event updates (the first gameplay frame).
 - [x] [#493](https://github.com/sp00nznet/ps3recomp/pull/493) SPURS kernel-style selection: closed; it stays in this repository's toolkit patch.
+- [ ] [#504](https://github.com/sp00nznet/ps3recomp/pull/504) Vertex array addresses wrap at 28 bits (the blue world).
+- [ ] [#505](https://github.com/sp00nznet/ps3recomp/pull/505) `SPU_RunCntl`=0 stops a running raw SPU (the respawn; stacked on #473).
+- [ ] [#506](https://github.com/sp00nznet/ps3recomp/pull/506) Optimise a build configured without `CMAKE_BUILD_TYPE`.
+- [ ] [#507](https://github.com/sp00nznet/ps3recomp/pull/507) A depth snapshot is the region the texture names (stacked on #502).
+- [ ] [#508](https://github.com/sp00nznet/ps3recomp/pull/508) A compressed texture is never a render target's output.
+- [ ] [#509](https://github.com/sp00nznet/ps3recomp/pull/509) macOS: one window across an exitspawn (`tools/host_window`, Metal host-surface mode).
 - [x] Its own repository (`resistance-recomp`): port sources, a toolkit patch, `tools/setup_toolkit.sh`, README, credits, and a `.gitignore` that blocks game data, firmware and saves.

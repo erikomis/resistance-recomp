@@ -33,6 +33,9 @@
 *.sdat
 *.SDAT
 
+# The v1.7 update's archives (tools/v17/regen_v17.sh reads them from here)
+/update/
+
 # Decrypted game files, captured modules, analysis and lifted output
 game/
 modules/
@@ -49,6 +52,8 @@ port/spu/*/spu_recomp.c
 port/spu/*/spu_recomp.h
 port/spu/jobmods_register.c
 port/spu/jobmods_manifest.json
+# The v1.7 campaign's SPU code (tools/v17/regen_v17.sh), all of it lifted
+port/spu_v17/
 port/recompiled/
 
 # Firmware and keys

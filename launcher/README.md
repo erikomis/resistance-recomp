@@ -76,8 +76,8 @@ next time the game starts.
 - **Game / Jogo**: the disc (path, the image it is mounted from, mount,
   folder, find, eject, mount on Play); the **campaign version**: "v1.7 when
   built" (the exitspawn switches to `build/BCUS98107_game_v17` with
-  `game/BCUS98107/modules_v17/game.elf` when both exist; that switch is part
-  of the v1.7 work still in progress, see the roadmap) or "01.00"
+  `game/BCUS98107/modules_v17/game.elf` when both exist, made by
+  `tools/rebuild.sh v17`; the menus stay the disc's 01.00 EBOOT) or "01.00"
   (`RES_GAME_VERSION=100`), with whether the v1.7 build is there; the console language (`PS3_LANG`, empty = the Mac's);
   movies (`PS3RECOMP_FFMPEG=0` when off, and the `PS3RECOMP_FFMPEG_AVCODEC` /
   `_AVUTIL` paths, Homebrew's by default); the play folder (empty =

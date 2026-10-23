@@ -132,6 +132,25 @@ static const char* res_guest_str(uint32_t ea)
     return ea ? (const char*)(vm_base + ea) : "";
 }
 
+/* The v1.7 update. Its patch_06.psarc carries a new game.self
+ * (/data/new_game.self), the campaign executable of the game's last update;
+ * lifted and built (tools/v17/regen_v17.sh) it is build/BCUS98107_game_v17
+ * with game/BCUS98107/modules_v17/game.elf. On the console the update also
+ * installed a new EBOOT.BIN, which spawned it; that EBOOT is only available
+ * in NPDRM (digital-edition) form, so the 01.00 EBOOT (front end) runs and
+ * the switch is made here, at the spawn. game.self never mounts the patch
+ * archives itself (they hold the front end's and multiplayer's data), so it
+ * needs nothing but its build.
+ *
+ *   RES_GAME_VERSION=100  always the 01.00 game.self
+ *   anything else         the v1.7 game.self when its build and ELF exist,
+ *                         else the 01.00 one */
+static bool res_want_v17(void)
+{
+    const char* v = getenv("RES_GAME_VERSION");
+    return !(v && strcmp(v, "100") == 0);
+}
+
 static void hle_sys_game_process_exitspawn(ppu_context* ctx)
 {
     const uint32_t path_ea = (uint32_t)ctx->gpr[3];
@@ -186,8 +205,21 @@ static void hle_sys_game_process_exitspawn(ppu_context* ctx)
     const std::string base = path.substr(path.find_last_of('/') + 1);
     std::string bin, elf;
     if (base == "game.self") {
-        bin = build_root + "/BCUS98107_game/" + exe.substr(exe.find_last_of('/') + 1);
+        const std::string exe_name = exe.substr(exe.find_last_of('/') + 1);
+        bin = build_root + "/BCUS98107_game/" + exe_name;
         elf = repo + "/game/BCUS98107/modules/game.elf";
+        if (res_want_v17()) {
+            const std::string bin17 = build_root + "/BCUS98107_game_v17/" + exe_name;
+            const std::string elf17 = repo + "/game/BCUS98107/modules_v17/game.elf";
+            if (access(bin17.c_str(), X_OK) == 0 && access(elf17.c_str(), R_OK) == 0) {
+                bin = bin17;
+                elf = elf17;
+                fprintf(stderr, "[exitspawn] campaign = v1.7 game.self\n");
+            } else {
+                fprintf(stderr, "[exitspawn] no v1.7 build (%s, %s): campaign = 01.00 game.self\n",
+                        bin17.c_str(), elf17.c_str());
+            }
+        }
     } else if (base == "EBOOT.BIN") {
         bin = build_root + "/BCUS98107/" + exe.substr(exe.find_last_of('/') + 1);
         elf = repo + "/game/BCUS98107/EBOOT.elf";
