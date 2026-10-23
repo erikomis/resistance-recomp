@@ -380,40 +380,54 @@ fn drive_letter(root: &Path) -> Option<char> {
     ok.then(|| (b[0] as char).to_ascii_uppercase())
 }
 
-/// A PowerShell string literal.
-fn ps_quote(v: &str) -> String {
-    format!("'{}'", v.replace('\'', "''"))
+/// Mount-DiskImage the image in $env:RES_IMAGE (read only; reused when it is
+/// attached already) and print the drive letter it got. A fixed script: the
+/// path reaches PowerShell only through the environment, never as source.
+const PS_ATTACH: &str = "$ErrorActionPreference = 'Stop'
+$p = $env:RES_IMAGE
+$i = Get-DiskImage -ImagePath $p
+if (-not $i.Attached) { $i = Mount-DiskImage -ImagePath $p -Access ReadOnly -PassThru }
+$l = $null
+for ($n = 0; $n -lt 40 -and -not $l; $n++) {
+  $l = ($i | Get-Volume -ErrorAction SilentlyContinue).DriveLetter
+  if (-not $l) { Start-Sleep -Milliseconds 250; $i = Get-DiskImage -ImagePath $p }
+}
+Write-Output ([string]$l)";
+
+/// Dismount-DiskImage the image behind the drive letter in $env:RES_DRIVE.
+const PS_DETACH: &str = "$ErrorActionPreference = 'Stop'
+Get-Volume -DriveLetter $env:RES_DRIVE | Get-DiskImage | Dismount-DiskImage | Out-Null";
+
+/// -EncodedCommand's form of a script: base64 of its UTF-16LE text.
+fn ps_encoded(script: &str) -> String {
+    base64(&script.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<u8>>())
 }
 
-/// Run a PowerShell script (Windows) and return its output.
-fn powershell(script: &str) -> Result<String, String> {
+/// The PowerShell command line for a fixed `script` (-EncodedCommand, so no
+/// command-line quoting is involved), and the environment that carries its
+/// inputs (paths, drive letters) out of band.
+fn powershell_cmd(script: &'static str, inputs: &[(&str, &std::ffi::OsStr)]) -> Command {
     let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]).stdin(Stdio::null());
+    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &ps_encoded(script)]).stdin(Stdio::null());
+    for (k, v) in inputs {
+        cmd.env(k, v);
+    }
     no_console(&mut cmd);
-    let out = cmd.output().map_err(|e| format!("powershell: {e}"))?;
+    cmd
+}
+
+/// Run a fixed PowerShell script (Windows) and return its output.
+fn powershell(script: &'static str, inputs: &[(&str, &std::ffi::OsStr)]) -> Result<String, String> {
+    let out = powershell_cmd(script, inputs).output().map_err(|e| format!("powershell: {e}"))?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Windows: Mount-DiskImage the image (read-only; reused when it is attached
-/// already) and return the drive root it got.
+/// Windows: attach the image and return the drive root it got.
 fn attach_image_windows(image: &Path) -> Result<PathBuf, String> {
-    let script = format!(
-        "$ErrorActionPreference = 'Stop'\n\
-         $p = {}\n\
-         $i = Get-DiskImage -ImagePath $p\n\
-         if (-not $i.Attached) {{ $i = Mount-DiskImage -ImagePath $p -Access ReadOnly -PassThru }}\n\
-         $l = $null\n\
-         for ($n = 0; $n -lt 40 -and -not $l; $n++) {{\n\
-           $l = ($i | Get-Volume -ErrorAction SilentlyContinue).DriveLetter\n\
-           if (-not $l) {{ Start-Sleep -Milliseconds 250; $i = Get-DiskImage -ImagePath $p }}\n\
-         }}\n\
-         \"$l\"",
-        ps_quote(&s(image))
-    );
-    let out = powershell(&script).map_err(|e| format!("Mount-DiskImage: {e}"))?;
+    let out = powershell(PS_ATTACH, &[("RES_IMAGE", image.as_os_str())]).map_err(|e| format!("Mount-DiskImage: {e}"))?;
     let letter = out.lines().last().unwrap_or("").trim().chars().next().filter(char::is_ascii_alphabetic).ok_or_else(|| format!("{}: mounted, but Windows gave it no drive letter", image.display()))?;
     let root = PathBuf::from(format!("{letter}:\\"));
     disc_root_of(&root).ok_or_else(|| format!("{}: mounted as {letter}:, but it holds no PS3_GAME folder (not a PS3 disc image?)", image.display()))
@@ -421,7 +435,8 @@ fn attach_image_windows(image: &Path) -> Result<PathBuf, String> {
 
 /// Windows: Dismount-DiskImage the image behind a drive letter.
 fn detach_windows(letter: char) -> Result<(), String> {
-    powershell(&format!("$ErrorActionPreference = 'Stop'; Get-Volume -DriveLetter {letter} | Get-DiskImage | Dismount-DiskImage | Out-Null"))
+    let l = letter.to_string();
+    powershell(PS_DETACH, &[("RES_DRIVE", std::ffi::OsStr::new(&l))])
         .map(|_| ())
         .map_err(|e| format!("{letter}: is not a mounted disc image, or Windows could not eject it ({e})"))
 }
@@ -1899,7 +1914,13 @@ fn reveal_windows(p: &Path) -> Result<(), String> {
     if p.is_dir() {
         cmd.arg(p);
     } else if p.exists() {
-        cmd.raw_arg(format!("/select,\"{}\"", p.display()));
+        // raw: explorer parses /select, itself; a '"' (never in a Windows
+        // path) could not be quoted, so it is refused
+        let t = p.display().to_string();
+        if t.contains('"') {
+            return Err(format!("{t}: not a path"));
+        }
+        cmd.raw_arg(format!("/select,\"{t}\""));
     } else {
         cmd.arg(p.parent().unwrap_or(p));
     }
@@ -2546,7 +2567,22 @@ mod tests {
         assert_eq!(drive_letter(Path::new("F:/")), Some('F'));
         assert_eq!(drive_letter(Path::new("F:\\PS3_GAME")), None);
         assert_eq!(drive_letter(Path::new("/Volumes/X")), None);
-        assert_eq!(ps_quote("C:\\a b\\it's.iso"), "'C:\\a b\\it''s.iso'");
+    }
+
+    #[test]
+    fn powershell_inputs_go_through_the_environment() {
+        // U+2019 is a single quote to PowerShell: a path must never be source
+        let image = "C:\\x\u{2019}; calc; \u{2019}'; calc; '.iso";
+        let cmd = powershell_cmd(PS_ATTACH, &[("RES_IMAGE", std::ffi::OsStr::new(image))]);
+        let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(args.last(), Some(&ps_encoded(PS_ATTACH)));
+        assert_eq!(ps_encoded("ab"), "YQBiAA==");
+        for a in &args {
+            assert!(!a.contains("calc") && !a.contains('\u{2019}'), "{a}");
+        }
+        let env: Vec<_> = cmd.get_envs().collect();
+        assert_eq!(env, vec![(std::ffi::OsStr::new("RES_IMAGE"), Some(std::ffi::OsStr::new(image)))]);
+        assert!(PS_ATTACH.contains("$env:RES_IMAGE") && PS_DETACH.contains("$env:RES_DRIVE"));
     }
 
     #[test]
