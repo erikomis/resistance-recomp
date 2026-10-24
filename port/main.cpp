@@ -161,6 +161,7 @@ static int g_rsx_ready = 0;
 /* patches.cpp: the optional game patches (RES_UNLOCK_FPS, RES_FOV,
  * RES_MENU_60FPS), applied to the loaded ELF before the guest starts. */
 extern "C" void res_apply_patches(void);
+extern "C" double g_res_vblank_hz;   /* patches.cpp: the unlock-fps patch's vblank rate */
 
 /* ---------------------------------------------------------------------------
  * Frame clock
@@ -209,8 +210,9 @@ static DWORD WINAPI frame_clock(LPVOID)
     /* PS3_VBLANK_HZ=<hz> (10..1000): the vblank rate, which also bounds the
      * flip rate. Default one tick per 16 ms (62.5 Hz). */
     ULONGLONG vblank_us = 16000;
-    if (const char* e = getenv("PS3_VBLANK_HZ")) {
-        const double hz = atof(e);
+    const char* vhz = getenv("PS3_VBLANK_HZ");
+    if (vhz || g_res_vblank_hz > 0) {
+        const double hz = vhz ? atof(vhz) : g_res_vblank_hz;
         if (hz >= 10 && hz <= 1000) {
             vblank_us = (ULONGLONG)(1e6 / hz + 0.5);
             fprintf(stderr, "[rsx] vblank %.2f Hz (%llu us)\n", hz,

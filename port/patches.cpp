@@ -38,6 +38,9 @@ extern uint8_t* vm_base;
 /* Read by the lifted code at the patched instructions. */
 int g_res_unlock_fps = 0;
 int g_res_menu_60fps = 0;
+/* The vblank rate this process's patches want (0 = the frame clock's own
+ * default); PS3_VBLANK_HZ still wins. */
+double g_res_vblank_hz = 0.0;
 }
 
 namespace {
@@ -135,8 +138,11 @@ extern "C" void res_apply_patches(void)
              * to real time steps). Capping flips at 60 (PS3_FLIP_MAX_HZ=60)
              * measured lower, 50: the game waits for the previous flip before
              * its next frame, so a held flip adds to the frame time. Read by
-             * the frame clock after this; set PS3_VBLANK_HZ to override. */
-            setenv("PS3_VBLANK_HZ", "120", 0);
+             * the frame clock after this; set PS3_VBLANK_HZ to override. Not
+             * an environment variable: an exitspawn back to the menus would
+             * inherit it, and the EBOOT's fixed 1/60 timesteps would then run
+             * at double speed on 120 Hz ticks. */
+            g_res_vblank_hz = 120.0;
         }
         if (fov_s && *fov_s) {
             const float f = (float)atof(fov_s);
