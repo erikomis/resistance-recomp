@@ -13,8 +13,9 @@ title screen and the main menu to a new campaign. The campaign executable then
 plays the level-1 intro movie and loads "The Gauntlet" (York). In a window,
 with a DualSense, York plays in first person with the HUD: enemies and allies,
 shooting, dying and respawning from the checkpoint. The town renders with its
-proper colours at about 30 fps (about 56 fps with the optional 60 fps
-patch), in one window from the menus through the campaign. The campaign is the game's last update, v1.7, re-lifted from its
+proper colours at about 30 fps (about 88 fps in gameplay with the optional
+60 fps patch), in one window from the menus through the campaign; offline
+split-screen draws both players' views. The campaign is the game's last update, v1.7, re-lifted from its
 `patch_06`; the menus stay the disc's 01.00 (see [Status](#status)).
 
 Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), following the
@@ -51,15 +52,18 @@ built or played on Windows, so treat it as experimental and untested
 (SmartScreen may warn; "More info" > "Run anyway"). Details in
 [launcher/README.md](launcher/README.md#windows-preview).
 
-The latest release is **v0.2.0** (2026-10-23, a pre-release): the macOS
-launcher and the Windows preview with the settings added since v0.1.0
-(controls, window modes, filters, texture packs, 60 fps and field of view,
-audio). To build the launcher from the sources instead:
+The latest release is **v0.2.1** (2026-10-24, a pre-release): the macOS
+launcher and the Windows preview, and the toolkit patch with the 60 fps
+pacing (120 Hz vblank, ~88 fps in gameplay), the cooperative split-screen
+fix, the shadow-map pool fix on the ground and the offline and quit-time
+fixes. v0.2.0 (2026-10-23) added the controls, window modes, filters, texture
+packs, 60 fps and field of view and audio settings. To build the launcher
+from the sources instead:
 `tools/rebuild.sh launcher`.
 
 ## Status
 
-As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; then Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
+As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed; then the 60 fps pacing, the cooperative split-screen, the dark rectangles on the ground, the polygon offset and two hours of scripted play without a crash), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
 
 | | |
 | --- | --- |
@@ -75,13 +79,14 @@ As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fix
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
 | Frame rate | ✅ the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
-| 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` ~56 fps in the campaign (01.00 and v1.7, measured on an idle machine) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7), `PS3_VBLANK_HZ=120` ~100 fps; dying and respawning with the unlock on not exercised yet |
+| 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88.5 fps measured in gameplay (01.00 and v1.7; it was ~50–56 before the port ran the vblank at 120 Hz with it, 2026-10-24) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7); dying and respawning verified at 30 and 60 fps |
 | Audio | ✅ the macOS mixer keeps real time (it alternated between 2.4× and 0.95×; it now mixes one block per 5.333 ms on the clock and folds 7.1 to stereo without clipping); movie sound (see Movies); the menu music sometimes has extra centre/LFE content (+4–6 dB), which comes from the game's synth and varies from run to run; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` (also in the launcher) |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
-| Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names; distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps are now written back to guest memory) |
+| Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names; distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps are now written back to guest memory); 🧪 the dark hard-edged rectangles that came back on the ground once the draw engine's surface tables were full (the shadow-map pool) are fixed by evicting the least recently used surface, seen working in a play session's log, the scene still to be re-checked in a play test; the polygon offset is honoured (character shadow maps, terrain decals, projected shadows) |
 | Water, ground fog and smoke | ✅ the river level shows the dry creek bed with soft fog instead of a vertically streaked fake "reflection": the fragment shaders' `WPOS` ignored the window's bottom-left origin, so the fog and smoke shaders read the depth buffer upside down (verified on both campaigns) |
-| Foliage | ⚠️ dark speckles and black leaf edges; not yet confirmed whether the original looks the same |
-| Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths |
+| Foliage | ⚠️ dark speckles; it looks like the game's own content (grainy leaf alpha), not yet compared with RPCS3. The vertex position is now compiled invariant, so the depth pre-pass and the `EQUAL` colour pass agree |
+| Split-screen | ✅ offline split-screen (co-op and versus) draws both views: player 1's (left) half was black because a clear ignored the scissor and player 2's clear wiped it (2026-10-24) |
+| Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths, and at 30 and 60 fps |
 | Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's guest FPS counts the game's flips. A fullscreen window in its own Space stops presenting while another app is in front (that is macOS, not a freeze): the log says so ("window off screen", `hidden=1` in `[RSX FPS]`) and the newest frame is shown on return |
 | SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
 | After the intro movie | ✅ the old intermittent hang is fixed (shared callback stack) |
@@ -91,7 +96,8 @@ As of 2026-10-23 (60 fps and field-of-view options; the legal-screen overlap fix
 | Game update v1.7 | ✅ the campaign runs the update's `game.self`, re-lifted from `patch_06`: menus → New campaign → the York intro, gameplay and respawn verified; the menus stay the disc's 01.00 EBOOT (see [The v1.7 campaign](#the-v17-campaign)); rumble with a physical controller, a long session and a v1.7 fps measurement not verified yet |
 | Launcher app | ✅ [`launcher/`](launcher/) (Tauri): disc, builds, rebuild, settings, saves, Play/Stop, in English and Brazilian Portuguese; 🧪 the new Controls page (remapping, mouse, rumble) and Graphics settings (window, filters, texture packs) |
 | Linux and Windows | ⏳ not supported |
-| Online multiplayer | ❌ out of scope (the official servers are gone) |
+| Menus, saves and long sessions | ✅ over two hours of scripted play without a crash (2026-10-24): every EBOOT menu and extra, pause and options, Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle one; a full run has no unresolved NIDs (the one at quit was `cellSysconfAbort`) |
+| Online multiplayer | ❌ out of scope (the official servers are gone); Multiplayer → Online Game now backs out offline instead of hanging |
 
 Details and next steps in [ROADMAP.md](ROADMAP.md).
 
@@ -200,6 +206,33 @@ The fixes that got it this far:
   the programs that read it, and is part of their pipeline key. Swizzled
   (Morton-order) 16-bit depth shadow maps are written back to guest memory,
   so distant soldiers no longer stand on dark rectangles.
+- **The shadow-map pool** (2026-10-24): dark hard-edged rectangles on the
+  ground again. The draw engine's colour and depth surface tables (64 slots
+  each) never evicted anything, and Resistance packs its shadow maps into a
+  per-frame pool whose addresses shift; once the tables were full a new
+  shadow pass was dropped without a word and the receivers sampled an empty
+  map. The tables now evict the least recently used surface (the log says
+  "surface table full: … takes the slot of …").
+- **60 fps pacing** (2026-10-24): uncapped, the campaign flips on every
+  vblank tick it gets, and on the 62.5 Hz clock a 17 ms frame waited for the
+  tick after next (32 ms). With `RES_UNLOCK_FPS=1` the port runs the vblank at
+  120 Hz: 88.5 fps in gameplay (it was ~50–56), the game speed unchanged.
+  Capping the flips at 60 (`PS3_FLIP_MAX_HZ=60`) measured worse, 50 fps.
+- **Polygon offset and invariant positions** (2026-10-24): the polygon offset
+  the game uses on the character shadow maps, terrain decals and projected
+  shadows was ignored; the vertex position is now compiled `invariant`, which
+  the foliage's depth pre-pass and `EQUAL` colour pass rely on. Real ZPASS
+  occlusion counts are in but off (`PS3RECOMP_ENG_ZPASS=1`): they cost frame
+  rate at 60 fps and showed no visible gain.
+- **Split-screen** (2026-10-24): `CLEAR_SURFACE` ignored the scissor, so
+  player 2's clear wiped player 1's half of the screen. A clear with a scissor
+  narrower than the clip now clears only that rectangle (partial-clear passes
+  on Metal); one limited only by the clip stays whole.
+- **Offline and at quit** (2026-10-24): Multiplayer → Online Game hung
+  without a network; the network-start dialog now answers "cancelled" and the
+  NP ticket calls exist. The unknown NID called at quit (`0x76948BFC`) is
+  `cellSysconfAbort`; with it, `cellSysconfOpen` and the pad sensor-mode
+  calls, a full run has no unresolved NIDs.
 
 The toolkit changes are one patch over ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -211,7 +244,11 @@ lane, compressed textures never resolved from render targets, PPU threads
 starting with VSCR[NJ]=1, no `getenv` on every SPU MFC channel write), the
 raw-SPU stop and restart through `SPU_RunCntl` and the masked raw-SPU
 fingerprint, cellAdec's AC3 decode and the mixer's pacing, `WPOS` with the
-shader window and the swizzled depth write-back, the shared-IOSurface window
+shader window and the swizzled depth write-back, the surface tables' LRU
+eviction, the polygon offset, invariant positions, ZPASS occlusion counts
+(off by default) and scissored clears, the flip cap, the offline network-start
+dialog and NP tickets, `cellSysconfAbort`/`cellSysconfOpen` and the pad
+sensor-mode calls, the shared-IOSurface window
 (`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; the
 host reaps the game with a blocking `waitpid`, so it exits when the game
 does, which the launcher's Stop relies on; the title's guest FPS counts each
@@ -291,6 +328,12 @@ SPU registration: after `git pull`, delete `ps3recomp/` and run
 for the v1.7 campaign (it copies the masked registration into
 `port/spu_v17/`). The raw-SPU capture run (`SPU_RAW_DUMP_DIR`) is no longer
 needed.
+
+v0.2.1 (2026-10-24): the shadow-pool, split-screen, polygon-offset and
+offline fixes are in the toolkit patch and the 120 Hz vblank is in
+`port/patches.cpp`. Update an existing checkout the same way: after
+`git pull`, delete `ps3recomp/` and run `tools/rebuild.sh toolkit spu build`,
+plus `tools/v17/regen_v17.sh spu build` for the v1.7 campaign.
 
 #### The SPU policy module
 
@@ -443,7 +486,8 @@ is read from your mounted disc.
 - **Performance**: the vertex cache and its per-stream split, binding only
   changed state, the shader cache (with its size and Clear) and async
   shaders, the frame clock, the frame-rate counter, keeping the Mac awake;
-  **60 fps** (`RES_UNLOCK_FPS` + `RES_MENU_60FPS`) and the field of view
+  **60 fps** (`RES_UNLOCK_FPS` + `RES_MENU_60FPS`; the port then runs the
+  vblank at 120 Hz) and the field of view
   (`RES_FOV`), shown once the build has them.
 - **Game**: the disc (image or folder, mount/eject), the campaign version
   (**v1.7** when its build is there, or **01.00**: `RES_GAME_VERSION=100`),
@@ -528,7 +572,10 @@ its own window).
 | `PS3RECOMP_METAL_BIND_ALL=1` | rebind every Metal state on every draw instead of only what changed |
 | `PS3_SHADER_CACHE=<dir>` | keep the translated MSL shaders across runs; `PS3_SHADER_ASYNC=1` (opt-in) builds new pipelines on a background queue and skips their draws until ready |
 | `PS3_FRAMECLOCK_US=<µs>` | the host frame loop's tick (default 1000; 4000 is the old pacing) |
-| `PS3_VBLANK_HZ=<10..1000>` | the synthesized vblank rate (default 62.5); with `RES_UNLOCK_FPS=1`, 120 lets the campaign run at ~100 fps |
+| `PS3_VBLANK_HZ=<10..1000>` | the synthesized vblank rate (default 62.5; with `RES_UNLOCK_FPS=1` the port sets 120 unless this is set) |
+| `PS3_FLIP_MAX_HZ=<10..1000>` | complete flips no closer together than 1/hz (off by default; capping the unlocked campaign at 60 measured worse, 50 fps) |
+| `PS3RECOMP_ENG_POLY_OFFSET=0`, `PS3RECOMP_MSL_INVARIANT=0`, `PS3RECOMP_ENG_RECT_CLEAR=0` | turn off the polygon offset / the invariant vertex position / scissored clears (each is on by default) |
+| `PS3RECOMP_ENG_ZPASS=1` | real ZPASS occlusion counts (off by default: they cost frame rate at 60 fps) |
 | `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | the optional game patches ([`port/patches.cpp`](port/patches.cpp)): the campaign's frame limiter off (minimum timestep 1/30 → 1/240 s), the menus and multiplayer at one vblank per frame, the field-of-view factor (1.0 = the game's; smaller is wider). Each applies only when the running ELF holds the words it expects |
 | `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` | master volume (100), the output whose name contains `<name>` (the outputs are listed in the log when none matches; macOS/Linux), no sound (any value mutes) |
 | `PS3_AUDIO_DUMP=<file.wav>`, `PS3_AUDIO_STATS=1` | record the final mix (48 kHz stereo float; before mute and volume; the menus and the campaign go into one file) / every ~5 s, log each audio port's and the mix's level, silent blocks and clipped samples |

@@ -7,7 +7,7 @@ campaign from the v1.7 update) port to macOS/arm64 and what comes next.
 Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
-## Status at a glance (2026-10-23)
+## Status at a glance (2026-10-24)
 
 - **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
 - **v1.7 campaign:** the campaign is the game's last update. Its `game.self` (from `patch_06`) is re-lifted and runs from the 01.00 menus: New campaign → York intro, gameplay and respawn verified. The menus stay 01.00.
@@ -17,18 +17,23 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Shadows and smoke:** the dark rectangles on the ground and the hard-edged smoke are gone in game.
 - **At the game's own cap:** the campaign reaches the game's ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. The GPU depth-as-RGBA8 resolve took the RSX thread from 54% to 12% busy (2026-10-23).
 - **New, needs a play test:** keyboard and mouse on macOS with `input.toml` remapping, rumble, window modes/vsync/MetalFX, SMAA and filters, texture packs and the internal resolution (experimental), ported from the inFAMOUS 2 work; tests pass. The launcher has Controls and Graphics pages for them.
-- **60 fps and field of view (2026-10-23):** the community's RPCS3 patches carried over (`port/patches.cpp`, `port/patches/*.insn.json`), all opt-in: `RES_UNLOCK_FPS=1` ~56 fps in the campaign (01.00 and v1.7) at the normal game speed, `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV`; the launcher's "60 fps" switch sets both.
+- **60 fps and field of view (2026-10-23):** the community's RPCS3 patches carried over (`port/patches.cpp`, `port/patches/*.insn.json`), all opt-in: `RES_UNLOCK_FPS=1` in the campaign (01.00 and v1.7) at the normal game speed, `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV`; the launcher's "60 fps" switch sets both.
+- **60 fps pacing (2026-10-24):** with `RES_UNLOCK_FPS=1` the port now runs the vblank clock at 120 Hz (`PS3_VBLANK_HZ`, still settable): on 16 ms ticks a 17 ms frame waited for the tick after next. Measured in gameplay: 88.5 fps (it was ~50–56), game speed unchanged. `PS3_FLIP_MAX_HZ` (off by default) caps the flips; capping at 60 measured worse (50 fps).
+- **Shadows on the ground (2026-10-24):** dark hard-edged rectangles on the ground: the draw engine's surface and depth tables (64 slots each) filled up and nothing was ever evicted. Resistance packs its shadow maps into a per-frame pool whose addresses shift, so once the tables were full new shadow passes were silently dropped and the receivers sampled empty maps. The tables now evict the least recently used entry; the evictions show in a play session's log, a play test of the scene is still to do.
+- **Cooperative split-screen (2026-10-24):** player 1's (left) view was black: a surface clear ignored the scissor, so player 2's clear wiped player 1's half. Clears are now scissored (Metal partial-clear passes); both halves render in game.
+- **Polygon offset and invariant positions (2026-10-24):** the polygon offset is honoured (it was ignored; the game uses it on the character shadow maps, terrain decals and projected shadows), and the vertex position is compiled invariant (the foliage's depth pre-pass and its EQUAL colour pass). Real ZPASS occlusion counts are implemented but off by default (`PS3RECOMP_ENG_ZPASS=1`): they cost frame rate at 60 fps and showed no visible gain.
+- **Robustness (2026-10-24):** over two hours of scripted play with no crash: every EBOOT menu and extra, offline split-screen multiplayer, pause and options, Save & Quit → Continue (exitspawn both ways), death and respawn at 30 and 60 fps, a fresh empty HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle one. Multiplayer → Online Game no longer hangs offline (the network-start dialog answers "cancelled"; NP tickets added), the quit-time NID is `cellSysconfAbort` (added with `cellSysconfOpen`), and `cellPadInfoSensorMode`/`cellPadSetSensorMode` are in: a full run has no unresolved NIDs.
 - **Legal screens fixed (2026-10-23):** boot goes logos → title "Press the START button" with no overlapping text; the runtime had told the game it was on a Japanese console (licence area).
 - **Audio (2026-10-23):** the macOS mixer keeps real time (it alternated 2.4× / 0.95×); volume, mute and output device (`PS3_AUDIO_*`, also in the launcher).
 - **Continue fixed (2026-10-23):** Continue from a checkpoint froze on loading (v1.7 and 01.00): the second raw-SPU program carries a parameter area that changes with the level and checkpoint, so it came in under a fingerprint no build had registered. It is now matched with that area masked, and both raw-SPU programs are cut out of the ELF (no capture run). Continue from a saved checkpoint, new campaign and respawn verified on both campaigns.
 - **Movie sound (2026-10-23):** every movie was silent (cellAdec decoded nothing); the AC3 5.1 tracks are now decoded through FFmpeg and the POSIX mixer paces itself on the clock. The intro movie plays at −25…−34 dBFS on all six channels, 0–0.2% silent blocks.
 - **Fog, smoke and the fake water (2026-10-23):** the river level showed a vertically streaked "reflection": the fragment shaders' `WPOS` ignored the window's bottom-left origin, so the ground-fog and smoke shaders read the depth buffer upside down. The level now shows the dry creek bed with soft fog (both campaigns). Distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps written back to guest memory).
 - **Toolkit:** 18 fixes from upstream ps3recomp pull requests and the inFAMOUS 2 work (see CREDITS); a regression run with all of them renders with no errors, respawn OK.
-- **Released:** v0.1.0 and v0.2.0 (2026-10-23, pre-releases): the macOS launcher and a Windows preview.
-- **Open:** dark speckles and black leaf edges on the foliage (not yet confirmed whether the original looks the same); the menu music sometimes has extra centre/LFE content (+4–6 dB, from the game's synth, varies per run); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux; an unknown cellSysutil NID (`0x76948BFC`) called at quit; dying and respawning at 60 fps not exercised yet.
-- **Next:** compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a death and respawn with `RES_UNLOCK_FPS=1`; a physical controller with the launcher; a long session; the quit-time NID.
+- **Released:** v0.1.0 and v0.2.0 (2026-10-23) and v0.2.1 (2026-10-24), pre-releases: the macOS launcher and a Windows preview.
+- **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music sometimes has extra centre/LFE content (+4–6 dB, from the game's synth, varies per run); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
+- **Next:** a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
 
-## Current state (2026-10-23)
+## Current state (2026-10-24)
 
 The whole pipeline runs from the player's own disc (`tools/rebuild.sh`): the
 disc image is mounted and used as the VFS root (`PS3_VFS_ROOT`), both PPU
@@ -201,6 +206,57 @@ What got it this far:
   presenting while another app is in front; that is macOS, not a freeze. The
   window host now logs it ("window off screen…", `hidden=1` in `[RSX FPS]`)
   and shows the newest frame on return.
+- **The shadow-map pool (2026-10-24):** dark hard-edged rectangles on the
+  ground. The draw engine keeps a table of colour surfaces and one of depth
+  (zeta) surfaces, 64 slots each, and never evicted anything. Resistance
+  packs its shadow maps into a per-frame pool whose addresses shift from
+  frame to frame, so the tables filled up, a new shadow pass found no slot
+  and was dropped without a word, and the receivers sampled an empty map. The
+  tables now evict the least recently used entry
+  (`libs/video/rsx_draw_engine.c`; the log says "surface table full: … takes
+  the slot of …"; `test_surface_tables_full`). The evictions happen in a play
+  session's log; the scene itself still needs a play test.
+- **60 fps pacing (2026-10-24):** uncapped, the campaign flips on every vblank
+  tick it gets. On the 62.5 Hz clock (16 ms ticks) a frame that takes 17 ms
+  waits for the tick after next and stays up for 32 ms, which held the unlock
+  to ~50–56 fps. With `RES_UNLOCK_FPS=1`, `port/patches.cpp` now sets the
+  vblank to 120 Hz (`PS3_VBLANK_HZ=120` unless it is already set): 88.5 fps
+  measured in gameplay, game speed unchanged (the patch moves the game to
+  real time steps). `PS3_FLIP_MAX_HZ=<hz>` (toolkit, off by default) holds
+  flips no closer together than 1/hz; capping at 60 measured worse (50 fps),
+  because the game waits for the previous flip before its next frame.
+- **Polygon offset, invariant positions, occlusion counts (2026-10-24):** the
+  draw engine ignored the polygon offset, which the game uses on the
+  character shadow maps, terrain decals and projected shadows; it is now
+  passed to Metal (`PS3RECOMP_ENG_POLY_OFFSET=0` turns it off). The vertex
+  position is compiled `invariant`, so the foliage's depth pre-pass and its
+  `EQUAL` colour pass compute the same depth (`PS3RECOMP_MSL_INVARIANT=0`
+  turns it off). Real ZPASS occlusion counts are implemented (Metal
+  visibility results; `test_zpass_engine`, `test_metal_occlusion`) but off
+  by default, `PS3RECOMP_ENG_ZPASS=1` turns them on: waiting for the counts
+  cost 84 → 50 fps in 60 fps mode, one run crawled, and no visible gain was
+  found.
+- **Cooperative split-screen (2026-10-24):** player 1's (left) view was black.
+  `CLEAR_SURFACE` ignored the scissor, so player 2's clear wiped player 1's
+  half. Clears now go through new backend hooks (`clear_color_rect`,
+  `clear_depth_stencil_rect`; partial-clear passes on Metal) when the scissor
+  is narrower than the clip; a clip-only limit stays a whole clear (making
+  the composite's per-frame clear partial cost a pass every frame).
+  `PS3RECOMP_ENG_RECT_CLEAR=0` goes back to whole clears; `test_metal_rect_clears`.
+  Verified in game: both halves render.
+- **Robustness (2026-10-24):** over two hours of scripted play without a
+  crash. Multiplayer → Online Game hung offline; the network-start dialog
+  now answers "cancelled" when there is no network, and
+  `sceNpManagerRequestTicket`/`RequestTicket2`/`GetTicket`/`GetTicketParam`
+  are added (`test_netstart_offline`, `test_np_ticket_offline`). The unknown
+  NID the game called at quit (`0x76948BFC`) is `cellSysconfAbort`, added with
+  `cellSysconfOpen` (`test_sysconf`); `cellPadInfoSensorMode` and
+  `cellPadSetSensorMode` are in (`test_pad_sensor_mode`). A full run now has
+  no unresolved NIDs. Verified: every EBOOT menu and extra, offline
+  split-screen multiplayer, pause and options, Save & Quit → Continue
+  (exitspawn both ways), death and respawn at 30 and 60 fps, a fresh empty
+  HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle
+  one.
 
 ---
 
@@ -219,6 +275,8 @@ What got it this far:
 - [x] **Every movie was silent.** Fixed 2026-10-23: cellAdec decodes AC3 5.1 through FFmpeg and the POSIX mixer paces itself on the clock; the intro movie at −25…−34 dBFS on all six channels.
 - [x] **Fake water, fog and smoke on the river level.** Fixed 2026-10-23: `WPOS` with the shader window's bottom-left origin; the level shows the dry creek bed with soft fog (both campaigns).
 - [x] **Distant soldiers stood on dark rectangles.** Fixed 2026-10-23: swizzled 16-bit depth shadow maps written back to guest memory.
+- [x] **Dark hard-edged rectangles on the ground (the shadow-map pool).** Fixed 2026-10-24: the draw engine's surface and depth tables evict the least recently used entry instead of dropping new shadow passes once full (see "Current state"); the evictions show in a play session's log, the scene still needs a play test.
+- [x] **Multiplayer → Online Game hung offline.** Fixed 2026-10-24: the network-start dialog answers "cancelled" without a network; NP ticket calls added.
 - [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
 
 ### Into the first chapter
@@ -227,7 +285,7 @@ What got it this far:
 - [x] Chapter 1 loading screen ("The Gauntlet", York) and "Press the START button".
 - [x] The first gameplay frames in York (first person, HUD).
 - [x] York played with a controller: enemies and allies, shooting, dying and respawning (2026-10-22).
-- [ ] Pause menu and in-game options.
+- [x] Pause menu and in-game options (2026-10-24, scripted play).
 
 ### SPU jobs
 
@@ -247,7 +305,8 @@ What got it this far:
 
 - [x] Title screen and main menu.
 - [x] Saves: `PROFILE.SAV` and `quick.sav` written and read under `PS3_HDD0_ROOT`.
-- [ ] Options, `cellOskDialog` (on-screen keyboard), `cellMsgDialog`.
+- [x] Every EBOOT menu and extra, and Options (2026-10-24, scripted play).
+- [ ] `cellOskDialog` (on-screen keyboard), `cellMsgDialog`.
 
 ---
 
@@ -258,13 +317,17 @@ What got it this far:
 - [x] The first chapter (York) with a controller, in a window (2026-10-22; with the rendering bugs above).
 - [ ] The first chapter (York) with keyboard and mouse (ported 2026-10-23, needs a play test).
 - [ ] Play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
-- [ ] Offline split-screen (co-op and versus): two pads, two viewports.
+- [x] Offline split-screen (co-op and versus): both viewports render (2026-10-24; player 1's half was black, see Graphics). A session with two physical controllers is still to do.
 
 ### Graphics
 
 - [ ] Compare against the original (RPCS3 or the console) chapter by chapter; open an item per bug with a capture, as in inFAMOUS 2.
 - [x] The river level's fake water, ground fog and smoke (`WPOS` and the shader window) and the distant soldiers' shadows (2026-10-23).
-- [ ] Dark speckles and black leaf edges on the foliage: not yet confirmed whether the original looks the same.
+- [x] Dark hard-edged rectangles on the ground: the surface and depth tables evict the least recently used entry, so the shadow-map pool's passes are no longer dropped (2026-10-24; play test of the scene pending).
+- [x] Cooperative split-screen: player 1's view was black; clears honour the scissor (`PS3RECOMP_ENG_RECT_CLEAR=0` reverts) (2026-10-24).
+- [x] The polygon offset (character shadow maps, terrain decals, projected shadows; `PS3RECOMP_ENG_POLY_OFFSET=0` off) and an invariant vertex position (the foliage's depth pre-pass and `EQUAL` colour pass; `PS3RECOMP_MSL_INVARIANT=0` off) (2026-10-24).
+- [ ] Dark speckles on the foliage: it looks like the game's own content (grainy leaf alpha); to confirm against RPCS3.
+- [ ] An eye glitch on a character, reported but not reproduced: it needs a repro.
 
 ### Performance
 
@@ -273,14 +336,18 @@ What got it this far:
 - [x] Optimised builds: runtime -O2 and lifted PPU code -O1 in every configuration but Debug (it had been -O0) (2026-10-22).
 - [x] An fps A/B of the inFAMOUS 2 performance stack: 32.5 fps on vs 6.0 fps with its knobs off (`PS3RECOMP_ENG_VCACHE_SPLIT=0`, `PS3RECOMP_METAL_BIND_ALL=1`, `PS3_FRAMECLOCK_US=4000`), same build, first 60 s of gameplay (2026-10-22).
 - [x] The campaign at the game's own ~30–33 fps cap (2026-10-23): the GPU depth-as-RGBA8 resolve (RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0), the PPU store-watch fast path (it was 28% of the main thread), `mach_absolute_time` guest clocks, and SPU native single precision, local `goto` for computed branches, `SPU_DIRECT` and cheaper call returns (about +5%, 32.2/33.0 vs 30.7 fps, noisy). What is left of the PPU's "busy" time is largely the game's frame limiter; the hot SPU jobs are pinned by the game to one SPU (workload 5, contention 1..1), as on the hardware.
+- [x] 60 fps pacing: with `RES_UNLOCK_FPS=1` the vblank runs at 120 Hz; 88.5 fps in gameplay (it was ~50–56), game speed unchanged (2026-10-24). `PS3_FLIP_MAX_HZ` caps flips (off by default; 60 measured 50 fps).
+- [ ] Real ZPASS occlusion counts (`PS3RECOMP_ENG_ZPASS=1`): implemented, off by default; waiting for the counts cost 84 → 50 fps at 60 fps and no visible gain was found. Turn them on only if a scene needs them.
 - [ ] A proper fps measurement of the v1.7 campaign (same A/B as 01.00).
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
 
-- [ ] Long windowed sessions without hangs (the v1.7 campaign included); a `watch_stall.sh`-style hang report.
-- [ ] Dying and respawning with `RES_UNLOCK_FPS=1` (the idle player never died in the long unlocked runs).
-- [ ] The unknown cellSysutil NID `0x76948BFC` the game calls at quit.
+- [x] Long sessions without a crash (2026-10-24): over two hours of scripted play, a 25-minute 60 fps soak and a 22-minute idle one.
+- [ ] A `watch_stall.sh`-style hang report.
+- [x] Dying and respawning at 30 and 60 fps (`RES_UNLOCK_FPS=1`) (2026-10-24).
+- [x] Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav` (2026-10-24).
+- [x] The unknown NID `0x76948BFC` the game calls at quit is `cellSysconfAbort`; added with `cellSysconfOpen` (2026-10-24). A full run has no unresolved NIDs.
 
 ### Controls
 
@@ -288,7 +355,7 @@ What got it this far:
 - [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
 - [ ] A physical controller with the launcher: the game process is in the background, so `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` is set; not tested with a controller yet.
 - [ ] Rumble with a physical controller: the v1.7 `game.self` calls `cellPadSetActDirect`; rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported 2026-10-23, needs a play test.
-- [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode`; find what it uses motion for and map it to a button.
+- [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode` (both implemented 2026-10-24); find what it uses motion for and map it to a button.
 
 ### Game update (v1.7)
 
@@ -315,7 +382,7 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 ### Graphics and resolution
 
 - [ ] Internal resolution above 720p (`PS3_RES_SCALE`, experimental), MetalFX (`PS3_UPSCALE=metalfx`), fullscreen/borderless (`PS3_WINDOW_MODE`, `PS3_DISPLAY`, `PS3_VSYNC`), SMAA and filters, texture packs: ported from the inFAMOUS 2 work (2026-10-23), tests pass, needs a play test.
-- [x] Past 30 fps and a wider field of view (2026-10-23): the community's RPCS3 patches (Whatcookie, FlexBy, illusion, Score) carried over to the static recompilation. The data half is written after the ELF loads; the code half is lifted in both forms (`ppu_lifter.py --insn-patches`) and picked at run time, and each set applies only when 7–10 known words match the running ELF. `RES_UNLOCK_FPS=1`: ~56 fps in the campaign on an idle machine, 01.00 and v1.7, game speed normal in wall-clock time (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s); `PS3_VBLANK_HZ=120` ~100 fps. `RES_MENU_60FPS=1`: menus 32 → 59 fps. `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7). The launcher's "60 fps" switch passes both fps patches.
+- [x] Past 30 fps and a wider field of view (2026-10-23): the community's RPCS3 patches (Whatcookie, FlexBy, illusion, Score) carried over to the static recompilation. The data half is written after the ELF loads; the code half is lifted in both forms (`ppu_lifter.py --insn-patches`) and picked at run time, and each set applies only when 7–10 known words match the running ELF. `RES_UNLOCK_FPS=1`: ~56 fps in the campaign on an idle machine, 01.00 and v1.7, game speed normal in wall-clock time (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s); `PS3_VBLANK_HZ=120` ~100 fps. `RES_MENU_60FPS=1`: menus 32 → 59 fps. `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7). The launcher's "60 fps" switch passes both fps patches. Since 2026-10-24 the unlock runs the vblank at 120 Hz: 88.5 fps in gameplay.
 
 ### App to install and play (launcher)
 
@@ -326,6 +393,7 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] Controls page (bindings for keyboard, mouse and controller written to `input.toml`, the controller test, input mode, mouse, rumble) and Graphics settings (window mode, screen, vsync, MetalFX, internal resolution, SMAA, filters and LUT, texture packs and their dump), in English and Brazilian Portuguese; every setting passed only when it differs from the default (2026-10-23; the game side needs a play test).
 - [x] Release v0.1.0 (2026-10-23, pre-release): the macOS launcher and a Windows preview.
 - [x] Release v0.2.0 (2026-10-23, pre-release): the launcher with the Controls, Graphics and Audio settings, 60 fps and FOV.
+- [x] Release v0.2.1 (2026-10-24, pre-release): the 60 fps pacing, split-screen and shadow fixes; the launcher's "60 fps" switch gets the port's 120 Hz vblank.
 - [x] Audio settings (volume, mute, output device) and one "60 fps" switch (2026-10-23).
 - [ ] A physical controller with the launcher (see Controls).
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
@@ -336,7 +404,7 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 
 ### Out of scope for now
 
-- [ ] Online (40-player matches, `sceNp`, `sys_net`, `cellMic` voice chat): the official servers are gone; only with a community server.
+- [ ] Online (40-player matches, `sceNp`, `sys_net`, `cellMic` voice chat): the official servers are gone; only with a community server. Multiplayer → Online Game now backs out offline instead of hanging (2026-10-24).
 
 ---
 
@@ -417,6 +485,14 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] Movie sound: cellAdec's AC3 5.1 decode through FFmpeg (`libs/codec/adec_ffmpeg.c`, `test_adec_decode.c`) and the POSIX mixer's pacing (one block per 5.333 ms on the clock, 7.1 → stereo without clipping, each port's initial level).
 - [x] `WPOS` with the shader window's origin (the river level's fake water, ground fog and smoke) and swizzled 16-bit depth shadow maps written to guest memory (the distant soldiers' shadows); verified on both campaigns.
 - [x] The window host says when the window is hidden or off screen and shows the newest frame on return.
+
+### Shadows, 60 fps pacing, split-screen and robustness (2026-10-24)
+
+- [x] The draw engine's surface and depth tables evict the least recently used entry (the shadow-map pool; "surface table full: … takes the slot of …"; `test_surface_tables_full`).
+- [x] The 120 Hz vblank under `RES_UNLOCK_FPS=1` (`port/patches.cpp`; 88.5 fps in gameplay) and `PS3_FLIP_MAX_HZ` (off by default).
+- [x] The polygon offset, an invariant vertex position, and ZPASS occlusion counts (off by default, `PS3RECOMP_ENG_ZPASS=1`).
+- [x] Scissored clears through `clear_color_rect` / `clear_depth_stencil_rect` (Metal partial-clear passes): both split-screen halves render.
+- [x] Offline answers for the network-start dialog and the NP tickets (Online Game no longer hangs), `cellSysconfAbort` / `cellSysconfOpen`, `cellPadInfoSensorMode` / `cellPadSetSensorMode`; a full run has no unresolved NIDs. Over two hours of scripted play without a crash.
 
 ### Tools
 

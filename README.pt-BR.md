@@ -13,8 +13,9 @@ tela de título e pelo menu principal até uma campanha nova. O executável da
 campanha então toca o vídeo de abertura da fase 1 e carrega "The Gauntlet"
 (York). Numa janela, com um DualSense, York roda em primeira pessoa com o
 HUD: inimigos e aliados, tiros, morrer e renascer no checkpoint. A cidade
-aparece com as cores certas a uns 30 fps (uns 56 fps com o patch opcional de
-60 fps), numa janela só dos menus até a campanha. A campanha é a da última atualização do jogo, a v1.7, traduzida de
+aparece com as cores certas a uns 30 fps (uns 88 fps no gameplay com o patch
+opcional de 60 fps), numa janela só dos menus até a campanha; a tela dividida
+offline desenha a visão dos dois jogadores. A campanha é a da última atualização do jogo, a v1.7, traduzida de
 novo a partir do `patch_06`; os menus continuam os da 01.00 do disco (veja
 [Estado](#estado)).
 
@@ -52,15 +53,18 @@ nem jogado no Windows, então trate-o como experimental e não testado (o
 SmartScreen pode avisar; "Mais informações" > "Executar assim mesmo").
 Detalhes em [launcher/README.md](launcher/README.md#windows-preview).
 
-O release mais recente é a **v0.2.0** (2026-10-23, um pré-release): o
-launcher para macOS e a prévia para Windows com os ajustes adicionados desde a
-v0.1.0 (controles, modos de janela, filtros, pacotes de texturas, 60 fps e
-campo de visão, áudio). Para compilar o launcher a partir do código:
+O release mais recente é a **v0.2.1** (2026-10-24, um pré-release): o
+launcher para macOS e a prévia para Windows, e o patch do toolkit com a
+cadência a 60 fps (vblank de 120 Hz, ~88 fps no gameplay), a correção da tela
+dividida cooperativa, a correção do pool de shadow maps no chão e as
+correções offline e ao sair. A v0.2.0 (2026-10-23) trouxe os ajustes de
+controles, modos de janela, filtros, pacotes de texturas, 60 fps e campo de
+visão e áudio. Para compilar o launcher a partir do código:
 `tools/rebuild.sh launcher`.
 
 ## Estado
 
-Em 2026-10-23 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; depois o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
+Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos; depois a cadência a 60 fps, a tela dividida cooperativa, os retângulos escuros no chão, o polygon offset e duas horas de jogo roteirizado sem crash), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
 
 | | |
 | --- | --- |
@@ -76,13 +80,14 @@ Em 2026-10-23 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
 | Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
 | Taxa de quadros | ✅ a campanha chega ao limite do próprio jogo, ~30–33 fps (o Resistance roda a 30 fps no PS3); o tempo "ocupado" que resta na PPU é em boa parte o limitador de quadros do jogo. Desde 2026-10-22: o buffer de profundidade de 2560×720, que o jogo amostra como A8R8G8B8 a cada quadro, é resolvido na GPU (era uma leitura GPU→CPU e um reenvio de 7,4 MB por quadro): thread do RSX de 54% → 12% ocupada, reenvios de textura a cada 120 quadros de ~100 → 0; veja [Como funciona](#como-funciona) |
-| 60 fps e campo de visão maior | ✅ opcionais, os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` ~56 fps na campanha (01.00 e v1.7, medido com a máquina ociosa) na velocidade normal do jogo (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s), `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7), `PS3_VBLANK_HZ=120` ~100 fps; morrer e renascer com o destravamento ligado ainda não foi exercitado |
+| 60 fps e campo de visão maior | ✅ opcionais, os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88,5 fps medidos no gameplay (01.00 e v1.7; eram ~50–56 antes de o port passar a rodar o vblank a 120 Hz com ele, 2026-10-24) na velocidade normal do jogo (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s), `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7); morrer e renascer verificado a 30 e 60 fps |
 | Áudio | ✅ o mixer do macOS segue o tempo real (alternava entre 2,4× e 0,95×; agora mistura um bloco a cada 5,333 ms pelo relógio e reduz 7.1 para estéreo sem clipping); o som dos vídeos (veja Vídeos); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB), que vem do sintetizador do jogo e varia de uma execução para outra; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` (também no launcher) |
 | Cores do mundo (prédios, telhados, ruas) | ✅ corretas: o mundo azul era um wrap do offset de vértice que o RSX faz e o port não fazia (veja [Como funciona](#como-funciona)) |
-| Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica; os soldados distantes não ficam mais sobre retângulos escuros (os shadow maps de profundidade de 16 bits em ordem swizzled agora são gravados de volta na memória do guest) |
+| Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica; os soldados distantes não ficam mais sobre retângulos escuros (os shadow maps de profundidade de 16 bits em ordem swizzled agora são gravados de volta na memória do guest); 🧪 os retângulos escuros de bordas duras que voltavam no chão quando as tabelas de superfícies do draw engine enchiam (o pool de shadow maps) foram corrigidos descartando a superfície usada há mais tempo, visto funcionando no log de uma sessão de jogo, a cena ainda vai ser conferida num teste jogando; o polygon offset é respeitado (shadow maps dos personagens, decalques do terreno, sombras projetadas) |
 | Água, névoa no chão e fumaça | ✅ a fase do rio mostra o leito seco do riacho com névoa suave em vez de um "reflexo" falso com listras verticais: o `WPOS` dos fragment shaders ignorava a origem embaixo à esquerda da janela, então os shaders de névoa e fumaça liam o buffer de profundidade de cabeça para baixo (verificado nas duas campanhas) |
-| Folhagem | ⚠️ pontos escuros e bordas pretas nas folhas; ainda não confirmado se o original é igual |
-| Renascimento | ✅ depois de morrer o jogador volta no chão, onde fica o checkpoint (antes ia parar no céu; um reinício de SPU raw que o runtime descartava, veja [Como funciona](#como-funciona)); verificado em 12 mortes |
+| Folhagem | ⚠️ pontos escuros; parece ser o conteúdo do próprio jogo (o alpha granulado das folhas), ainda não comparado com o RPCS3. A posição do vértice agora é compilada como invariante, então a pré-passada de profundidade e a passada de cor com `EQUAL` batem |
+| Tela dividida | ✅ a tela dividida offline (cooperativo e versus) desenha as duas visões: a metade do jogador 1 (esquerda) ficava preta porque uma limpeza ignorava o scissor e a limpeza do jogador 2 a apagava (2026-10-24) |
+| Renascimento | ✅ depois de morrer o jogador volta no chão, onde fica o checkpoint (antes ia parar no céu; um reinício de SPU raw que o runtime descartava, veja [Como funciona](#como-funciona)); verificado em 12 mortes, e a 30 e 60 fps |
 | Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título conta os flips do jogo. Uma janela em tela cheia no próprio Space para de apresentar enquanto outro app está na frente (é o macOS, não um travamento): o log avisa ("window off screen", `hidden=1` no `[RSX FPS]`) e o quadro mais novo aparece na volta |
 | Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
 | Depois do vídeo de abertura | ✅ o travamento intermitente foi corrigido (pilha de callback compartilhada) |
@@ -92,7 +97,8 @@ Em 2026-10-23 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Atualização v1.7 do jogo | ✅ a campanha roda o `game.self` da atualização, traduzido de novo a partir do `patch_06`: menus → Nova campanha → a abertura de York, gameplay e renascimento verificados; os menus continuam o EBOOT 01.00 do disco (veja [A campanha v1.7](#a-campanha-v17)); vibração com um controle físico, uma sessão longa e uma medição de fps da v1.7 ainda não verificadas |
 | App launcher | ✅ [`launcher/`](launcher/) (Tauri): disco, builds, recompilação, ajustes, saves, Jogar/Parar, em português do Brasil e inglês; 🧪 a nova página Controles (remapeamento, mouse, vibração) e os ajustes de Gráficos (janela, filtros, pacotes de texturas) |
 | Linux e Windows | ⏳ sem suporte |
-| Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram) |
+| Menus, saves e sessões longas | ✅ mais de duas horas de jogo roteirizado sem crash (2026-10-24): todos os menus e extras do EBOOT, pausa e opções, Salvar e Sair → Continuar (exitspawn nos dois sentidos), um HDD novo e vazio, um `quick.sav` corrompido, 25 minutos seguidos a 60 fps e 22 minutos parado; um run completo não tem NIDs sem resolver (o chamado ao sair era o `cellSysconfAbort`) |
+| Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram); Multiplayer → Online Game agora volta atrás offline em vez de travar |
 
 Detalhes e próximos passos no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
@@ -212,6 +218,36 @@ As correções que trouxeram o port até aqui:
   de profundidade de 16 bits em ordem swizzled (Morton) são gravados de volta
   na memória do guest, então os soldados distantes não ficam mais sobre
   retângulos escuros.
+- **O pool de shadow maps** (2026-10-24): retângulos escuros de bordas duras
+  no chão de novo. As tabelas de superfícies de cor e de profundidade do draw
+  engine (64 vagas cada) nunca descartavam nada, e o Resistance empacota os
+  shadow maps num pool por quadro cujos endereços mudam; com as tabelas
+  cheias, uma passada de sombra nova era descartada sem aviso e quem recebe a
+  sombra lia um mapa vazio. As tabelas agora descartam a superfície usada há
+  mais tempo (o log diz "surface table full: … takes the slot of …").
+- **Cadência a 60 fps** (2026-10-24): sem limite, a campanha faz um flip a
+  cada tick de vblank que recebe, e no relógio de 62,5 Hz um quadro de 17 ms
+  esperava o tick seguinte ao próximo (32 ms). Com `RES_UNLOCK_FPS=1` o port
+  roda o vblank a 120 Hz: 88,5 fps no gameplay (eram ~50–56), com a velocidade
+  do jogo inalterada. Limitar os flips a 60 (`PS3_FLIP_MAX_HZ=60`) mediu pior,
+  50 fps.
+- **Polygon offset e posições invariantes** (2026-10-24): o polygon offset que
+  o jogo usa nos shadow maps dos personagens, nos decalques do terreno e nas
+  sombras projetadas era ignorado; a posição do vértice agora é compilada como
+  `invariant`, do que a pré-passada de profundidade da vegetação e a passada
+  de cor com `EQUAL` dependem. As contagens reais de oclusão ZPASS estão no
+  código, mas desligadas (`PS3RECOMP_ENG_ZPASS=1`): custam taxa de quadros a
+  60 fps e não mostraram ganho visível.
+- **Tela dividida** (2026-10-24): o `CLEAR_SURFACE` ignorava o scissor, então
+  a limpeza do jogador 2 apagava a metade da tela do jogador 1. Uma limpeza
+  com um scissor mais estreito que o clip agora limpa só aquele retângulo
+  (passadas de limpeza parcial no Metal); uma limitada só pelo clip continua
+  inteira.
+- **Offline e ao sair** (2026-10-24): Multiplayer → Online Game travava sem
+  rede; o diálogo de início de rede agora responde "cancelado" e as chamadas
+  de ticket do NP existem. O NID desconhecido chamado ao sair (`0x76948BFC`)
+  é o `cellSysconfAbort`; com ele, o `cellSysconfOpen` e as chamadas de modo
+  de sensor do controle, um run completo não tem NIDs sem resolver.
 
 As mudanças no toolkit são um único patch sobre o ps3recomp v0.17.0,
 [patches/ps3recomp-a6d76c8-resistance.patch](patches/ps3recomp-a6d76c8-resistance.patch):
@@ -224,8 +260,12 @@ nunca resolvidas a partir de render targets, threads PPU começando com
 VSCR[NJ]=1, sem `getenv` a cada escrita em canal MFC da SPU), a parada e o
 reinício das SPUs raw pelo `SPU_RunCntl` e a fingerprint mascarada das SPUs
 raw, a decodificação AC3 do cellAdec e a cadência do mixer, o `WPOS` com a
-janela do shader e a gravação de volta da profundidade swizzled, a janela por
-IOSurface compartilhada
+janela do shader e a gravação de volta da profundidade swizzled, o descarte
+LRU das tabelas de superfícies, o polygon offset, as posições invariantes, as
+contagens de oclusão ZPASS (desligadas por padrão) e as limpezas com scissor,
+o limite de flips, o diálogo de início de rede offline e os tickets do NP, o
+`cellSysconfAbort`/`cellSysconfOpen` e as chamadas de modo de sensor do
+controle, a janela por IOSurface compartilhada
 (`libs/video/rsx_host_surface.h`, `tools/host_window/host_window.m`; a
 janela recolhe o jogo com um `waitpid` bloqueante, então sai quando o jogo
 sai, que é do que o Parar do launcher depende; o "guest FPS" do título conta
@@ -310,6 +350,12 @@ rode `tools/rebuild.sh toolkit spu build`, mais
 `tools/v17/regen_v17.sh spu build` para a campanha v1.7 (ele copia o registro
 mascarado para `port/spu_v17/`). O run de captura das SPUs raw
 (`SPU_RAW_DUMP_DIR`) não é mais necessário.
+
+v0.2.1 (2026-10-24): as correções do pool de sombras, da tela dividida, do
+polygon offset e offline estão no patch do toolkit, e o vblank de 120 Hz está
+no `port/patches.cpp`. Atualize um checkout existente do mesmo jeito: depois
+do `git pull`, apague `ps3recomp/` e rode `tools/rebuild.sh toolkit spu build`,
+mais `tools/v17/regen_v17.sh spu build` para a campanha v1.7.
 
 #### O policy module de SPU
 
@@ -469,7 +515,8 @@ disco montado.
 - **Desempenho**: o cache de vértices e a divisão por fluxo, ligar só o
   estado que mudou, o cache de shaders (com o tamanho e Limpar) e os shaders
   em segundo plano, o relógio de quadros, o contador de fps, manter o Mac
-  acordado; **60 fps** (`RES_UNLOCK_FPS` + `RES_MENU_60FPS`) e o campo de
+  acordado; **60 fps** (`RES_UNLOCK_FPS` + `RES_MENU_60FPS`; o port então roda
+  o vblank a 120 Hz) e o campo de
   visão (`RES_FOV`), que aparecem quando o build os tiver.
 - **Jogo**: o disco (imagem ou pasta, montar/ejetar), a versão da campanha
   (**v1.7** quando o build dela existe, ou **01.00**: `RES_GAME_VERSION=100`),
@@ -556,7 +603,10 @@ própria janela).
 | `PS3RECOMP_METAL_BIND_ALL=1` | refaz o bind de todo o estado do Metal em cada draw em vez de só o que mudou |
 | `PS3_SHADER_CACHE=<pasta>` | guarda os shaders MSL traduzidos entre execuções; `PS3_SHADER_ASYNC=1` (opcional) monta pipelines novos numa fila em segundo plano e pula os draws deles até ficarem prontos |
 | `PS3_FRAMECLOCK_US=<µs>` | o tick do laço de frame do host (padrão 1000; 4000 é o ritmo antigo) |
-| `PS3_VBLANK_HZ=<10..1000>` | a taxa do vblank sintetizado (padrão 62,5); com `RES_UNLOCK_FPS=1`, 120 deixa a campanha rodar a ~100 fps |
+| `PS3_VBLANK_HZ=<10..1000>` | a taxa do vblank sintetizado (padrão 62,5; com `RES_UNLOCK_FPS=1` o port põe 120, a não ser que esta esteja definida) |
+| `PS3_FLIP_MAX_HZ=<10..1000>` | completa os flips a no mínimo 1/hz um do outro (desligado por padrão; limitar a campanha destravada a 60 mediu pior, 50 fps) |
+| `PS3RECOMP_ENG_POLY_OFFSET=0`, `PS3RECOMP_MSL_INVARIANT=0`, `PS3RECOMP_ENG_RECT_CLEAR=0` | desligam o polygon offset / a posição de vértice invariante / as limpezas com scissor (cada um ligado por padrão) |
+| `PS3RECOMP_ENG_ZPASS=1` | contagens reais de oclusão ZPASS (desligadas por padrão: custam taxa de quadros a 60 fps) |
 | `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | os patches opcionais do jogo ([`port/patches.cpp`](port/patches.cpp)): o limitador de quadros da campanha desligado (passo mínimo 1/30 → 1/240 s), os menus e o multiplayer a um vblank por quadro, o fator de campo de visão (1,0 = o do jogo; menor é mais aberto). Cada um só se aplica quando o ELF em execução tem as palavras que ele espera |
 | `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` | volume geral (100), a saída cujo nome contém `<nome>` (as saídas são listadas no log quando nenhuma corresponde; macOS/Linux), sem som (qualquer valor silencia) |
 | `PS3_AUDIO_DUMP=<arquivo.wav>`, `PS3_AUDIO_STATS=1` | grava a mistura final (48 kHz estéreo float; antes do mudo e do volume; os menus e a campanha vão para um arquivo só) / a cada ~5 s, registra no log o nível de cada porta de áudio e da mistura, os blocos em silêncio e as amostras cortadas |
