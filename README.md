@@ -63,7 +63,7 @@ from the sources instead:
 
 ## Status
 
-As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed; then the 60 fps pacing, the cooperative split-screen, the dark rectangles on the ground, the polygon offset and two hours of scripted play without a crash), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
+As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed; then the 60 fps pacing, the cooperative split-screen, the dark rectangles on the ground, the polygon offset and two hours of scripted play without a crash; after v0.2.1, Save & Quit no longer takes the 120 Hz vblank back to the menus), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
 
 | | |
 | --- | --- |
@@ -79,7 +79,7 @@ As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fix
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
 | Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
 | Frame rate | ✅ the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
-| 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88.5 fps measured in gameplay (01.00 and v1.7; it was ~50–56 before the port ran the vblank at 120 Hz with it, 2026-10-24) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7); dying and respawning verified at 30 and 60 fps |
+| 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88.5 fps measured in gameplay (01.00 and v1.7; it was ~50–56 before the port ran the vblank at 120 Hz with it, 2026-10-24) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7); dying and respawning verified at 30 and 60 fps; after v0.2.1 (on main) the 120 Hz rate stays inside the campaign process, so Save & Quit no longer takes it back to the menus |
 | Audio | ✅ the macOS mixer keeps real time (it alternated between 2.4× and 0.95×; it now mixes one block per 5.333 ms on the clock and folds 7.1 to stereo without clipping); movie sound (see Movies); the menu music sometimes has extra centre/LFE content (+4–6 dB), which comes from the game's synth and varies from run to run; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` (also in the launcher) |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
 | Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names; distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps are now written back to guest memory); 🧪 the dark hard-edged rectangles that came back on the ground once the draw engine's surface tables were full (the shadow-map pool) are fixed by evicting the least recently used surface, seen working in a play session's log, the scene still to be re-checked in a play test; the polygon offset is honoured (character shadow maps, terrain decals, projected shadows) |
@@ -99,7 +99,7 @@ As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fix
 | Menus, saves and long sessions | ✅ over two hours of scripted play without a crash (2026-10-24): every EBOOT menu and extra, pause and options, Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle one; a full run has no unresolved NIDs (the one at quit was `cellSysconfAbort`) |
 | Online multiplayer | ❌ out of scope (the official servers are gone); Multiplayer → Online Game now backs out offline instead of hanging |
 
-Details and next steps in [ROADMAP.md](ROADMAP.md).
+In progress: a sweep of every campaign level (load each one, check rendering, SPU jobs, HLE calls and fps, fix what breaks). Details and next steps in [ROADMAP.md](ROADMAP.md).
 
 ## How it works
 
@@ -218,6 +218,11 @@ The fixes that got it this far:
   tick after next (32 ms). With `RES_UNLOCK_FPS=1` the port runs the vblank at
   120 Hz: 88.5 fps in gameplay (it was ~50–56), the game speed unchanged.
   Capping the flips at 60 (`PS3_FLIP_MAX_HZ=60`) measured worse, 50 fps.
+  After v0.2.1 (on main) the rate goes to the frame clock inside the process
+  (`g_res_vblank_hz`), not through the environment: exitspawn is an `execv`,
+  so Save & Quit carried `PS3_VBLANK_HZ=120` back to the menus, whose fixed
+  1/60 timesteps could then run at double speed. `PS3_VBLANK_HZ` still
+  overrides it.
 - **Polygon offset and invariant positions** (2026-10-24): the polygon offset
   the game uses on the character shadow maps, terrain decals and projected
   shadows was ignored; the vertex position is now compiled `invariant`, which
@@ -334,6 +339,10 @@ offline fixes are in the toolkit patch and the 120 Hz vblank is in
 `port/patches.cpp`. Update an existing checkout the same way: after
 `git pull`, delete `ps3recomp/` and run `tools/rebuild.sh toolkit spu build`,
 plus `tools/v17/regen_v17.sh spu build` for the v1.7 campaign.
+
+After v0.2.1 (on main, in the next release): the fix that keeps the 120 Hz
+vblank out of the environment is in the port only (`port/main.cpp`,
+`port/patches.cpp`); after `git pull`, `tools/rebuild.sh build` is enough.
 
 #### The SPU policy module
 
@@ -572,7 +581,7 @@ its own window).
 | `PS3RECOMP_METAL_BIND_ALL=1` | rebind every Metal state on every draw instead of only what changed |
 | `PS3_SHADER_CACHE=<dir>` | keep the translated MSL shaders across runs; `PS3_SHADER_ASYNC=1` (opt-in) builds new pipelines on a background queue and skips their draws until ready |
 | `PS3_FRAMECLOCK_US=<µs>` | the host frame loop's tick (default 1000; 4000 is the old pacing) |
-| `PS3_VBLANK_HZ=<10..1000>` | the synthesized vblank rate (default 62.5; with `RES_UNLOCK_FPS=1` the port sets 120 unless this is set) |
+| `PS3_VBLANK_HZ=<10..1000>` | the synthesized vblank rate (default 62.5; with `RES_UNLOCK_FPS=1` the campaign uses 120 unless this is set, without putting it in the environment, so the menus after Save & Quit keep 62.5) |
 | `PS3_FLIP_MAX_HZ=<10..1000>` | complete flips no closer together than 1/hz (off by default; capping the unlocked campaign at 60 measured worse, 50 fps) |
 | `PS3RECOMP_ENG_POLY_OFFSET=0`, `PS3RECOMP_MSL_INVARIANT=0`, `PS3RECOMP_ENG_RECT_CLEAR=0` | turn off the polygon offset / the invariant vertex position / scissored clears (each is on by default) |
 | `PS3RECOMP_ENG_ZPASS=1` | real ZPASS occlusion counts (off by default: they cost frame rate at 60 fps) |

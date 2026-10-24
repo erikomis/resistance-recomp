@@ -22,6 +22,7 @@ formato do roadmap do inFAMOUS 2.
 - **Sombras no chão (2026-10-24):** retângulos escuros de bordas duras no chão: as tabelas de superfícies e de profundidade do draw engine (64 vagas cada) enchiam e nada era descartado. O Resistance empacota os shadow maps num pool por quadro cujos endereços mudam, então, com as tabelas cheias, as passadas de sombra novas eram descartadas em silêncio e quem recebe a sombra lia um mapa vazio. As tabelas agora descartam a entrada usada há mais tempo; os descartes aparecem no log de uma sessão de jogo, falta um teste jogando na cena.
 - **Tela dividida cooperativa (2026-10-24):** a visão do jogador 1 (esquerda) ficava preta: a limpeza de superfície ignorava o scissor, então a limpeza do jogador 2 apagava a metade do jogador 1. As limpezas agora respeitam o scissor (passadas de limpeza parcial no Metal); as duas metades aparecem no jogo.
 - **Polygon offset e posições invariantes (2026-10-24):** o polygon offset é respeitado (era ignorado; o jogo usa nos shadow maps dos personagens, nos decalques do terreno e nas sombras projetadas), e a posição do vértice é compilada como invariante (a pré-passada de profundidade da vegetação e a passada de cor com `EQUAL`). As contagens reais de oclusão ZPASS estão implementadas, mas desligadas por padrão (`PS3RECOMP_ENG_ZPASS=1`): custam taxa de quadros a 60 fps e não mostraram ganho visível.
+- **Salvar e Sair a 60 fps (depois da v0.2.1, na main):** o desbloqueio punha o vblank de 120 Hz no ambiente, e o exitspawn é um `execv`, então o Salvar e Sair o levava de volta aos menus, cujos passos fixos de 1/60 podiam então rodar em velocidade dobrada. A taxa agora é passada dentro do processo (`g_res_vblank_hz`); o `PS3_VBLANK_HZ` ainda tem prioridade.
 - **Robustez (2026-10-24):** mais de duas horas de jogo roteirizado sem nenhum crash: todos os menus e extras do EBOOT, multiplayer em tela dividida offline, pausa e opções, Salvar e Sair → Continuar (exitspawn nos dois sentidos), morrer e renascer a 30 e 60 fps, um HDD novo e vazio, um `quick.sav` corrompido, 25 minutos seguidos a 60 fps e 22 minutos parado. Multiplayer → Online Game não trava mais offline (o diálogo de início de rede responde "cancelado"; tickets do NP adicionados), o NID chamado ao sair é o `cellSysconfAbort` (adicionado junto com o `cellSysconfOpen`), e `cellPadInfoSensorMode`/`cellPadSetSensorMode` entraram: um run completo não tem NIDs sem resolver.
 - **Telas legais corrigidas (2026-10-23):** o boot vai dos logos ao título "Press the START button" sem texto sobreposto; o runtime dizia ao jogo que ele estava num console japonês (área de licença).
 - **Áudio (2026-10-23):** o mixer do macOS segue o tempo real (alternava 2,4× / 0,95×); volume, sem som e saída de áudio (`PS3_AUDIO_*`, também no launcher).
@@ -30,8 +31,10 @@ formato do roadmap do inFAMOUS 2.
 - **Névoa, fumaça e a água falsa (2026-10-23):** a fase do rio mostrava um "reflexo" com listras verticais: o `WPOS` dos fragment shaders ignorava a origem embaixo à esquerda da janela, então os shaders de névoa no chão e de fumaça liam o buffer de profundidade de cabeça para baixo. A fase agora mostra o leito seco do riacho com névoa suave (nas duas campanhas). Os soldados distantes não ficam mais sobre retângulos escuros (shadow maps de profundidade de 16 bits swizzled gravados de volta na memória do guest).
 - **Toolkit:** 18 correções de pull requests do ps3recomp upstream e do trabalho no inFAMOUS 2 (veja CREDITS); um run de regressão com todas elas renderiza sem erros, renascer OK.
 - **Lançado:** v0.1.0 e v0.2.0 (2026-10-23) e v0.2.1 (2026-10-24), pré-releases: o launcher para macOS e uma prévia para Windows.
+- **Retribuindo (2026-10-24):** mais cinco pull requests no upstream: limpezas com scissor (#560), o polygon offset (#562), posições invariantes (#563), `cellSysconfOpen`/`Abort` (#564), o modo de sensor do controle (#565) (veja [Retribuindo](#retribuindo)).
+- **Em andamento:** uma varredura de todas as fases da campanha: carregar cada uma, conferir renderização, jobs de SPU, chamadas HLE e fps, corrigir o que quebrar.
 - **Em aberto:** pontos escuros na vegetação (parece ser o conteúdo do próprio jogo, o alpha granulado das folhas; ainda não comparado com o RPCS3); um defeito nos olhos de um personagem que não foi reproduzido (precisa de um jeito de reproduzir); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB, do sintetizador do jogo, varia a cada execução); os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado (o jogo, e o novo mixer de áudio), sem Linux.
-- **Próximo:** um teste jogando da correção do pool de shadow maps na cena onde os retângulos apareciam; reproduzir o defeito nos olhos; comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; um controle físico com o launcher; Windows.
+- **Próximo:** terminar a varredura das fases; um jeito de carregar qualquer fase direto (uma ferramenta); um teste jogando da correção do pool de shadow maps na cena onde os retângulos apareciam; reproduzir o defeito nos olhos; comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; um controle físico com o launcher; Windows.
 
 ## Estado atual (2026-10-24)
 
@@ -273,6 +276,13 @@ O que trouxe até aqui:
   offline, pausa e opções, Salvar e Sair → Continuar (exitspawn nos dois
   sentidos), morrer e renascer a 30 e 60 fps, um HDD novo e vazio, um
   `quick.sav` corrompido, 25 minutos seguidos a 60 fps e 22 minutos parado.
+- **O vblank de 120 Hz fora do ambiente (depois da v0.2.1, na main):** o
+  `port/patches.cpp` punha `PS3_VBLANK_HZ=120` com `setenv` no processo da
+  campanha, e o exitspawn é um `execv`, então o Salvar e Sair o levava de volta
+  ao front end: os passos fixos de 1/60 dos menus (`RES_MENU_60FPS`) podiam
+  então rodar em velocidade dobrada com ticks de 120 Hz. O patch agora passa a
+  taxa ao relógio de quadros do `port/main.cpp` por `g_res_vblank_hz`; o
+  `PS3_VBLANK_HZ` ainda tem prioridade.
 
 ---
 
@@ -333,6 +343,8 @@ O que trouxe até aqui:
 - [x] O primeiro capítulo (York) com controle, em janela (2026-10-22; com os erros de renderização acima).
 - [ ] O primeiro capítulo (York) com teclado e mouse (portados em 2026-10-23, precisa de um teste jogando).
 - [ ] Zerar a campanha anotando o que quebra: todos os capítulos, os veículos, os chefes, o tiro alternativo de cada arma.
+- [ ] **Em andamento (2026-10-24):** uma varredura de todas as fases da campanha: carregar cada uma, conferir renderização, jobs de SPU, chamadas HLE e fps, e corrigir o que quebrar.
+- [ ] Uma ferramenta para carregar qualquer fase direto (a partir do método da varredura), para conferir e reproduzir bugs sem jogar até lá.
 - [x] Tela dividida offline (cooperativo e versus): as duas viewports aparecem (2026-10-24; a metade do jogador 1 ficava preta, veja Gráficos). Ainda falta uma sessão com dois controles físicos.
 
 ### Gráficos
@@ -363,6 +375,7 @@ O que trouxe até aqui:
 - [ ] Um relatório de travamento no estilo do `watch_stall.sh`.
 - [x] Morrer e renascer a 30 e 60 fps (`RES_UNLOCK_FPS=1`) (2026-10-24).
 - [x] Salvar e Sair → Continuar (exitspawn nos dois sentidos), um HDD novo e vazio, um `quick.sav` corrompido (2026-10-24).
+- [x] Salvar e Sair com a opção de 60 fps não leva mais o vblank de 120 Hz de volta aos menus (`g_res_vblank_hz` em vez do ambiente; depois da v0.2.1, na main).
 - [x] O NID desconhecido `0x76948BFC` que o jogo chama ao sair é o `cellSysconfAbort`; adicionado junto com o `cellSysconfOpen` (2026-10-24). Um run completo não tem NIDs sem resolver.
 
 ### Controles
@@ -548,4 +561,10 @@ Pull requests para o [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recom
 - [ ] [#538](https://github.com/sp00nznet/ps3recomp/pull/538) spu_workload: imagens de SPU raw com uma área de parâmetros que o carregador preenche (o travamento do Continuar; empilhado sobre o #473).
 - [ ] [#539](https://github.com/sp00nznet/ps3recomp/pull/539) ppu_lifter: `--insn-patches` traduz instruções com patch como chaves em tempo de execução (os patches de 60 fps).
 - [ ] [#540](https://github.com/sp00nznet/ps3recomp/pull/540) sys_timer: um relógio do host só para `mftb`, hora do sistema e timers (`mach_absolute_time` no macOS).
+- [ ] [#560](https://github.com/sp00nznet/ps3recomp/pull/560) Um `CLEAR_SURFACE` com scissor limpa só o retângulo do scissor (tela dividida cooperativa) (2026-10-24).
+- [ ] [#562](https://github.com/sp00nznet/ps3recomp/pull/562) O polygon offset chega ao Metal (2026-10-24).
+- [ ] [#563](https://github.com/sp00nznet/ps3recomp/pull/563) Uma posição de vértice invariante na tradução para MSL (2026-10-24).
+- [ ] [#564](https://github.com/sp00nznet/ps3recomp/pull/564) `cellSysconfOpen` / `cellSysconfAbort` (2026-10-24).
+- [ ] [#565](https://github.com/sp00nznet/ps3recomp/pull/565) `cellPadInfoSensorMode` / `cellPadSetSensorMode` (2026-10-24).
+- [x] Não abertos, já cobertos no upstream: o descarte LRU das superfícies/zeta (o #499 do n0madic já tem), o resultado offline do início de rede (já no #503 deste port), as chamadas de ticket do sceNp (#543; o `sceNpManagerRequestTicket` v1 ficou de fora). Segurados: o `PS3_FLIP_MAX_HZ` (mediu pior) e a contagem ZPASS (cara, sem ganho visível).
 - [x] Repositório próprio (`resistance-recomp`): fontes do port, um patch do toolkit, `tools/setup_toolkit.sh`, README, créditos e um `.gitignore` que bloqueia dados do jogo, firmware e saves.

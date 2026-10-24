@@ -22,6 +22,7 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Shadows on the ground (2026-10-24):** dark hard-edged rectangles on the ground: the draw engine's surface and depth tables (64 slots each) filled up and nothing was ever evicted. Resistance packs its shadow maps into a per-frame pool whose addresses shift, so once the tables were full new shadow passes were silently dropped and the receivers sampled empty maps. The tables now evict the least recently used entry; the evictions show in a play session's log, a play test of the scene is still to do.
 - **Cooperative split-screen (2026-10-24):** player 1's (left) view was black: a surface clear ignored the scissor, so player 2's clear wiped player 1's half. Clears are now scissored (Metal partial-clear passes); both halves render in game.
 - **Polygon offset and invariant positions (2026-10-24):** the polygon offset is honoured (it was ignored; the game uses it on the character shadow maps, terrain decals and projected shadows), and the vertex position is compiled invariant (the foliage's depth pre-pass and its EQUAL colour pass). Real ZPASS occlusion counts are implemented but off by default (`PS3RECOMP_ENG_ZPASS=1`): they cost frame rate at 60 fps and showed no visible gain.
+- **Save & Quit at 60 fps (after v0.2.1, on main):** the unlock set the 120 Hz vblank through the environment, and exitspawn is an `execv`, so Save & Quit carried it back to the menus, whose fixed 1/60 timesteps could then run at double speed. The rate is now passed inside the process (`g_res_vblank_hz`); `PS3_VBLANK_HZ` still overrides it.
 - **Robustness (2026-10-24):** over two hours of scripted play with no crash: every EBOOT menu and extra, offline split-screen multiplayer, pause and options, Save & Quit → Continue (exitspawn both ways), death and respawn at 30 and 60 fps, a fresh empty HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle one. Multiplayer → Online Game no longer hangs offline (the network-start dialog answers "cancelled"; NP tickets added), the quit-time NID is `cellSysconfAbort` (added with `cellSysconfOpen`), and `cellPadInfoSensorMode`/`cellPadSetSensorMode` are in: a full run has no unresolved NIDs.
 - **Legal screens fixed (2026-10-23):** boot goes logos → title "Press the START button" with no overlapping text; the runtime had told the game it was on a Japanese console (licence area).
 - **Audio (2026-10-23):** the macOS mixer keeps real time (it alternated 2.4× / 0.95×); volume, mute and output device (`PS3_AUDIO_*`, also in the launcher).
@@ -30,8 +31,10 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Fog, smoke and the fake water (2026-10-23):** the river level showed a vertically streaked "reflection": the fragment shaders' `WPOS` ignored the window's bottom-left origin, so the ground-fog and smoke shaders read the depth buffer upside down. The level now shows the dry creek bed with soft fog (both campaigns). Distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps written back to guest memory).
 - **Toolkit:** 18 fixes from upstream ps3recomp pull requests and the inFAMOUS 2 work (see CREDITS); a regression run with all of them renders with no errors, respawn OK.
 - **Released:** v0.1.0 and v0.2.0 (2026-10-23) and v0.2.1 (2026-10-24), pre-releases: the macOS launcher and a Windows preview.
+- **Giving back (2026-10-24):** five more upstream pull requests: scissored clears (#560), the polygon offset (#562), invariant positions (#563), `cellSysconfOpen`/`Abort` (#564), the pad sensor mode (#565) (see [Giving back](#giving-back)).
+- **In progress:** a sweep of every campaign level: load each one, check rendering, SPU jobs, HLE calls and fps, fix what breaks.
 - **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music sometimes has extra centre/LFE content (+4–6 dB, from the game's synth, varies per run); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
-- **Next:** a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
+- **Next:** finish the level sweep; a way to load any level directly (a tool); a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
 
 ## Current state (2026-10-24)
 
@@ -257,6 +260,13 @@ What got it this far:
   (exitspawn both ways), death and respawn at 30 and 60 fps, a fresh empty
   HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle
   one.
+- **The 120 Hz vblank out of the environment (after v0.2.1, on main):**
+  `port/patches.cpp` set `PS3_VBLANK_HZ=120` with `setenv` in the campaign
+  process, and exitspawn is an `execv`, so Save & Quit carried it back to the
+  front end: the menus' fixed 1/60 timesteps (`RES_MENU_60FPS`) could then
+  run at double speed on 120 Hz ticks. The patch now hands the rate to the
+  frame clock in `port/main.cpp` through `g_res_vblank_hz`; `PS3_VBLANK_HZ`
+  still overrides it.
 
 ---
 
@@ -317,6 +327,8 @@ What got it this far:
 - [x] The first chapter (York) with a controller, in a window (2026-10-22; with the rendering bugs above).
 - [ ] The first chapter (York) with keyboard and mouse (ported 2026-10-23, needs a play test).
 - [ ] Play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
+- [ ] **In progress (2026-10-24):** a sweep of every campaign level: load each one, check rendering, SPU jobs, HLE calls and fps, and fix what breaks.
+- [ ] A tool to load any level directly (from the sweep's method), for checks and bug repros without playing up to it.
 - [x] Offline split-screen (co-op and versus): both viewports render (2026-10-24; player 1's half was black, see Graphics). A session with two physical controllers is still to do.
 
 ### Graphics
@@ -347,6 +359,7 @@ What got it this far:
 - [ ] A `watch_stall.sh`-style hang report.
 - [x] Dying and respawning at 30 and 60 fps (`RES_UNLOCK_FPS=1`) (2026-10-24).
 - [x] Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav` (2026-10-24).
+- [x] Save & Quit with the 60 fps option no longer takes the 120 Hz vblank back to the menus (`g_res_vblank_hz` instead of the environment; after v0.2.1, on main).
 - [x] The unknown NID `0x76948BFC` the game calls at quit is `cellSysconfAbort`; added with `cellSysconfOpen` (2026-10-24). A full run has no unresolved NIDs.
 
 ### Controls
@@ -532,4 +545,10 @@ Pull requests to [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp), 
 - [ ] [#538](https://github.com/sp00nznet/ps3recomp/pull/538) spu_workload: raw-SPU images with a parameter area the loader fills in (the Continue freeze; stacked on #473).
 - [ ] [#539](https://github.com/sp00nznet/ps3recomp/pull/539) ppu_lifter: `--insn-patches` lifts patched instructions as run-time switches (the 60 fps patches).
 - [ ] [#540](https://github.com/sp00nznet/ps3recomp/pull/540) sys_timer: one host clock for `mftb`, system time and timers (`mach_absolute_time` on macOS).
+- [ ] [#560](https://github.com/sp00nznet/ps3recomp/pull/560) A scissored `CLEAR_SURFACE` clears only the scissor rectangle (co-op split-screen) (2026-10-24).
+- [ ] [#562](https://github.com/sp00nznet/ps3recomp/pull/562) The polygon offset reaches Metal (2026-10-24).
+- [ ] [#563](https://github.com/sp00nznet/ps3recomp/pull/563) An invariant vertex position in the MSL translation (2026-10-24).
+- [ ] [#564](https://github.com/sp00nznet/ps3recomp/pull/564) `cellSysconfOpen` / `cellSysconfAbort` (2026-10-24).
+- [ ] [#565](https://github.com/sp00nznet/ps3recomp/pull/565) `cellPadInfoSensorMode` / `cellPadSetSensorMode` (2026-10-24).
+- [x] Not opened, already covered upstream: the surface/zeta LRU eviction (#499 by n0madic has it), the offline network-start result (already in this port's #503), the sceNp ticket calls (#543; `sceNpManagerRequestTicket` v1 held). Held back: `PS3_FLIP_MAX_HZ` (measured worse) and ZPASS counting (costly, no visible gain).
 - [x] Its own repository (`resistance-recomp`): port sources, a toolkit patch, `tools/setup_toolkit.sh`, README, credits, and a `.gitignore` that blocks game data, firmware and saves.

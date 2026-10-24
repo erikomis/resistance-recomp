@@ -64,7 +64,7 @@ visão e áudio. Para compilar o launcher a partir do código:
 
 ## Estado
 
-Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos; depois a cadência a 60 fps, a tela dividida cooperativa, os retângulos escuros no chão, o polygon offset e duas horas de jogo roteirizado sem crash), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
+Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos; depois a cadência a 60 fps, a tela dividida cooperativa, os retângulos escuros no chão, o polygon offset e duas horas de jogo roteirizado sem crash; depois da v0.2.1, o Salvar e Sair não leva mais o vblank de 120 Hz de volta aos menus), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
 
 | | |
 | --- | --- |
@@ -80,7 +80,7 @@ Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
 | Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
 | Taxa de quadros | ✅ a campanha chega ao limite do próprio jogo, ~30–33 fps (o Resistance roda a 30 fps no PS3); o tempo "ocupado" que resta na PPU é em boa parte o limitador de quadros do jogo. Desde 2026-10-22: o buffer de profundidade de 2560×720, que o jogo amostra como A8R8G8B8 a cada quadro, é resolvido na GPU (era uma leitura GPU→CPU e um reenvio de 7,4 MB por quadro): thread do RSX de 54% → 12% ocupada, reenvios de textura a cada 120 quadros de ~100 → 0; veja [Como funciona](#como-funciona) |
-| 60 fps e campo de visão maior | ✅ opcionais, os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88,5 fps medidos no gameplay (01.00 e v1.7; eram ~50–56 antes de o port passar a rodar o vblank a 120 Hz com ele, 2026-10-24) na velocidade normal do jogo (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s), `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7); morrer e renascer verificado a 30 e 60 fps |
+| 60 fps e campo de visão maior | ✅ opcionais, os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88,5 fps medidos no gameplay (01.00 e v1.7; eram ~50–56 antes de o port passar a rodar o vblank a 120 Hz com ele, 2026-10-24) na velocidade normal do jogo (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s), `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7); morrer e renascer verificado a 30 e 60 fps; depois da v0.2.1 (na main) a taxa de 120 Hz fica dentro do processo da campanha, então o Salvar e Sair não a leva mais de volta aos menus |
 | Áudio | ✅ o mixer do macOS segue o tempo real (alternava entre 2,4× e 0,95×; agora mistura um bloco a cada 5,333 ms pelo relógio e reduz 7.1 para estéreo sem clipping); o som dos vídeos (veja Vídeos); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB), que vem do sintetizador do jogo e varia de uma execução para outra; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` (também no launcher) |
 | Cores do mundo (prédios, telhados, ruas) | ✅ corretas: o mundo azul era um wrap do offset de vértice que o RSX faz e o port não fazia (veja [Como funciona](#como-funciona)) |
 | Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica; os soldados distantes não ficam mais sobre retângulos escuros (os shadow maps de profundidade de 16 bits em ordem swizzled agora são gravados de volta na memória do guest); 🧪 os retângulos escuros de bordas duras que voltavam no chão quando as tabelas de superfícies do draw engine enchiam (o pool de shadow maps) foram corrigidos descartando a superfície usada há mais tempo, visto funcionando no log de uma sessão de jogo, a cena ainda vai ser conferida num teste jogando; o polygon offset é respeitado (shadow maps dos personagens, decalques do terreno, sombras projetadas) |
@@ -100,7 +100,7 @@ Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Menus, saves e sessões longas | ✅ mais de duas horas de jogo roteirizado sem crash (2026-10-24): todos os menus e extras do EBOOT, pausa e opções, Salvar e Sair → Continuar (exitspawn nos dois sentidos), um HDD novo e vazio, um `quick.sav` corrompido, 25 minutos seguidos a 60 fps e 22 minutos parado; um run completo não tem NIDs sem resolver (o chamado ao sair era o `cellSysconfAbort`) |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram); Multiplayer → Online Game agora volta atrás offline em vez de travar |
 
-Detalhes e próximos passos no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
+Em andamento: uma varredura de todas as fases da campanha (carregar cada uma, conferir renderização, jobs de SPU, chamadas HLE e fps, corrigir o que quebrar). Detalhes e próximos passos no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
 ## Como funciona
 
@@ -231,6 +231,11 @@ As correções que trouxeram o port até aqui:
   roda o vblank a 120 Hz: 88,5 fps no gameplay (eram ~50–56), com a velocidade
   do jogo inalterada. Limitar os flips a 60 (`PS3_FLIP_MAX_HZ=60`) mediu pior,
   50 fps.
+  Depois da v0.2.1 (na main) a taxa chega ao relógio de quadros dentro do
+  processo (`g_res_vblank_hz`), não pelo ambiente: o exitspawn é um `execv`,
+  então o Salvar e Sair levava o `PS3_VBLANK_HZ=120` de volta aos menus, cujos
+  passos fixos de 1/60 podiam então rodar em velocidade dobrada. O
+  `PS3_VBLANK_HZ` ainda tem prioridade.
 - **Polygon offset e posições invariantes** (2026-10-24): o polygon offset que
   o jogo usa nos shadow maps dos personagens, nos decalques do terreno e nas
   sombras projetadas era ignorado; a posição do vértice agora é compilada como
@@ -356,6 +361,10 @@ polygon offset e offline estão no patch do toolkit, e o vblank de 120 Hz está
 no `port/patches.cpp`. Atualize um checkout existente do mesmo jeito: depois
 do `git pull`, apague `ps3recomp/` e rode `tools/rebuild.sh toolkit spu build`,
 mais `tools/v17/regen_v17.sh spu build` para a campanha v1.7.
+
+Depois da v0.2.1 (na main, no próximo release): a correção que tira o vblank
+de 120 Hz do ambiente está só no port (`port/main.cpp`, `port/patches.cpp`);
+depois do `git pull`, basta `tools/rebuild.sh build`.
 
 #### O policy module de SPU
 
@@ -603,7 +612,7 @@ própria janela).
 | `PS3RECOMP_METAL_BIND_ALL=1` | refaz o bind de todo o estado do Metal em cada draw em vez de só o que mudou |
 | `PS3_SHADER_CACHE=<pasta>` | guarda os shaders MSL traduzidos entre execuções; `PS3_SHADER_ASYNC=1` (opcional) monta pipelines novos numa fila em segundo plano e pula os draws deles até ficarem prontos |
 | `PS3_FRAMECLOCK_US=<µs>` | o tick do laço de frame do host (padrão 1000; 4000 é o ritmo antigo) |
-| `PS3_VBLANK_HZ=<10..1000>` | a taxa do vblank sintetizado (padrão 62,5; com `RES_UNLOCK_FPS=1` o port põe 120, a não ser que esta esteja definida) |
+| `PS3_VBLANK_HZ=<10..1000>` | a taxa do vblank sintetizado (padrão 62,5; com `RES_UNLOCK_FPS=1` a campanha usa 120, a não ser que esta esteja definida, sem pôr no ambiente, então os menus depois do Salvar e Sair ficam em 62,5) |
 | `PS3_FLIP_MAX_HZ=<10..1000>` | completa os flips a no mínimo 1/hz um do outro (desligado por padrão; limitar a campanha destravada a 60 mediu pior, 50 fps) |
 | `PS3RECOMP_ENG_POLY_OFFSET=0`, `PS3RECOMP_MSL_INVARIANT=0`, `PS3RECOMP_ENG_RECT_CLEAR=0` | desligam o polygon offset / a posição de vértice invariante / as limpezas com scissor (cada um ligado por padrão) |
 | `PS3RECOMP_ENG_ZPASS=1` | contagens reais de oclusão ZPASS (desligadas por padrão: custam taxa de quadros a 60 fps) |
