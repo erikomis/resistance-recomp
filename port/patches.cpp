@@ -128,6 +128,15 @@ extern "C" void res_apply_patches(void)
             wrf32(ps.min_dt, 1.0f / 240.0f);
             fprintf(stderr, "[patch] %s: unlock fps (frame limiter off, min timestep 1/240)\n",
                     ps.name);
+            /* Uncapped, the campaign flips on every vblank tick it makes. On
+             * 16 ms ticks a 17 ms frame waits for the tick after next (32 ms),
+             * which held it to ~50. On 120 Hz ticks it measured 75 fps on a
+             * loaded machine, game speed unchanged (the patch moves the game
+             * to real time steps). Capping flips at 60 (PS3_FLIP_MAX_HZ=60)
+             * measured lower, 50: the game waits for the previous flip before
+             * its next frame, so a held flip adds to the frame time. Read by
+             * the frame clock after this; set PS3_VBLANK_HZ to override. */
+            setenv("PS3_VBLANK_HZ", "120", 0);
         }
         if (fov_s && *fov_s) {
             const float f = (float)atof(fov_s);
