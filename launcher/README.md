@@ -315,9 +315,14 @@ before them says to rebuild):
 
 - **60 fps** passes `RES_UNLOCK_FPS=1` (the campaign's frame limiter off and
   its minimum timestep 1/30 -> 1/240 s; 01.00 and v1.7) and `RES_MENU_60FPS=1`
-  (the front end and multiplayer at one vblank per frame). About 56 fps in
-  the campaign and 59 in the menus on an idle machine, at the normal game
-  speed. `PS3_VBLANK_HZ=120` (Extra variables) raises the cap to about 100 fps.
+  (the front end and multiplayer at one vblank per frame). With the unlock
+  on, the port runs the vblank at 120 Hz (the launcher passes no
+  `PS3_VBLANK_HZ`; set one in Extra variables to override it): 88.5 fps
+  measured in gameplay and 59 in the menus, at the normal game speed.
+  Advanced, through Extra variables only: `PS3_FLIP_MAX_HZ=<hz>` caps the
+  flips (off by default; 60 measured worse, 50 fps) and
+  `PS3RECOMP_ENG_ZPASS=1` turns on real occlusion counts (off by default,
+  they cost frame rate at 60 fps).
 - **Field of view**: `RES_FOV` 0.85 or 0.7 (RPCS3's "Extended FOV"); the
   game's own is 1.0 and passes nothing. The patch accepts 0.1-4.
 
