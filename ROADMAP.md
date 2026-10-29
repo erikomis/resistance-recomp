@@ -7,7 +7,13 @@ campaign from the v1.7 update) port to macOS/arm64 and what comes next.
 Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
-## Status at a glance (2026-10-24)
+## Status at a glance (2026-10-29)
+
+- **Played into Manchester (2026-10-29):** the v1.7 campaign played by hand with a DualSense from York (The Gauntlet, A Lone Survivor, Spires) through Grimsby (Fates Worse than Death, Conversion, Hunted Down) and Manchester's Path of Least Resistance into "The Cathedral", at about 29–33 fps; a 20-minute session in "The Cathedral" (one of the three heaviest levels) held 29–32 fps and ended with a normal quit.
+- **Every level loads (2026-10-25):** a sweep started each of the 30 campaign levels with `RES_LEVEL=<n>` and ran it to gameplay: no errors, no unresolved calls, no SPU timeouts (see [Level sweep](#level-sweep-2026-10-25)).
+- **Grimsby freeze fixed (2026-10-25):** "Fates Worse than Death" froze at the conversion-centre switch. The game stashes a cutscene in the system cache, and its file layer only finds `/dev_hdd1` when `cellSysCacheMount` answers exactly `/dev_hdd1`, as the console does; the runtime answered `/dev_hdd1/cache/<id>`, the open failed and the main thread retried it for ever. The runtime now answers `/dev_hdd1` and maps it to the same host folder.
+- **Location Select fixed (2026-10-25):** Campaign → Location Select quit the game. Lua's `pcall`/`error` go through newlib's `setjmp`/`longjmp`, which do nothing useful as lifted code (restoring guest registers unwinds no host frame), so a Lua error fell into the "no handler" panic. The lifter's new `--sjlj` turns the title's `setjmp` calls into host `setjmp` sites and its `longjmp` into a host `longjmp` (`port/patches/*.sjlj.json`, `runtime/ppu/ppu_sjlj.c`).
+- **`RES_LEVEL=<n>` (2026-10-25):** starts the campaign in any level (the level goes into the exitspawn block the front end hands `game.self`), for checks and bug repros.
 
 - **Runs to gameplay:** both executables are lifted, build and run on macOS/arm64 with Metal. Boot, legal screens, first-run install, title screen and main menu lead to a new campaign. `game.self` then plays the level-1 intro movie and loads chapter 1, "The Gauntlet" (York).
 - **v1.7 campaign:** the campaign is the game's last update. Its `game.self` (from `patch_06`) is re-lifted and runs from the 01.00 menus: New campaign → York intro, gameplay and respawn verified. The menus stay 01.00.
@@ -30,11 +36,57 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Movie sound (2026-10-23):** every movie was silent (cellAdec decoded nothing); the AC3 5.1 tracks are now decoded through FFmpeg and the POSIX mixer paces itself on the clock. The intro movie plays at −25…−34 dBFS on all six channels, 0–0.2% silent blocks.
 - **Fog, smoke and the fake water (2026-10-23):** the river level showed a vertically streaked "reflection": the fragment shaders' `WPOS` ignored the window's bottom-left origin, so the ground-fog and smoke shaders read the depth buffer upside down. The level now shows the dry creek bed with soft fog (both campaigns). Distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps written back to guest memory).
 - **Toolkit:** 18 fixes from upstream ps3recomp pull requests and the inFAMOUS 2 work (see CREDITS); a regression run with all of them renders with no errors, respawn OK.
-- **Released:** v0.1.0 and v0.2.0 (2026-10-23) and v0.2.1 (2026-10-24), pre-releases: the macOS launcher and a Windows preview.
+- **Released:** v0.1.0 and v0.2.0 (2026-10-23), v0.2.1 (2026-10-24) and v0.2.2 (2026-10-29), pre-releases: the macOS launcher and a Windows preview; v0.2.2 carries the Grimsby, Location Select and `RES_LEVEL` changes.
 - **Giving back (2026-10-24):** five more upstream pull requests: scissored clears (#560), the polygon offset (#562), invariant positions (#563), `cellSysconfOpen`/`Abort` (#564), the pad sensor mode (#565) (see [Giving back](#giving-back)).
-- **In progress:** a sweep of every campaign level: load each one, check rendering, SPU jobs, HLE calls and fps, fix what breaks.
+- **In progress:** playing on from Manchester to the end of the campaign; speeding up the heaviest levels.
 - **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music sometimes has extra centre/LFE content (+4–6 dB, from the game's synth, varies per run); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
-- **Next:** finish the level sweep; a way to load any level directly (a tool); a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
+- **Next:** the rest of the campaign by hand (Nottingham to the Chimeran Tower, the vehicles and bosses); the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps uncapped); the snow lighting in "Ice and Iron" against RPCS3; a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
+
+## Level sweep (2026-10-25)
+
+Every campaign level of the v1.7 `game.self`, started directly with
+`RES_LEVEL=<n>` (see [README](README.md#environment)), run to gameplay
+headless with the frame limiter off (`RES_UNLOCK_FPS=1`), so the fps column
+is the uncapped rate (above 30 means the level holds the game's 30 fps cap
+with room to spare). All 30 levels reach gameplay with no errors, no
+unresolved HLE calls and no SPU timeouts. Level 30 used to freeze at the
+conversion-centre switch (the system cache path, fixed).
+
+| Level | Name | Area | fps uncapped | draws/frame | Notes |
+| --- | --- | --- | --- | --- | --- |
+| 20 | The Gauntlet | York | 31.0 | 689 |  |
+| 21 | A Lone Survivor | York | 32.5 | 605 | the river level |
+| 22 | Spires | York | 53.5 | 498 | about 4,500 draws in the heavy spots |
+| 30 | Fates Worse than Death | Grimsby | 31.0 | 317 | the freeze, fixed |
+| 31 | Conversion | Grimsby | 52.5 | 880 |  |
+| 32 | Hunted Down | Grimsby | 51.5 | 362 |  |
+| 40 | Path of Least Resistance | Manchester | 49.0 | 857 |  |
+| 41 | The Cathedral | Manchester | **26.0** | 1513 | heavy; 29–32 fps in hand play at the 30 fps cap |
+| 42 | Outgunned | Manchester | 51.0 | 599 | opens with an Auger weapon page |
+| 50 | Into the Fire | Nottingham | 53.0 | 681 | weapon page |
+| 51 | Conduits | Nottingham | 52.5 | 329 |  |
+| 52 | Viper's Nest | Nottingham | 49.5 | 681 |  |
+| 60 | No Way Out | Cheshire | **25.0** | 911 | heavy combat |
+| 61 | Secrets | Cheshire | 33.0 | 263 |  |
+| 62 | Angel | Cheshire | 57.0 | 327 |  |
+| 70 | Search and Rescue | Somerset | 53.5 | 571 |  |
+| 71 | Common Ground | Somerset | 51.0 | 766 | the jeep renders fine |
+| 72 | A Disturbing Discovery | Somerset | 53.5 | 247 |  |
+| 80 | Devil at the Door | Bristol | 48.0 | 1072 | rain |
+| 81 | Evacuation | Bristol | 56.0 | 1181 | flashlight |
+| 82 | Parting Ways | Bristol | 30.0 | 3293 | Stalker walker |
+| 90 | Into the Depths | Bracknell | 60.5 | 210 |  |
+| 91 | In a Darker Place | Bracknell | 36.5 | 641 |  |
+| 100 | A Desperate Gamble | London | 44.5 | 1287 |  |
+| 101 | Ice and Iron | London | **26.5** | 1027 | snow mounds look smooth and flat-lit; to compare with RPCS3 |
+| 110 | Burning Bridges | London | 56.0 | 674 |  |
+| 111 | On the Ice | London | 50.6 | 714 |  |
+| 112 | Giant Slayer | London | 30.5 | 1944 | vehicle and boss |
+| 120 | Angel's Lair | Chimeran Tower | 32.0 | 377 |  |
+| 121 | Last Hope | Chimeran Tower | 32.5 | 463 | the final level |
+
+The three heaviest levels (41, 60, 101) are the performance targets: in hand
+play "The Cathedral" held 29–32 fps at the 30 fps cap (2026-10-29).
 
 ## Current state (2026-10-24)
 
@@ -326,9 +378,12 @@ What got it this far:
 
 - [x] The first chapter (York) with a controller, in a window (2026-10-22; with the rendering bugs above).
 - [ ] The first chapter (York) with keyboard and mouse (ported 2026-10-23, needs a play test).
-- [ ] Play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
-- [ ] **In progress (2026-10-24):** a sweep of every campaign level: load each one, check rendering, SPU jobs, HLE calls and fps, and fix what breaks.
-- [ ] A tool to load any level directly (from the sweep's method), for checks and bug repros without playing up to it.
+- [x] York, Grimsby and Manchester into "The Cathedral" by hand, on v1.7, at about 29–33 fps (2026-10-29).
+- [ ] **In progress:** play the whole campaign and write down what breaks: every chapter, the vehicles, the bosses, every weapon's alt-fire.
+- [x] A sweep of every campaign level: all 30 load to gameplay with no errors (2026-10-25; [Level sweep](#level-sweep-2026-10-25)).
+- [x] Load any level directly: `RES_LEVEL=<n>` (2026-10-25).
+- [x] Grimsby ("Fates Worse than Death") froze at the conversion-centre switch: `cellSysCacheMount` answers `/dev_hdd1` (2026-10-25).
+- [x] Campaign → Location Select quit the game: Lua's `setjmp`/`longjmp` through the lifter's `--sjlj` (2026-10-25).
 - [x] Offline split-screen (co-op and versus): both viewports render (2026-10-24; player 1's half was black, see Graphics). A session with two physical controllers is still to do.
 
 ### Graphics
@@ -350,7 +405,8 @@ What got it this far:
 - [x] The campaign at the game's own ~30–33 fps cap (2026-10-23): the GPU depth-as-RGBA8 resolve (RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0), the PPU store-watch fast path (it was 28% of the main thread), `mach_absolute_time` guest clocks, and SPU native single precision, local `goto` for computed branches, `SPU_DIRECT` and cheaper call returns (about +5%, 32.2/33.0 vs 30.7 fps, noisy). What is left of the PPU's "busy" time is largely the game's frame limiter; the hot SPU jobs are pinned by the game to one SPU (workload 5, contention 1..1), as on the hardware.
 - [x] 60 fps pacing: with `RES_UNLOCK_FPS=1` the vblank runs at 120 Hz; 88.5 fps in gameplay (it was ~50–56), game speed unchanged (2026-10-24). `PS3_FLIP_MAX_HZ` caps flips (off by default; 60 measured 50 fps).
 - [ ] Real ZPASS occlusion counts (`PS3RECOMP_ENG_ZPASS=1`): implemented, off by default; waiting for the counts cost 84 → 50 fps at 60 fps and no visible gain was found. Turn them on only if a scene needs them.
-- [ ] A proper fps measurement of the v1.7 campaign (same A/B as 01.00).
+- [x] The v1.7 campaign in hand play: 29–33 fps at the 30 fps cap, also in "The Cathedral" (2026-10-29).
+- [ ] The three heaviest levels: "The Cathedral" (41), "No Way Out" (60) and "Ice and Iron" (101) measured ~25–26 fps uncapped in the sweep (most levels 45–60); they hold 30 in play but not 60 with `RES_UNLOCK_FPS`.
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
@@ -380,7 +436,8 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] Run it from the 01.00 menus: the exitspawn picks the v1.7 build; New campaign → York intro, gameplay and respawn verified.
 - [x] Keep the patch files out of the play folder (the 01.00 EBOOT cannot run with them): `tools/play.sh` and the launcher refuse to start.
 - [ ] v1.7 menus: they need a non-NPDRM v1.7 `EBOOT.BIN`, which does not seem to exist (the update's EBOOT is NPDRM only); likely impossible.
-- [ ] Rumble, a long session and an fps measurement on v1.7 (see Controls, Stability, Performance).
+- [x] A long session and an fps measurement on v1.7: York into Manchester by hand, 29–33 fps (2026-10-29).
+- [ ] Rumble on v1.7 (see Controls).
 
 ### Rebuild
 

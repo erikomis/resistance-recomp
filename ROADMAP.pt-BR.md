@@ -7,7 +7,13 @@ campanha da atualização v1.7) para macOS/arm64 e o que vem a seguir. Mesmo
 formato do roadmap do inFAMOUS 2.
 `[x]` = feito e verificado; `[ ]` = a fazer; "(em andamento)" = sendo feito.
 
-## Resumo (2026-10-24)
+## Resumo (2026-10-29)
+
+- **Jogado até Manchester (2026-10-29):** a campanha v1.7 jogada na mão com um DualSense de York (The Gauntlet, A Lone Survivor, Spires), passando por Grimsby (Fates Worse than Death, Conversion, Hunted Down) e pela Path of Least Resistance de Manchester, até "The Cathedral", a uns 29–33 fps; uma sessão de 20 minutos em "The Cathedral" (uma das três fases mais pesadas) ficou em 29–32 fps e terminou com uma saída normal.
+- **Todas as fases carregam (2026-10-25):** uma varredura começou cada uma das 30 fases da campanha com `RES_LEVEL=<n>` e rodou até o gameplay: sem erros, sem chamadas sem resolver, sem timeouts de SPU (veja [Varredura das fases](#varredura-das-fases-2026-10-25)).
+- **Travamento em Grimsby corrigido (2026-10-25):** "Fates Worse than Death" travava no interruptor do centro de conversão. O jogo guarda uma cutscene no cache do sistema, e a camada de arquivos dele só acha o `/dev_hdd1` quando o `cellSysCacheMount` responde exatamente `/dev_hdd1`, como o console faz; o runtime respondia `/dev_hdd1/cache/<id>`, a abertura falhava e a thread principal tentava de novo para sempre. O runtime agora responde `/dev_hdd1` e o mapeia para a mesma pasta no host.
+- **Location Select corrigido (2026-10-25):** Campanha → Location Select fechava o jogo. O `pcall`/`error` do Lua passam pelo `setjmp`/`longjmp` da newlib, que não fazem nada de útil como código traduzido (restaurar os registradores do guest não desfaz nenhum frame do host), então um erro do Lua caía no pânico de "sem handler". O novo `--sjlj` do lifter troca as chamadas ao `setjmp` do título por pontos de `setjmp` do host e o `longjmp` dele por um `longjmp` do host (`port/patches/*.sjlj.json`, `runtime/ppu/ppu_sjlj.c`).
+- **`RES_LEVEL=<n>` (2026-10-25):** começa a campanha em qualquer fase (a fase vai no bloco do exitspawn que o front end passa ao `game.self`), para conferir e reproduzir bugs.
 
 - **Roda até o gameplay:** os dois executáveis estão traduzidos, compilam e rodam no macOS/arm64 com Metal. Boot, telas legais, instalação da primeira execução, tela de título e menu principal levam a uma campanha nova. O `game.self` então toca o vídeo de abertura da fase 1 e carrega o capítulo 1, "The Gauntlet" (York).
 - **Campanha v1.7:** a campanha é a da última atualização do jogo. O `game.self` dela (do `patch_06`) foi traduzido de novo e roda a partir dos menus da 01.00: Nova campanha → abertura de York, gameplay e renascimento verificados. Os menus continuam os da 01.00.
@@ -30,11 +36,58 @@ formato do roadmap do inFAMOUS 2.
 - **Som dos vídeos (2026-10-23):** todo vídeo era mudo (o cellAdec não decodificava nada); as faixas AC3 5.1 agora são decodificadas pelo FFmpeg e o mixer POSIX se cadencia pelo relógio. O vídeo de abertura toca a −25…−34 dBFS nos seis canais, 0–0,2% de blocos em silêncio.
 - **Névoa, fumaça e a água falsa (2026-10-23):** a fase do rio mostrava um "reflexo" com listras verticais: o `WPOS` dos fragment shaders ignorava a origem embaixo à esquerda da janela, então os shaders de névoa no chão e de fumaça liam o buffer de profundidade de cabeça para baixo. A fase agora mostra o leito seco do riacho com névoa suave (nas duas campanhas). Os soldados distantes não ficam mais sobre retângulos escuros (shadow maps de profundidade de 16 bits swizzled gravados de volta na memória do guest).
 - **Toolkit:** 18 correções de pull requests do ps3recomp upstream e do trabalho no inFAMOUS 2 (veja CREDITS); um run de regressão com todas elas renderiza sem erros, renascer OK.
-- **Lançado:** v0.1.0 e v0.2.0 (2026-10-23) e v0.2.1 (2026-10-24), pré-releases: o launcher para macOS e uma prévia para Windows.
+- **Lançado:** v0.1.0 e v0.2.0 (2026-10-23), v0.2.1 (2026-10-24) e v0.2.2 (2026-10-29), pré-releases: o launcher para macOS e uma prévia para Windows; a v0.2.2 traz as mudanças de Grimsby, do Location Select e do `RES_LEVEL`.
 - **Retribuindo (2026-10-24):** mais cinco pull requests no upstream: limpezas com scissor (#560), o polygon offset (#562), posições invariantes (#563), `cellSysconfOpen`/`Abort` (#564), o modo de sensor do controle (#565) (veja [Retribuindo](#retribuindo)).
-- **Em andamento:** uma varredura de todas as fases da campanha: carregar cada uma, conferir renderização, jobs de SPU, chamadas HLE e fps, corrigir o que quebrar.
+- **Em andamento:** seguir jogando de Manchester até o fim da campanha; acelerar as fases mais pesadas.
 - **Em aberto:** pontos escuros na vegetação (parece ser o conteúdo do próprio jogo, o alpha granulado das folhas; ainda não comparado com o RPCS3); um defeito nos olhos de um personagem que não foi reproduzido (precisa de um jeito de reproduzir); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB, do sintetizador do jogo, varia a cada execução); os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado (o jogo, e o novo mixer de áudio), sem Linux.
-- **Próximo:** terminar a varredura das fases; um jeito de carregar qualquer fase direto (uma ferramenta); um teste jogando da correção do pool de shadow maps na cena onde os retângulos apareciam; reproduzir o defeito nos olhos; comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; um controle físico com o launcher; Windows.
+- **Próximo:** o resto da campanha na mão (de Nottingham à Chimeran Tower, os veículos e os chefes); as três fases mais pesadas ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps sem limite); a iluminação da neve em "Ice and Iron" comparada com o RPCS3; um teste jogando da correção do pool de shadow maps na cena onde os retângulos apareciam; reproduzir o defeito nos olhos; comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; um controle físico com o launcher; Windows.
+
+## Varredura das fases (2026-10-25)
+
+Cada fase da campanha do `game.self` v1.7, iniciada direto com
+`RES_LEVEL=<n>` (veja o [README](README.pt-BR.md#variáveis-de-ambiente)),
+rodada até o gameplay sem janela e com o limitador de quadros desligado
+(`RES_UNLOCK_FPS=1`), então a coluna de fps é a taxa sem limite (acima de 30
+quer dizer que a fase segura o limite de 30 fps do jogo com folga). As 30
+fases chegam ao gameplay sem erros, sem chamadas HLE sem resolver e sem
+timeouts de SPU. A fase 30 travava no interruptor do centro de conversão (o
+caminho do cache do sistema, corrigido).
+
+| Fase | Nome | Área | fps sem limite | draws/quadro | Notas |
+| --- | --- | --- | --- | --- | --- |
+| 20 | The Gauntlet | York | 31,0 | 689 |  |
+| 21 | A Lone Survivor | York | 32,5 | 605 | a fase do rio |
+| 22 | Spires | York | 53,5 | 498 | uns 4.500 draws nos trechos pesados |
+| 30 | Fates Worse than Death | Grimsby | 31,0 | 317 | o travamento, corrigido |
+| 31 | Conversion | Grimsby | 52,5 | 880 |  |
+| 32 | Hunted Down | Grimsby | 51,5 | 362 |  |
+| 40 | Path of Least Resistance | Manchester | 49,0 | 857 |  |
+| 41 | The Cathedral | Manchester | **26,0** | 1513 | pesada; 29–32 fps jogando na mão, no limite de 30 fps |
+| 42 | Outgunned | Manchester | 51,0 | 599 | abre com a página da arma Auger |
+| 50 | Into the Fire | Nottingham | 53,0 | 681 | página de arma |
+| 51 | Conduits | Nottingham | 52,5 | 329 |  |
+| 52 | Viper's Nest | Nottingham | 49,5 | 681 |  |
+| 60 | No Way Out | Cheshire | **25,0** | 911 | combate pesado |
+| 61 | Secrets | Cheshire | 33,0 | 263 |  |
+| 62 | Angel | Cheshire | 57,0 | 327 |  |
+| 70 | Search and Rescue | Somerset | 53,5 | 571 |  |
+| 71 | Common Ground | Somerset | 51,0 | 766 | o jipe aparece certo |
+| 72 | A Disturbing Discovery | Somerset | 53,5 | 247 |  |
+| 80 | Devil at the Door | Bristol | 48,0 | 1072 | chuva |
+| 81 | Evacuation | Bristol | 56,0 | 1181 | lanterna |
+| 82 | Parting Ways | Bristol | 30,0 | 3293 | o Stalker |
+| 90 | Into the Depths | Bracknell | 60,5 | 210 |  |
+| 91 | In a Darker Place | Bracknell | 36,5 | 641 |  |
+| 100 | A Desperate Gamble | Londres | 44,5 | 1287 |  |
+| 101 | Ice and Iron | Londres | **26,5** | 1027 | os montes de neve parecem lisos e com luz chapada; comparar com o RPCS3 |
+| 110 | Burning Bridges | Londres | 56,0 | 674 |  |
+| 111 | On the Ice | Londres | 50,6 | 714 |  |
+| 112 | Giant Slayer | Londres | 30,5 | 1944 | veículo e chefe |
+| 120 | Angel's Lair | Chimeran Tower | 32,0 | 377 |  |
+| 121 | Last Hope | Chimeran Tower | 32,5 | 463 | a última fase |
+
+As três fases mais pesadas (41, 60, 101) são os alvos de desempenho: jogando
+na mão, "The Cathedral" ficou em 29–32 fps no limite de 30 fps (2026-10-29).
 
 ## Estado atual (2026-10-24)
 
@@ -342,9 +395,12 @@ O que trouxe até aqui:
 
 - [x] O primeiro capítulo (York) com controle, em janela (2026-10-22; com os erros de renderização acima).
 - [ ] O primeiro capítulo (York) com teclado e mouse (portados em 2026-10-23, precisa de um teste jogando).
-- [ ] Zerar a campanha anotando o que quebra: todos os capítulos, os veículos, os chefes, o tiro alternativo de cada arma.
-- [ ] **Em andamento (2026-10-24):** uma varredura de todas as fases da campanha: carregar cada uma, conferir renderização, jobs de SPU, chamadas HLE e fps, e corrigir o que quebrar.
-- [ ] Uma ferramenta para carregar qualquer fase direto (a partir do método da varredura), para conferir e reproduzir bugs sem jogar até lá.
+- [x] York, Grimsby e Manchester até "The Cathedral" na mão, na v1.7, a uns 29–33 fps (2026-10-29).
+- [ ] **Em andamento:** zerar a campanha anotando o que quebra: todos os capítulos, os veículos, os chefes, o tiro alternativo de cada arma.
+- [x] Uma varredura de todas as fases da campanha: as 30 carregam até o gameplay sem erros (2026-10-25; [Varredura das fases](#varredura-das-fases-2026-10-25)).
+- [x] Carregar qualquer fase direto: `RES_LEVEL=<n>` (2026-10-25).
+- [x] Grimsby ("Fates Worse than Death") travava no interruptor do centro de conversão: o `cellSysCacheMount` responde `/dev_hdd1` (2026-10-25).
+- [x] Campanha → Location Select fechava o jogo: o `setjmp`/`longjmp` do Lua pelo `--sjlj` do lifter (2026-10-25).
 - [x] Tela dividida offline (cooperativo e versus): as duas viewports aparecem (2026-10-24; a metade do jogador 1 ficava preta, veja Gráficos). Ainda falta uma sessão com dois controles físicos.
 
 ### Gráficos
@@ -366,7 +422,8 @@ O que trouxe até aqui:
 - [x] A campanha no limite do próprio jogo, ~30–33 fps (2026-10-23): a resolução da profundidade como RGBA8 na GPU (thread do RSX de 54% → 12% ocupada, reenvios de textura a cada 120 quadros de ~100 → 0), o caminho rápido do store-watch da PPU (era 28% da thread principal), relógios do guest pelo `mach_absolute_time`, e na SPU precisão simples nativa, `goto` local para desvios calculados, `SPU_DIRECT` e retornos de chamada mais baratos (cerca de +5%, 32,2/33,0 contra 30,7 fps, com ruído). O que sobra do tempo "ocupado" da PPU é em boa parte o limitador de quadros do jogo; o jogo prende os jobs SPU mais pesados numa SPU só (workload 5, contention 1..1), como no hardware.
 - [x] Cadência a 60 fps: com `RES_UNLOCK_FPS=1` o vblank roda a 120 Hz; 88,5 fps no gameplay (eram ~50–56), velocidade do jogo inalterada (2026-10-24). O `PS3_FLIP_MAX_HZ` limita os flips (desligado por padrão; 60 mediu 50 fps).
 - [ ] Contagens reais de oclusão ZPASS (`PS3RECOMP_ENG_ZPASS=1`): implementadas, desligadas por padrão; esperar as contagens custou 84 → 50 fps a 60 fps e nenhum ganho visível foi encontrado. Ligar só se uma cena precisar.
-- [ ] Uma medição de fps de verdade da campanha v1.7 (o mesmo A/B da 01.00).
+- [x] A campanha v1.7 jogando na mão: 29–33 fps no limite de 30 fps, também em "The Cathedral" (2026-10-29).
+- [ ] As três fases mais pesadas: "The Cathedral" (41), "No Way Out" (60) e "Ice and Iron" (101) mediram ~25–26 fps sem limite na varredura (a maioria das fases 45–60); seguram 30 jogando, mas não 60 com o `RES_UNLOCK_FPS`.
 - [ ] Medir quanto do tempo de SPU é interpretado e cortar (traduzir o que sobrar).
 
 ### Estabilidade
@@ -396,7 +453,8 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 - [x] Rodá-lo a partir dos menus da 01.00: o exitspawn escolhe o build v1.7; Nova campanha → abertura de York, gameplay e renascimento verificados.
 - [x] Manter os arquivos da atualização fora da pasta de jogo (o EBOOT 01.00 não roda com eles): o `tools/play.sh` e o launcher se recusam a começar.
 - [ ] Menus da v1.7: precisam de um `EBOOT.BIN` v1.7 que não seja NPDRM, e ele parece não existir (o EBOOT da atualização só existe em NPDRM); provavelmente impossível.
-- [ ] Vibração, uma sessão longa e uma medição de fps na v1.7 (veja Controles, Estabilidade, Desempenho).
+- [x] Uma sessão longa e uma medição de fps na v1.7: de York até Manchester na mão, 29–33 fps (2026-10-29).
+- [ ] Vibração na v1.7 (veja Controles).
 
 ### Rebuild
 

@@ -7,13 +7,15 @@ para **macOS/arm64**, feito com recompilação estática: o código PowerPC e SP
 do jogo é traduzido para C/C++ e compilado como executáveis nativos, com
 gráficos em Metal. Não é um emulador.
 
-**Ele chega ao gameplay, e o capítulo 1 já foi jogado com controle.** O
-front end roda das telas legais pela instalação da primeira execução, pela
-tela de título e pelo menu principal até uma campanha nova. O executável da
-campanha então toca o vídeo de abertura da fase 1 e carrega "The Gauntlet"
-(York). Numa janela, com um DualSense, York roda em primeira pessoa com o
-HUD: inimigos e aliados, tiros, morrer e renascer no checkpoint. A cidade
-aparece com as cores certas a uns 30 fps (uns 88 fps no gameplay com o patch
+**Ele é jogável: a campanha já foi jogada com controle de York, passando
+por Grimsby, até Manchester ("The Cathedral"), e todas as 30 fases dela
+carregam até o gameplay.** O front end roda das telas legais pela instalação
+da primeira execução, pela tela de título e pelo menu principal até uma
+campanha nova. O executável da campanha então toca o vídeo de abertura da
+fase 1 e carrega "The Gauntlet" (York). Numa janela, com um DualSense, a
+campanha roda em primeira pessoa com o HUD: inimigos e aliados, tiros, morrer
+e renascer no checkpoint, Salvar e Sair e Continuar. Roda a uns 29–33 fps
+jogando, a meta de 30 fps do próprio jogo (uns 88 fps no gameplay com o patch
 opcional de 60 fps), numa janela só dos menus até a campanha; a tela dividida
 offline desenha a visão dos dois jogadores. A campanha é a da última atualização do jogo, a v1.7, traduzida de
 novo a partir do `patch_06`; os menus continuam os da 01.00 do disco (veja
@@ -24,8 +26,8 @@ seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
 do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
-> **Trabalho em andamento, bem no começo.** O capítulo 1 dá para jogar, ainda
-> com erros de renderização em aberto. Os [releases](#releases--download)
+> **Trabalho em andamento.** A campanha dá para jogar até bem dentro de
+> Manchester, ainda com erros de renderização em aberto. Os [releases](#releases--download)
 > trazem só o launcher: você mesmo compila o jogo a partir do seu disco (o
 > [launcher](#launcher) roda a compilação e o jogo por você). Só macOS com Apple silicon. O controle é o jeito testado de jogar; teclado
 > e mouse são novos e ainda precisam de um teste jogando. O que falta
@@ -53,18 +55,23 @@ nem jogado no Windows, então trate-o como experimental e não testado (o
 SmartScreen pode avisar; "Mais informações" > "Executar assim mesmo").
 Detalhes em [launcher/README.md](launcher/README.md#windows-preview).
 
-O release mais recente é a **v0.2.1** (2026-10-24, um pré-release): o
-launcher para macOS e a prévia para Windows, e o patch do toolkit com a
-cadência a 60 fps (vblank de 120 Hz, ~88 fps no gameplay), a correção da tela
-dividida cooperativa, a correção do pool de shadow maps no chão e as
-correções offline e ao sair. A v0.2.0 (2026-10-23) trouxe os ajustes de
+O release mais recente é a **v0.2.2** (2026-10-29, um pré-release): o
+launcher para macOS e a prévia para Windows, e o patch do toolkit com as
+correções que deixam a campanha seguir: o travamento em Grimsby ("Fates Worse
+than Death", o caminho do cache do sistema), Campanha → Location Select não
+fecha mais o jogo (o tratamento de erros do Lua, o `--sjlj` do lifter), o
+`RES_LEVEL` para começar em qualquer fase, e a varredura das fases. Uma
+tradução feita antes dela precisa do `tools/relift.sh`. A v0.2.1 (2026-10-24)
+trouxe a cadência a 60 fps (vblank de 120 Hz, ~88 fps no gameplay), a
+correção da tela dividida cooperativa, a correção do pool de shadow maps no
+chão e as correções offline e ao sair. A v0.2.0 (2026-10-23) trouxe os ajustes de
 controles, modos de janela, filtros, pacotes de texturas, 60 fps e campo de
 visão e áudio. Para compilar o launcher a partir do código:
 `tools/rebuild.sh launcher`.
 
 ## Estado
 
-Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos; depois a cadência a 60 fps, a tela dividida cooperativa, os retângulos escuros no chão, o polygon offset e duas horas de jogo roteirizado sem crash; depois da v0.2.1, o Salvar e Sair não leva mais o vblank de 120 Hz de volta aos menus), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
+Em 2026-10-29 (jogado na mão de York até "The Cathedral", em Manchester, a uns 29–33 fps; as 30 fases da campanha carregam até o gameplay; o travamento em Grimsby e a saída no Location Select corrigidos; antes: opções de 60 fps e de campo de visão; a sobreposição das telas legais corrigida; ritmo do áudio, volume e saída de áudio; 18 correções do toolkit vindas de pull requests do upstream; o Continuar a partir de um checkpoint, o som dos vídeos, a névoa e a água falsa da fase do rio e as sombras dos soldados distantes corrigidos; depois a cadência a 60 fps, a tela dividida cooperativa, os retângulos escuros no chão, o polygon offset e duas horas de jogo roteirizado sem crash; depois da v0.2.1, o Salvar e Sair não leva mais o vblank de 120 Hz de volta aos menus), cada item ✅ verificado em execuções num Mac com Apple silicon e Metal; 🧪 = compilado e testado, ainda não verificado numa sessão de jogo.
 
 | | |
 | --- | --- |
@@ -78,15 +85,18 @@ Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Vídeos (cellVdec pelo FFmpeg, desenhados como quad em modo imediato) | ✅ a abertura da fase 1 toca até o fim, com som: o cellAdec decodifica as faixas AC3 5.1 pelo FFmpeg (era um stub que devolvia silêncio, então todo vídeo era mudo) |
 | SPUs raw (dois programas que o `game.self` inicia quando uma fase carrega) | ✅ recortados do ELF (sem run de captura) e traduzidos; Continuar a partir de um checkpoint carrega e joga (travava: o programa tem uma área de parâmetros que muda com a fase e o checkpoint, agora mascarada na fingerprint dele) |
 | Tela de carregamento do capítulo 1 ("The Gauntlet", York) | ✅ até "Press the START button" |
-| Gameplay | ✅ capítulo 1 (York) jogado numa janela com um DualSense: primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer |
-| Taxa de quadros | ✅ a campanha chega ao limite do próprio jogo, ~30–33 fps (o Resistance roda a 30 fps no PS3); o tempo "ocupado" que resta na PPU é em boa parte o limitador de quadros do jogo. Desde 2026-10-22: o buffer de profundidade de 2560×720, que o jogo amostra como A8R8G8B8 a cada quadro, é resolvido na GPU (era uma leitura GPU→CPU e um reenvio de 7,4 MB por quadro): thread do RSX de 54% → 12% ocupada, reenvios de textura a cada 120 quadros de ~100 → 0; veja [Como funciona](#como-funciona) |
+| Gameplay | ✅ jogado numa janela com um DualSense de York (The Gauntlet, A Lone Survivor, Spires), passando por Grimsby (Fates Worse than Death, Conversion, Hunted Down) e pela Path of Least Resistance de Manchester, até "The Cathedral" (2026-10-29): primeira pessoa, HUD, inimigos e aliados, tiros, morrer e renascer, Salvar e Sair e Continuar |
+| Todas as fases da campanha | ✅ uma varredura carregou as 30 fases (de York à Chimeran Tower, `RES_LEVEL=<n>`) até o gameplay sem erros, chamadas sem resolver nem timeouts de SPU (2026-10-25); a tabela está no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md#varredura-das-fases-2026-10-25) |
+| Travamento em Grimsby | ✅ "Fates Worse than Death" travava no interruptor do centro de conversão: o jogo guarda uma cutscene no cache do sistema (`/dev_hdd1`) e a camada de arquivos dele só acha esse dispositivo quando o `cellSysCacheMount` responde o próprio `/dev_hdd1`, como o console faz; o runtime respondia `/dev_hdd1/cache/<id>`, então a abertura falhava e a thread principal tentava de novo para sempre. Corrigido em 2026-10-25 (a mesma pasta no host, caches antigos continuam valendo) |
+| Campanha → Location Select | ✅ fechava o jogo: o `pcall`/`error` do Lua usam o `setjmp`/`longjmp` da newlib, que uma recompilação estática não consegue rodar como código traduzido (restaurar os registradores do guest não desfaz nenhum frame do host), então um erro do Lua caía no pânico de "sem handler". O `--sjlj` do lifter agora troca essas chamadas por `setjmp`/`longjmp` do host (`port/patches/*.sjlj.json`, `runtime/ppu/ppu_sjlj.c`) (2026-10-25) |
+| Taxa de quadros | ✅ uns 29–33 fps jogando na mão também nas fases mais adiante (2026-10-29: "The Cathedral", uma das três fases mais pesadas, ficou em 29–32 fps no limite de 30 fps do jogo; os números sem limite da varredura estão no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md#varredura-das-fases-2026-10-25)); a campanha chega ao limite do próprio jogo, ~30–33 fps (o Resistance roda a 30 fps no PS3); o tempo "ocupado" que resta na PPU é em boa parte o limitador de quadros do jogo. Desde 2026-10-22: o buffer de profundidade de 2560×720, que o jogo amostra como A8R8G8B8 a cada quadro, é resolvido na GPU (era uma leitura GPU→CPU e um reenvio de 7,4 MB por quadro): thread do RSX de 54% → 12% ocupada, reenvios de textura a cada 120 quadros de ~100 → 0; veja [Como funciona](#como-funciona) |
 | 60 fps e campo de visão maior | ✅ opcionais, os patches da comunidade para o RPCS3 trazidos para o port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88,5 fps medidos no gameplay (01.00 e v1.7; eram ~50–56 antes de o port passar a rodar o vblank a 120 Hz com ele, 2026-10-24) na velocidade normal do jogo (o movimento de câmera da introdução leva 14,4–16,4 s a 33, 56 e 100 fps; andar ~6,3 unidades/s), `RES_MENU_60FPS=1` menus de 32 → 59 fps, `RES_FOV=<0.1..4>` (o do jogo é 1,0; o "Extended FOV" do RPCS3 é 0,7); morrer e renascer verificado a 30 e 60 fps; depois da v0.2.1 (na main) a taxa de 120 Hz fica dentro do processo da campanha, então o Salvar e Sair não a leva mais de volta aos menus |
 | Áudio | ✅ o mixer do macOS segue o tempo real (alternava entre 2,4× e 0,95×; agora mistura um bloco a cada 5,333 ms pelo relógio e reduz 7.1 para estéreo sem clipping); o som dos vídeos (veja Vídeos); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB), que vem do sintetizador do jogo e varia de uma execução para outra; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` (também no launcher) |
 | Cores do mundo (prédios, telhados, ruas) | ✅ corretas: o mundo azul era um wrap do offset de vértice que o RSX faz e o port não fazia (veja [Como funciona](#como-funciona)) |
 | Sombras e fumaça | ✅ os retângulos escuros no chão e a fumaça de bordas duras sumiram no jogo (conferido visualmente) depois das correções de profundidade de uma comparação com o RPCS3: a comparação de profundidade das sombras estava invertida, as texturas de profundidade agora preenchem todas as lanes (partículas suaves, fumaça), os snapshots de profundidade são recortados à região que a textura indica; os soldados distantes não ficam mais sobre retângulos escuros (os shadow maps de profundidade de 16 bits em ordem swizzled agora são gravados de volta na memória do guest); 🧪 os retângulos escuros de bordas duras que voltavam no chão quando as tabelas de superfícies do draw engine enchiam (o pool de shadow maps) foram corrigidos descartando a superfície usada há mais tempo, visto funcionando no log de uma sessão de jogo, a cena ainda vai ser conferida num teste jogando; o polygon offset é respeitado (shadow maps dos personagens, decalques do terreno, sombras projetadas) |
 | Água, névoa no chão e fumaça | ✅ a fase do rio mostra o leito seco do riacho com névoa suave em vez de um "reflexo" falso com listras verticais: o `WPOS` dos fragment shaders ignorava a origem embaixo à esquerda da janela, então os shaders de névoa e fumaça liam o buffer de profundidade de cabeça para baixo (verificado nas duas campanhas) |
 | Folhagem | ⚠️ pontos escuros; parece ser o conteúdo do próprio jogo (o alpha granulado das folhas), ainda não comparado com o RPCS3. A posição do vértice agora é compilada como invariante, então a pré-passada de profundidade e a passada de cor com `EQUAL` batem |
-| Tela dividida | ✅ a tela dividida offline (cooperativo e versus) desenha as duas visões: a metade do jogador 1 (esquerda) ficava preta porque uma limpeza ignorava o scissor e a limpeza do jogador 2 a apagava (2026-10-24) |
+| Tela dividida | ✅ a tela dividida offline (cooperativo e versus) desenha as duas visões: a metade do jogador 1 (esquerda) ficava preta porque uma limpeza ignorava o scissor e a limpeza do jogador 2 a apagava (2026-10-24); uma limpeza agora só é parcial quando o scissor é mais estreito que o clip, então a passada de composição em tela cheia fica inteira (2026-10-25) |
 | Renascimento | ✅ depois de morrer o jogador volta no chão, onde fica o checkpoint (antes ia parar no céu; um reinício de SPU raw que o runtime descartava, veja [Como funciona](#como-funciona)); verificado em 12 mortes, e a 30 e 60 fps |
 | Janela | ✅ uma janela persistente dos menus até a campanha: o pequeno launcher `Resistance` é dono dela e o jogo desenha nela por IOSurfaces compartilhadas, então a passagem do menu para a campanha não a fecha mais (~0,35 ms de GPU por frame, sem cópia na CPU); o "guest FPS" do título conta os flips do jogo. Uma janela em tela cheia no próprio Space para de apresentar enquanto outro app está na frente (é o macOS, não um travamento): o log avisa ("window off screen", `hidden=1` no `[RSX FPS]`) e o quadro mais novo aparece na volta |
 | Jobs de SPU (geometria, ordenação de draws, efeitos, áudio NextSynth) | ✅ os 15 módulos de job WWS traduzidos |
@@ -94,13 +104,13 @@ Em 2026-10-24 (opções de 60 fps e de campo de visão; a sobreposição das tel
 | Controle | ✅ DualSense, DualShock ou Xbox pelo SDL2 (a entrada com o processo do jogo em segundo plano está ligada para o launcher; ainda não testada assim com um controle físico); 🧪 vibração (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) portada, precisa de um teste jogando |
 | Teclado e mouse | 🧪 portados do trabalho do inFAMOUS 2: um layout de FPS (WASD, mouse para olhar, clique esquerdo atira), remapeável no `input.toml` (`PS3_INPUT_MAP`, a página Controles do launcher); testes passam, precisa de um teste jogando |
 | Modos de janela, vsync, MetalFX, SMAA e filtros, pacotes de texturas, resolução interna | 🧪 portados do trabalho do inFAMOUS 2 (veja [Variáveis de ambiente](#variáveis-de-ambiente)); testes passam, precisa de um teste jogando; a resolução interna é experimental |
-| Atualização v1.7 do jogo | ✅ a campanha roda o `game.self` da atualização, traduzido de novo a partir do `patch_06`: menus → Nova campanha → a abertura de York, gameplay e renascimento verificados; os menus continuam o EBOOT 01.00 do disco (veja [A campanha v1.7](#a-campanha-v17)); vibração com um controle físico, uma sessão longa e uma medição de fps da v1.7 ainda não verificadas |
+| Atualização v1.7 do jogo | ✅ a campanha roda o `game.self` da atualização, traduzido de novo a partir do `patch_06`: o jogo na mão de York até Manchester foi na v1.7, a 29–33 fps; os menus continuam o EBOOT 01.00 do disco (veja [A campanha v1.7](#a-campanha-v17)); vibração com um controle físico ainda não verificada |
 | App launcher | ✅ [`launcher/`](launcher/) (Tauri): disco, builds, recompilação, ajustes, saves, Jogar/Parar, em português do Brasil e inglês; 🧪 a nova página Controles (remapeamento, mouse, vibração) e os ajustes de Gráficos (janela, filtros, pacotes de texturas) |
 | Linux e Windows | ⏳ sem suporte |
 | Menus, saves e sessões longas | ✅ mais de duas horas de jogo roteirizado sem crash (2026-10-24): todos os menus e extras do EBOOT, pausa e opções, Salvar e Sair → Continuar (exitspawn nos dois sentidos), um HDD novo e vazio, um `quick.sav` corrompido, 25 minutos seguidos a 60 fps e 22 minutos parado; um run completo não tem NIDs sem resolver (o chamado ao sair era o `cellSysconfAbort`) |
 | Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram); Multiplayer → Online Game agora volta atrás offline em vez de travar |
 
-Em andamento: uma varredura de todas as fases da campanha (carregar cada uma, conferir renderização, jobs de SPU, chamadas HLE e fps, corrigir o que quebrar). Detalhes e próximos passos no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
+Próximo: seguir jogando de Manchester até o fim da campanha; acelerar as três fases mais pesadas ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps sem limite na varredura). Detalhes e próximos passos no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
 ## Como funciona
 
@@ -347,7 +357,11 @@ ele é o único que existe.
 Um lift feito antes de 2026-10-23 não tem o patch de 60 fps (`RES_UNLOCK_FPS`
 e `RES_MENU_60FPS` então não fazem nada): depois de atualizar o toolkit, rode
 `tools/relift.sh` (ele traduz de novo o EBOOT e as campanhas 01.00 e v1.7 com
-`--insn-patches` e recompila; só um ou dois pedaços mudam).
+`--insn-patches` e recompila; só um ou dois pedaços mudam). Um lift feito
+antes de 2026-10-25 também não tem o `setjmp`/`longjmp` do Lua (`--sjlj`; sem
+ele, Campanha → Location Select fecha o jogo): depois do `git pull`, apague
+`ps3recomp/`, rode `tools/rebuild.sh toolkit` e depois `tools/relift.sh`; a
+correção do travamento em Grimsby vem com a mesma atualização do toolkit.
 
 As correções do Continuar, do som dos vídeos e da névoa estão no patch do
 toolkit e no registro das SPUs: depois do `git pull`, apague `ps3recomp/` e
@@ -616,6 +630,7 @@ própria janela).
 | `PS3_FLIP_MAX_HZ=<10..1000>` | completa os flips a no mínimo 1/hz um do outro (desligado por padrão; limitar a campanha destravada a 60 mediu pior, 50 fps) |
 | `PS3RECOMP_ENG_POLY_OFFSET=0`, `PS3RECOMP_MSL_INVARIANT=0`, `PS3RECOMP_ENG_RECT_CLEAR=0` | desligam o polygon offset / a posição de vértice invariante / as limpezas com scissor (cada um ligado por padrão) |
 | `PS3RECOMP_ENG_ZPASS=1` | contagens reais de oclusão ZPASS (desligadas por padrão: custam taxa de quadros a 60 fps) |
+| `RES_LEVEL=<n>` | começa a campanha na fase `n` (o `packed/levels/level<n>` do disco: 20–22 York, 30–32 Grimsby, 40–42 Manchester, 50–52 Nottingham, 60–62 Cheshire, 70–72 Somerset, 80–82 Bristol, 90–91 Bracknell, 100–101 e 110–112 Londres, 120–121 a Chimeran Tower): defina, comece uma campanha nova, e o `port/main.cpp` grava a fase no bloco do exitspawn. Para conferências e reproduzir bugs |
 | `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | os patches opcionais do jogo ([`port/patches.cpp`](port/patches.cpp)): o limitador de quadros da campanha desligado (passo mínimo 1/30 → 1/240 s), os menus e o multiplayer a um vblank por quadro, o fator de campo de visão (1,0 = o do jogo; menor é mais aberto). Cada um só se aplica quando o ELF em execução tem as palavras que ele espera |
 | `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<nome>`, `PS3_AUDIO_MUTE=1` | volume geral (100), a saída cujo nome contém `<nome>` (as saídas são listadas no log quando nenhuma corresponde; macOS/Linux), sem som (qualquer valor silencia) |
 | `PS3_AUDIO_DUMP=<arquivo.wav>`, `PS3_AUDIO_STATS=1` | grava a mistura final (48 kHz estéreo float; antes do mudo e do volume; os menus e a campanha vão para um arquivo só) / a cada ~5 s, registra no log o nível de cada porta de áudio e da mistura, os blocos em silêncio e as amostras cortadas |

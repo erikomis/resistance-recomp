@@ -7,13 +7,15 @@ to **macOS/arm64**, built with static recompilation: the game's PowerPC and
 SPU code is translated to C/C++ and compiled into native executables, with
 graphics on Metal. It is not an emulator.
 
-**It reaches gameplay, and chapter 1 has been played with a controller.**
-The front end runs from the legal screens through the first-run install, the
-title screen and the main menu to a new campaign. The campaign executable then
-plays the level-1 intro movie and loads "The Gauntlet" (York). In a window,
-with a DualSense, York plays in first person with the HUD: enemies and allies,
-shooting, dying and respawning from the checkpoint. The town renders with its
-proper colours at about 30 fps (about 88 fps in gameplay with the optional
+**It is playable: the campaign has been played with a controller from York
+through Grimsby into Manchester ("The Cathedral"), and every one of its 30
+levels loads to gameplay.** The front end runs from the legal screens through
+the first-run install, the title screen and the main menu to a new campaign.
+The campaign executable then plays the level-1 intro movie and loads "The
+Gauntlet" (York). In a window, with a DualSense, the campaign plays in first
+person with the HUD: enemies and allies, shooting, dying and respawning from
+the checkpoint, Save & Quit and Continue. It runs at about 29–33 fps in play,
+the game's own 30 fps target (about 88 fps in gameplay with the optional
 60 fps patch), in one window from the menus through the campaign; offline
 split-screen draws both players' views. The campaign is the game's last update, v1.7, re-lifted from its
 `patch_06`; the menus stay the disc's 01.00 (see [Status](#status)).
@@ -23,8 +25,8 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 [CREDITS.md](CREDITS.md).
 
 > [!WARNING]
-> **Early work in progress.** Chapter 1 can be played, with rendering bugs
-> still open. The [releases](#releases--download) carry only the launcher:
+> **Work in progress.** The campaign can be played well into Manchester,
+> with rendering bugs still open. The [releases](#releases--download) carry only the launcher:
 > you build the game yourself from your own disc (the [launcher](#launcher)
 > can run the rebuild and the game for you).
 > Apple-silicon macOS only. A controller is the tested way to play; keyboard
@@ -52,18 +54,22 @@ built or played on Windows, so treat it as experimental and untested
 (SmartScreen may warn; "More info" > "Run anyway"). Details in
 [launcher/README.md](launcher/README.md#windows-preview).
 
-The latest release is **v0.2.1** (2026-10-24, a pre-release): the macOS
-launcher and the Windows preview, and the toolkit patch with the 60 fps
-pacing (120 Hz vblank, ~88 fps in gameplay), the cooperative split-screen
-fix, the shadow-map pool fix on the ground and the offline and quit-time
-fixes. v0.2.0 (2026-10-23) added the controls, window modes, filters, texture
+The latest release is **v0.2.2** (2026-10-29, a pre-release): the macOS
+launcher and the Windows preview, and the toolkit patch with the fixes that
+let the campaign be played on: the Grimsby freeze ("Fates Worse than Death",
+the system cache path), Campaign → Location Select no longer quitting the
+game (Lua's error handling, the lifter's `--sjlj`), `RES_LEVEL` to start any
+level, and the level sweep. A lift made before it needs `tools/relift.sh`
+(see [Building](#building)). v0.2.1 (2026-10-24) brought the 60 fps pacing
+(120 Hz vblank, ~88 fps in gameplay), the cooperative split-screen fix, the
+shadow-map pool fix on the ground and the offline and quit-time fixes. v0.2.0 (2026-10-23) added the controls, window modes, filters, texture
 packs, 60 fps and field of view and audio settings. To build the launcher
 from the sources instead:
 `tools/rebuild.sh launcher`.
 
 ## Status
 
-As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed; then the 60 fps pacing, the cooperative split-screen, the dark rectangles on the ground, the polygon offset and two hours of scripted play without a crash; after v0.2.1, Save & Quit no longer takes the 120 Hz vblank back to the menus), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
+As of 2026-10-29 (played by hand from York into Manchester's "The Cathedral" at about 29–33 fps; all 30 campaign levels load to gameplay; the Grimsby freeze and the Location Select quit fixed; earlier: 60 fps and field-of-view options; the legal-screen overlap fixed; audio pacing, volume and output device; 18 toolkit fixes from upstream pull requests; Continue from a checkpoint, movie sound, the river level's fog and fake water and the distant soldiers' shadows fixed; then the 60 fps pacing, the cooperative split-screen, the dark rectangles on the ground, the polygon offset and two hours of scripted play without a crash; after v0.2.1, Save & Quit no longer takes the 120 Hz vblank back to the menus), every ✅ item verified in runs on an Apple-silicon Mac with Metal; 🧪 = built and tested, not yet verified in a play session.
 
 | | |
 | --- | --- |
@@ -77,15 +83,18 @@ As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fix
 | Movies (cellVdec through FFmpeg, drawn as an immediate-mode quad) | ✅ the level-1 intro plays to the end, with its sound: cellAdec decodes the AC3 5.1 tracks through FFmpeg (it had been a stub that returned silence, so every movie was mute) |
 | Raw SPUs (two programs `game.self` starts when a level loads) | ✅ cut out of the ELF (no capture run) and lifted; Continue from a checkpoint loads and plays (it froze: the program carries a parameter area that changes with the level and checkpoint, now masked out of its fingerprint) |
 | Chapter 1 ("The Gauntlet", York) loading screen | ✅ up to "Press the START button" |
-| Gameplay | ✅ chapter 1 (York) played in a window with a DualSense: first person, HUD, enemies and allies, shooting, dying and respawning |
-| Frame rate | ✅ the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
+| Gameplay | ✅ played in a window with a DualSense from York (The Gauntlet, A Lone Survivor, Spires) through Grimsby (Fates Worse than Death, Conversion, Hunted Down) and Manchester's Path of Least Resistance into "The Cathedral" (2026-10-29): first person, HUD, enemies and allies, shooting, dying and respawning, Save & Quit and Continue |
+| Every campaign level | ✅ a sweep loaded all 30 levels (York to the Chimeran Tower, `RES_LEVEL=<n>`) to gameplay with no errors, unresolved calls or SPU timeouts (2026-10-25); the table is in [ROADMAP.md](ROADMAP.md#level-sweep-2026-10-25) |
+| Grimsby freeze | ✅ "Fates Worse than Death" froze at the conversion-centre switch: the game stashes a cutscene in the system cache (`/dev_hdd1`) and its file layer finds that device only when `cellSysCacheMount` answers `/dev_hdd1` itself, as the console does; the runtime answered `/dev_hdd1/cache/<id>`, so the open failed and the main thread retried it for ever. Fixed 2026-10-25 (the same host folder, old caches keep working) |
+| Campaign → Location Select | ✅ it quit the game: Lua's `pcall`/`error` use newlib's `setjmp`/`longjmp`, which a static recompilation cannot run as lifted code (restoring the guest registers unwinds no host frame), so a Lua error fell into the "no handler" panic. The lifter's `--sjlj` now turns those calls into host `setjmp`/`longjmp` (`port/patches/*.sjlj.json`, `runtime/ppu/ppu_sjlj.c`) (2026-10-25) |
+| Frame rate | ✅ about 29–33 fps in hand play through the later levels too (2026-10-29: "The Cathedral", one of the three heaviest levels, held 29–32 fps at the game's 30 fps cap; the sweep's uncapped figures are in [ROADMAP.md](ROADMAP.md#level-sweep-2026-10-25)); the campaign reaches the game's own ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. Since 2026-10-22: the game's 2560×720 depth buffer, which it samples as A8R8G8B8 every frame, is resolved on the GPU (it was a GPU→CPU readback and a 7.4 MB re-upload per frame): RSX thread 54% → 12% busy, texture re-uploads per 120 frames ~100 → 0; see [How it works](#how-it-works) |
 | 60 fps and a wider field of view | ✅ optional, the community's RPCS3 patches carried over to the port (`port/patches.cpp`): `RES_UNLOCK_FPS=1` 88.5 fps measured in gameplay (01.00 and v1.7; it was ~50–56 before the port ran the vblank at 120 Hz with it, 2026-10-24) at the normal game speed (the intro camera move takes 14.4–16.4 s at 33, 56 and 100 fps; walking ~6.3 units/s), `RES_MENU_60FPS=1` menus 32 → 59 fps, `RES_FOV=<0.1..4>` (the game's 1.0; RPCS3's "Extended FOV" 0.7); dying and respawning verified at 30 and 60 fps; after v0.2.1 (on main) the 120 Hz rate stays inside the campaign process, so Save & Quit no longer takes it back to the menus |
 | Audio | ✅ the macOS mixer keeps real time (it alternated between 2.4× and 0.95×; it now mixes one block per 5.333 ms on the clock and folds 7.1 to stereo without clipping); movie sound (see Movies); the menu music sometimes has extra centre/LFE content (+4–6 dB), which comes from the game's synth and varies from run to run; 🧪 `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` (also in the launcher) |
 | World colours (buildings, roofs, streets) | ✅ correct: the blue world was a vertex-offset wrap the RSX does and the port did not (see [How it works](#how-it-works)) |
 | Shadows and smoke | ✅ the dark rectangles on the ground and the hard-edged smoke are gone in game (checked visually) after the depth fixes from a comparison with RPCS3: the shadow depth comparison ran in the wrong direction, depth textures now feed every lane (soft particles, smoke), depth snapshots are cropped to the region the texture names; distant soldiers no longer stand on dark rectangles (swizzled 16-bit depth shadow maps are now written back to guest memory); 🧪 the dark hard-edged rectangles that came back on the ground once the draw engine's surface tables were full (the shadow-map pool) are fixed by evicting the least recently used surface, seen working in a play session's log, the scene still to be re-checked in a play test; the polygon offset is honoured (character shadow maps, terrain decals, projected shadows) |
 | Water, ground fog and smoke | ✅ the river level shows the dry creek bed with soft fog instead of a vertically streaked fake "reflection": the fragment shaders' `WPOS` ignored the window's bottom-left origin, so the fog and smoke shaders read the depth buffer upside down (verified on both campaigns) |
 | Foliage | ⚠️ dark speckles; it looks like the game's own content (grainy leaf alpha), not yet compared with RPCS3. The vertex position is now compiled invariant, so the depth pre-pass and the `EQUAL` colour pass agree |
-| Split-screen | ✅ offline split-screen (co-op and versus) draws both views: player 1's (left) half was black because a clear ignored the scissor and player 2's clear wiped it (2026-10-24) |
+| Split-screen | ✅ offline split-screen (co-op and versus) draws both views: player 1's (left) half was black because a clear ignored the scissor and player 2's clear wiped it (2026-10-24); a clear is now partial only when its scissor is narrower than the clip, so the full-screen composite pass stays whole (2026-10-25) |
 | Respawn | ✅ after dying the player comes back on the ground where the checkpoint is (it used to be sent up into the sky; a raw-SPU restart the runtime dropped, see [How it works](#how-it-works)); verified over 12 deaths, and at 30 and 60 fps |
 | Window | ✅ one persistent window from the menus through the campaign: the small `Resistance` launcher owns it and the game draws into it through shared IOSurfaces, so the menu → campaign hand-off no longer closes it (~0.35 ms GPU per frame, no CPU copy); the title's guest FPS counts the game's flips. A fullscreen window in its own Space stops presenting while another app is in front (that is macOS, not a freeze): the log says so ("window off screen", `hidden=1` in `[RSX FPS]`) and the newest frame is shown on return |
 | SPU jobs (geometry, draw sort, effects, NextSynth audio) | ✅ the 15 WWS job modules lifted |
@@ -93,13 +102,13 @@ As of 2026-10-24 (60 fps and field-of-view options; the legal-screen overlap fix
 | Controller | ✅ DualSense, DualShock or Xbox through SDL2 (input with the game process in the background is enabled for the launcher; not yet tested with a physical controller that way); 🧪 rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported, needs a play test |
 | Keyboard and mouse | 🧪 ported from the inFAMOUS 2 work: an FPS layout (WASD, mouse look, left click fires), remappable in `input.toml` (`PS3_INPUT_MAP`, the launcher's Controls page); tests pass, needs a play test |
 | Window modes, vsync, MetalFX, SMAA and filters, texture packs, internal resolution | 🧪 ported from the inFAMOUS 2 work (see [Environment](#environment)); tests pass, needs a play test; the internal resolution is experimental |
-| Game update v1.7 | ✅ the campaign runs the update's `game.self`, re-lifted from `patch_06`: menus → New campaign → the York intro, gameplay and respawn verified; the menus stay the disc's 01.00 EBOOT (see [The v1.7 campaign](#the-v17-campaign)); rumble with a physical controller, a long session and a v1.7 fps measurement not verified yet |
+| Game update v1.7 | ✅ the campaign runs the update's `game.self`, re-lifted from `patch_06`: the hand play from York into Manchester was on v1.7, at 29–33 fps; the menus stay the disc's 01.00 EBOOT (see [The v1.7 campaign](#the-v17-campaign)); rumble with a physical controller not verified yet |
 | Launcher app | ✅ [`launcher/`](launcher/) (Tauri): disc, builds, rebuild, settings, saves, Play/Stop, in English and Brazilian Portuguese; 🧪 the new Controls page (remapping, mouse, rumble) and Graphics settings (window, filters, texture packs) |
 | Linux and Windows | ⏳ not supported |
 | Menus, saves and long sessions | ✅ over two hours of scripted play without a crash (2026-10-24): every EBOOT menu and extra, pause and options, Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle one; a full run has no unresolved NIDs (the one at quit was `cellSysconfAbort`) |
 | Online multiplayer | ❌ out of scope (the official servers are gone); Multiplayer → Online Game now backs out offline instead of hanging |
 
-In progress: a sweep of every campaign level (load each one, check rendering, SPU jobs, HLE calls and fps, fix what breaks). Details and next steps in [ROADMAP.md](ROADMAP.md).
+Next: play on from Manchester to the end of the campaign; speed up the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps uncapped in the sweep). Details and next steps in [ROADMAP.md](ROADMAP.md).
 
 ## How it works
 
@@ -325,7 +334,11 @@ an old `MyGameRecomp` build when it is the only one there.
 A lift made before 2026-10-23 has no 60 fps patch in it (`RES_UNLOCK_FPS` and
 `RES_MENU_60FPS` then do nothing): after updating the toolkit, run
 `tools/relift.sh` (it re-lifts the EBOOT, the 01.00 and the v1.7 campaign with
-`--insn-patches` and rebuilds; only one or two chunks change).
+`--insn-patches` and rebuilds; only one or two chunks change). A lift made
+before 2026-10-25 also lacks Lua's `setjmp`/`longjmp` (`--sjlj`, without it
+Campaign → Location Select quits the game): after `git pull`, delete
+`ps3recomp/`, run `tools/rebuild.sh toolkit` and then `tools/relift.sh`, and
+the Grimsby freeze fix comes with the same toolkit update.
 
 The Continue, movie-sound and fog fixes are in the toolkit patch and in the
 SPU registration: after `git pull`, delete `ps3recomp/` and run
@@ -585,6 +598,7 @@ its own window).
 | `PS3_FLIP_MAX_HZ=<10..1000>` | complete flips no closer together than 1/hz (off by default; capping the unlocked campaign at 60 measured worse, 50 fps) |
 | `PS3RECOMP_ENG_POLY_OFFSET=0`, `PS3RECOMP_MSL_INVARIANT=0`, `PS3RECOMP_ENG_RECT_CLEAR=0` | turn off the polygon offset / the invariant vertex position / scissored clears (each is on by default) |
 | `PS3RECOMP_ENG_ZPASS=1` | real ZPASS occlusion counts (off by default: they cost frame rate at 60 fps) |
+| `RES_LEVEL=<n>` | start the campaign in level `n` (the disc's `packed/levels/level<n>`: 20–22 York, 30–32 Grimsby, 40–42 Manchester, 50–52 Nottingham, 60–62 Cheshire, 70–72 Somerset, 80–82 Bristol, 90–91 Bracknell, 100–101 and 110–112 London, 120–121 the Chimeran Tower): set it, start a new campaign, and `port/main.cpp` writes the level into the exitspawn block. For checks and bug repros |
 | `RES_UNLOCK_FPS=1`, `RES_MENU_60FPS=1`, `RES_FOV=<0.1..4>` | the optional game patches ([`port/patches.cpp`](port/patches.cpp)): the campaign's frame limiter off (minimum timestep 1/30 → 1/240 s), the menus and multiplayer at one vblank per frame, the field-of-view factor (1.0 = the game's; smaller is wider). Each applies only when the running ELF holds the words it expects |
 | `PS3_AUDIO_VOLUME=0..100`, `PS3_AUDIO_DEVICE=<name>`, `PS3_AUDIO_MUTE=1` | master volume (100), the output whose name contains `<name>` (the outputs are listed in the log when none matches; macOS/Linux), no sound (any value mutes) |
 | `PS3_AUDIO_DUMP=<file.wav>`, `PS3_AUDIO_STATS=1` | record the final mix (48 kHz stereo float; before mute and volume; the menus and the campaign go into one file) / every ~5 s, log each audio port's and the mix's level, silent blocks and clipped samples |
