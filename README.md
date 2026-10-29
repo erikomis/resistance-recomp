@@ -35,8 +35,12 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 > **This repository contains no game data, no firmware, no Sony keys and
 > nothing translated from them.** Everyone generates all of that locally from
-> their own legitimate copy. A fan project, not affiliated with Sony
-> Interactive Entertainment or Insomniac Games.
+> their own legitimate copy. To decrypt the disc's executables, the rebuild
+> downloads one public file, RPCS3's key table (`rpcs3/Crypto/key_vault.cpp`
+> at a pinned commit, checked by its SHA-256), and keeps the keys it needs in
+> a file of your own outside the repository (`tools/fetch_keys.py`). A fan
+> project, not affiliated with Sony Interactive Entertainment or Insomniac
+> Games.
 
 ## Releases / Download
 
@@ -283,9 +287,12 @@ internal resolution), and diagnostics (`VDEC_PICLOG`,
 - An Apple-silicon Mac (macOS with Metal).
 - Your own **Resistance: Fall of Man disc, `BCUS98107` v01.00**, dumped to an
   image and mounted (the folder that holds `PS3_GAME/`).
-- [RPCS3](https://rpcs3.net) to decrypt the two executables (if decryption
-  fails, install the PS3 firmware in RPCS3 first). ELFs you decrypted some
-  other way work too: drop them in as shown below.
+- An internet connection the first time, to download the decryption keys
+  (above); RPCS3 is not needed. The rebuild decrypts the two executables
+  itself with `tools/decrypt_self.py`. If that fails and
+  [RPCS3](https://rpcs3.net) is installed, it falls back to
+  `rpcs3 --decrypt`. ELFs you decrypted some other way work too: drop them
+  in as shown below.
 - Xcode Command Line Tools and Homebrew:
 
 ```sh
@@ -309,7 +316,7 @@ PY=.venv/bin/python PS3_VFS_ROOT=/Volumes/<your disc> tools/rebuild.sh
 | Step | What it does | Writes |
 | --- | --- | --- |
 | `toolkit` | `tools/setup_toolkit.sh` | `ps3recomp/` |
-| `decrypt` | copies `EBOOT.BIN` and `game.self` from the disc and runs `rpcs3 --decrypt` (`RPCS3=<path>` if it is not in `/Applications`); skipped when the `.elf` is already there; checks the SHA-256 of the result against the tested v01.00 executables | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
+| `decrypt` | decrypts `EBOOT.BIN` and `game.self` from the disc with `tools/decrypt_self.py`, the keys downloaded once by `tools/fetch_keys.py` into `~/Library/Application Support/resistance-recomp/keys/self_keys.txt` (`RES_SELF_KEYS` moves it, `PS3_KEYS` uses a scetool key file you have); falls back to `rpcs3 --decrypt` when that fails and RPCS3 is installed (`RPCS3=<path>`); skipped when the `.elf` is already there; checks the SHA-256 of the result against the tested v01.00 executables | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
 | `analyse` | the toolkit's `ppu_loader.py` (functions, imports, TOC) | `analysis/BCUS98107/` |
 | `lift` | the toolkit's `ppu_lifter.py`, 16 chunks for the EBOOT and 12 for `game.self`, with the switchable instructions of the 60 fps patches (`port/patches/*.insn.json`) | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: the job-manager policy module, extracted from your EBOOT, wrapped and lifted; `tools/regen_jobmods.sh`: the 15 WWS job modules; `tools/regen_rawspu.sh`: the two raw-SPU programs, cut out of `game.elf` | `port/spu/captured/`, `port/spu/jobmod_*/`, `port/spu/rawspu0/`, `port/spu/rawspu1/` |
@@ -424,7 +431,7 @@ tools/rebuild.sh v17                                  # tools/v17/regen_v17.sh
 ```
 
 `regen_v17.sh` extracts `new_game.self` from `patch_06`
-(`tools/v17/psarc_extract.py`), decrypts it with `rpcs3 --decrypt` into
+(`tools/v17/psarc_extract.py`), decrypts it as the `decrypt` step does into
 `game/BCUS98107/modules_v17/game.elf` (checking the SHA-256), lifts it to
 `recompiled/BCUS98107/game_module_v17/`, lifts its SPU code into
 `port/spu_v17/` (the policy module is copied from `port/spu/captured/`, so

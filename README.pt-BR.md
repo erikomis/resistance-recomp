@@ -35,7 +35,11 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > **Este repositório não contém dados do jogo, firmware, chaves da Sony nem
 > nada traduzido a partir deles.** Cada um gera tudo isso localmente a partir
-> da própria cópia legítima. Projeto de fã, sem afiliação com a Sony
+> da própria cópia legítima. Para descriptografar os executáveis do disco, o
+> rebuild baixa um arquivo público, a tabela de chaves do RPCS3
+> (`rpcs3/Crypto/key_vault.cpp` num commit fixo, conferida pelo SHA-256), e
+> guarda as chaves de que precisa num arquivo seu, fora do repositório
+> (`tools/fetch_keys.py`). Projeto de fã, sem afiliação com a Sony
 > Interactive Entertainment ou a Insomniac Games.
 
 ## Releases / Download
@@ -303,10 +307,12 @@ comandos de analógico no `PAD_FILE`, uma linha de log mais completa no
 - Um Mac com Apple silicon (macOS com Metal).
 - O seu próprio **disco do Resistance: Fall of Man, `BCUS98107` v01.00**,
   copiado para uma imagem e montado (a pasta que contém `PS3_GAME/`).
-- O [RPCS3](https://rpcs3.net) para descriptografar os dois executáveis (se a
-  descriptografia falhar, instale antes o firmware do PS3 no RPCS3). ELFs
-  descriptografados de outro jeito também servem: é só colocá-los onde está
-  indicado abaixo.
+- Conexão com a internet na primeira vez, para baixar as chaves de
+  descriptografia (acima); o RPCS3 não é necessário. O rebuild descriptografa
+  os dois executáveis sozinho com o `tools/decrypt_self.py`. Se isso falhar e
+  o [RPCS3](https://rpcs3.net) estiver instalado, ele usa o
+  `rpcs3 --decrypt` como alternativa. ELFs descriptografados de outro jeito
+  também servem: é só colocá-los onde está indicado abaixo.
 - Xcode Command Line Tools e Homebrew:
 
 ```sh
@@ -330,7 +336,7 @@ exemplo `tools/rebuild.sh lift build`):
 | Etapa | O que faz | Grava |
 | --- | --- | --- |
 | `toolkit` | `tools/setup_toolkit.sh` | `ps3recomp/` |
-| `decrypt` | copia o `EBOOT.BIN` e o `game.self` do disco e roda `rpcs3 --decrypt` (`RPCS3=<caminho>` se ele não estiver em `/Applications`); pulada quando o `.elf` já existe; confere o SHA-256 do resultado com o dos executáveis v01.00 testados | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
+| `decrypt` | descriptografa o `EBOOT.BIN` e o `game.self` do disco com o `tools/decrypt_self.py`, com as chaves baixadas uma vez pelo `tools/fetch_keys.py` para `~/Library/Application Support/resistance-recomp/keys/self_keys.txt` (`RES_SELF_KEYS` muda o lugar, `PS3_KEYS` usa um arquivo de chaves do scetool que você já tenha); usa o `rpcs3 --decrypt` como alternativa quando isso falha e o RPCS3 está instalado (`RPCS3=<caminho>`); pulada quando o `.elf` já existe; confere o SHA-256 do resultado com o dos executáveis v01.00 testados | `game/BCUS98107/EBOOT.elf`, `game/BCUS98107/modules/game.elf` |
 | `analyse` | o `ppu_loader.py` do toolkit (funções, imports, TOC) | `analysis/BCUS98107/` |
 | `lift` | o `ppu_lifter.py` do toolkit, 16 pedaços para o EBOOT e 12 para o `game.self`, com as instruções comutáveis dos patches de 60 fps (`port/patches/*.insn.json`) | `recompiled/BCUS98107/`, `recompiled/BCUS98107/game_module/` |
 | `spu` | `tools/regen_spu_pm.sh`: o policy module do job manager, extraído do seu EBOOT, embrulhado e traduzido; `tools/regen_jobmods.sh`: os 15 módulos de job WWS; `tools/regen_rawspu.sh`: os dois programas das SPUs raw, recortados do `game.elf` | `port/spu/captured/`, `port/spu/jobmod_*/`, `port/spu/rawspu0/`, `port/spu/rawspu1/` |
@@ -451,7 +457,7 @@ tools/rebuild.sh v17                                  # tools/v17/regen_v17.sh
 ```
 
 O `regen_v17.sh` extrai o `new_game.self` do `patch_06`
-(`tools/v17/psarc_extract.py`), descriptografa com `rpcs3 --decrypt` para
+(`tools/v17/psarc_extract.py`), descriptografa como a etapa `decrypt` para
 `game/BCUS98107/modules_v17/game.elf` (conferindo o SHA-256), traduz para
 `recompiled/BCUS98107/game_module_v17/`, traduz o código de SPU dele para
 `port/spu_v17/` (o policy module é copiado de `port/spu/captured/`, então

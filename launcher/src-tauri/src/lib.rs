@@ -2039,10 +2039,13 @@ async fn check_prereqs() -> Prereqs {
         let root = port_root(&st);
         let b = root.as_deref().map(resolve_builds);
         let elfs = b.as_ref().is_some_and(|b| b.eboot_elf.is_some() && b.game_elf.is_some());
+        // The rebuild decrypts with tools/decrypt_self.py (keys downloaded once
+        // from RPCS3's public source by tools/fetch_keys.py); RPCS3 is only its
+        // fallback, so a missing RPCS3 is not a problem.
         match find_rpcs3() {
             Some(r) => add("ok", "rpcs3", s(&r)),
             None if elfs => add("ok", "rpcs3", "not needed: the decrypted ELFs are there".into()),
-            None => add("fail", "rpcs3", "not found (needed once, to decrypt EBOOT.BIN and game.self)".into()),
+            None => add("ok", "rpcs3", "not needed: the rebuild decrypts EBOOT.BIN and game.self itself (internet needed once)".into()),
         }
         match find_disc(&st) {
             Some(d) => add("ok", "disc", s(&d)),

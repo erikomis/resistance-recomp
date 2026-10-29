@@ -20,7 +20,7 @@ the game; a Windows x64 build is published as an untested preview (below).
    do it: **Advanced > Install / rebuild** lists what the Mac still needs
    (Xcode Command Line Tools; `brew install` of cmake, ninja, sdl2, glslang,
    spirv-cross, spirv-tools, ffmpeg, python@3.12 with the player's OK; RPCS3
-   for the one-time decryption unless the ELFs are already there) and runs
+   is optional: the rebuild decrypts the disc itself) and runs
    `tools/rebuild.sh` with the chosen steps.
 2. **Game > Disc**: **Mount the disc image…** picks the `.iso` and attaches
    it read-only (`hdiutil attach -readonly`); the image is remembered and

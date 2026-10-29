@@ -7,12 +7,14 @@
 # (and v17 and launcher, only when named)
 #
 #   toolkit  tools/setup_toolkit.sh (./ps3recomp at the pinned commit + patch)
-#   decrypt  copies PS3_GAME/USRDIR/EBOOT.BIN and game.self from the disc to
-#            game/BCUS98107/ and decrypts them with RPCS3 (rpcs3 --decrypt;
-#            RPCS3=<path> if it is not in /Applications). Skipped for a file
-#            whose .elf is already there, so ELFs decrypted some other way
-#            can simply be dropped in: game/BCUS98107/EBOOT.elf and
-#            game/BCUS98107/modules/game.elf.
+#   decrypt  decrypts PS3_GAME/USRDIR/EBOOT.BIN and game.self from the disc
+#            into game/BCUS98107/ with tools/decrypt_self.py. No RPCS3 needed:
+#            the keys come from RPCS3's public source code, downloaded once by
+#            tools/fetch_keys.py into a file outside the repository (none are
+#            in it); RPCS3 (rpcs3 --decrypt, RPCS3=<path>) is only a fallback
+#            when that fails. Skipped for a file whose .elf is already there,
+#            so ELFs decrypted some other way can simply be dropped in:
+#            game/BCUS98107/EBOOT.elf and game/BCUS98107/modules/game.elf.
 #   analyse  toolkit tools/ppu_loader.py -> analysis/BCUS98107{,/game_module}
 #   lift     toolkit tools/ppu_lifter.py -> recompiled/BCUS98107{,/game_module}
 #            (16 and 12 chunks: the same split, byte for byte, as the tested lift),
@@ -38,7 +40,8 @@
 #
 # Everything it writes (game/, analysis/, recompiled/, build/, out/,
 # port/spu/captured/, port/spu_v17/) is game-derived and .gitignore'd.
-# Environment: PS3_VFS_ROOT (the mounted disc), PS3RECOMP_DIR, PY, RPCS3, JOBS.
+# Environment: PS3_VFS_ROOT (the mounted disc), PS3RECOMP_DIR, PY, RPCS3, JOBS,
+# RES_SELF_KEYS / PS3_KEYS (the key file; tools/env.sh res_decrypt).
 set -e
 here=${0:A:h}; source "$here/env.sh"
 TK=${PS3RECOMP_DIR:-$RES_ROOT/ps3recomp}
@@ -53,22 +56,10 @@ GAME_SHA=2e007861b0c515ab4212d031e8533114fc75ee221ffbd840d0e9ff168dd3bd37
 
 say() { print -P "%B==> $*%b"; }
 
-find_rpcs3() {
-    for c in "$RPCS3" ~/Applications/RPCS3.app/Contents/MacOS/rpcs3 \
-             /Applications/RPCS3.app/Contents/MacOS/rpcs3 "$(command -v rpcs3)"; do
-        [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
-    done
-    return 1
-}
-
 decrypt_one() {   # <disc file> <dest dir> <name.elf> <expected sha>
-    local src=$1 dst=$2 elf=$3 want=$4 rp
-    mkdir -p "$dst"
+    local src=$1 dst=$2 elf=$3 want=$4
     if [ ! -f "$dst/$elf" ]; then
-        rp=$(find_rpcs3) || { echo "RPCS3 not found (set RPCS3=<path>), or put a decrypted $elf in $dst" >&2; exit 1; }
-        cp "$src" "$dst/"
-        "$rp" --decrypt "$dst/${src:t}" >/dev/null 2>&1 || true
-        [ -f "$dst/$elf" ] || { echo "RPCS3 did not write $dst/$elf" >&2; exit 1; }
+        res_decrypt "$src" "$dst/$elf" || exit 1     # tools/env.sh
     fi
     [ "$(head -c 4 "$dst/$elf")" = $'\x7fELF' ] || { echo "$dst/$elf is not an ELF" >&2; exit 1; }
     if [ "$(shasum -a 256 "$dst/$elf" | cut -d' ' -f1)" != "$want" ]; then

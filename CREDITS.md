@@ -50,16 +50,20 @@ v0.17.0 or to this port), with their authors kept in the patch headers:
 - **[infamous2-recomp](https://github.com/erikomis/infamous2-recomp)** — the
   author's inFAMOUS 2 port to macOS on the same toolkit. Its repository
   layout, the toolkit-patch approach (`tools/setup_toolkit.sh`), the run and
-  capture scripts (`tools/ppm2png.py` is copied from it) and the fix for
+  capture scripts (`tools/ppm2png.py` is copied from it), the SELF decryptor
+  (`tools/decrypt_self.py`, whose layout follows
+  [sp00nznet/twistedmetal](https://github.com/sp00nznet/twistedmetal)'s, MIT)
+  and the fix for
   running the guest off the macOS main thread all come from there. It in turn
   stands on [NoahBPeterson](https://github.com/NoahBPeterson/ps3recomp)'s
   inFAMOUS 1 fork of ps3recomp.
 
 ## Tools
 
-- [RPCS3](https://github.com/RPCS3/rpcs3) — decryption of the player's own
-  `EBOOT.BIN` and `game.self` (`rpcs3 --decrypt`), and the behaviour reference
-  for the toolkit.
+- [RPCS3](https://github.com/RPCS3/rpcs3) — its public key table
+  (`rpcs3/Crypto/key_vault.cpp`), which `tools/fetch_keys.py` downloads to
+  decrypt the player's own `EBOOT.BIN` and `game.self`; `rpcs3 --decrypt` as
+  the fallback; and the behaviour reference for the toolkit.
 - [FFmpeg](https://ffmpeg.org/) (libavcodec, libavutil; LGPL/GPL, loaded at
   runtime from the player's own Homebrew install, not shipped) — video decoding.
 - [SDL2](https://www.libsdl.org/), [glslang](https://github.com/KhronosGroup/glslang),

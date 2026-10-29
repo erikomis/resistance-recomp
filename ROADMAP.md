@@ -176,7 +176,7 @@ What got it this far:
   `cellPadSetActDirect` (rumble). At the exitspawn `port/stubs.cpp` runs the
   v1.7 build when it and its ELF exist (`RES_GAME_VERSION=100` keeps 01.00).
   `tools/v17/regen_v17.sh` (`tools/rebuild.sh v17`) extracts `patch_06`,
-  decrypts `new_game.self` with `rpcs3 --decrypt`, lifts it, lifts the SPU
+  decrypts `new_game.self` (`tools/decrypt_self.py`), lifts it, lifts the SPU
   programs (the raw-SPU ones cut out of the ELF) and builds. Verified:
   menus (01.00 EBOOT) → New campaign → the log says
   `campaign = v1.7 game.self` → the York intro, "The Gauntlet"; gameplay and
@@ -443,7 +443,7 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 
 - [x] One script for the whole rebuild from the player's own disc (`tools/rebuild.sh`).
 - [x] The raw-SPU programs and the SPU jobs from the disc without a capture run: the job modules and the raw-SPU programs are cut out of the ELFs (`tools/regen_jobmods.sh`, `tools/extract_rawspu_elf.py`, 2026-10-23).
-- [ ] Decryption without RPCS3 (inFAMOUS 2's `decrypt_self.py`, with the player's own key file).
+- [x] Decryption without RPCS3 (2026-10-29): inFAMOUS 2's `decrypt_self.py`, with a key file `tools/fetch_keys.py` writes outside the repository from RPCS3's public `key_vault.cpp` (downloaded at a pinned commit, checked by its SHA-256). The disc's `EBOOT.elf` and `game.elf` and the v1.7 `game.elf` come out byte-identical to RPCS3's; `rpcs3 --decrypt` is only a fallback.
 
 ---
 

@@ -182,7 +182,7 @@ O que trouxe até aqui:
   o `port/stubs.cpp` roda o build v1.7 quando ele e o ELF dele existem
   (`RES_GAME_VERSION=100` mantém a 01.00). O `tools/v17/regen_v17.sh`
   (`tools/rebuild.sh v17`) extrai o `patch_06`, descriptografa o
-  `new_game.self` com `rpcs3 --decrypt`, traduz, traduz os programas de SPU
+  `new_game.self` (`tools/decrypt_self.py`), traduz, traduz os programas de SPU
   (os das SPUs raw recortados do ELF) e compila. Verificado: menus
   (EBOOT 01.00) → Nova campanha → o log mostra `campaign = v1.7 game.self` →
   a abertura de York, "The Gauntlet"; gameplay e renascimento funcionam com a
@@ -460,7 +460,7 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 
 - [x] Um script para o rebuild inteiro a partir do disco do próprio jogador (`tools/rebuild.sh`).
 - [x] Os programas das SPUs raw e os jobs de SPU a partir do disco, sem um run de captura: os módulos de job e os programas das SPUs raw são recortados dos ELFs (`tools/regen_jobmods.sh`, `tools/extract_rawspu_elf.py`, 2026-10-23).
-- [ ] Descriptografia sem RPCS3 (o `decrypt_self.py` do inFAMOUS 2, com o arquivo de chaves do próprio jogador).
+- [x] Descriptografia sem RPCS3 (2026-10-29): o `decrypt_self.py` do inFAMOUS 2, com um arquivo de chaves que o `tools/fetch_keys.py` grava fora do repositório a partir do `key_vault.cpp` público do RPCS3 (baixado num commit fixo, conferido pelo SHA-256). O `EBOOT.elf` e o `game.elf` do disco e o `game.elf` da v1.7 saem idênticos byte a byte aos do RPCS3; o `rpcs3 --decrypt` é só uma alternativa.
 
 ---
 

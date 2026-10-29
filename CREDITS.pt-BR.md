@@ -52,15 +52,20 @@ v0.17.0 ou a este port), com os autores mantidos nos cabeçalhos do patch:
   do inFAMOUS 2 para macOS, do mesmo autor, sobre o mesmo toolkit. De lá vêm a
   organização do repositório, a abordagem de patch do toolkit
   (`tools/setup_toolkit.sh`), os scripts de execução e captura (o
-  `tools/ppm2png.py` foi copiado de lá) e a correção de rodar o guest fora da
+  `tools/ppm2png.py` foi copiado de lá), o descriptografador de SELF
+  (`tools/decrypt_self.py`, cuja estrutura segue a do
+  [sp00nznet/twistedmetal](https://github.com/sp00nznet/twistedmetal), MIT)
+  e a correção de rodar o guest fora da
   thread principal do macOS. Ele, por sua vez, se apoia no fork do inFAMOUS 1
   do ps3recomp feito por [NoahBPeterson](https://github.com/NoahBPeterson/ps3recomp).
 
 ## Ferramentas
 
-- [RPCS3](https://github.com/RPCS3/rpcs3) — descriptografia do `EBOOT.BIN` e do
-  `game.self` do próprio jogador (`rpcs3 --decrypt`), e a referência de
-  comportamento do toolkit.
+- [RPCS3](https://github.com/RPCS3/rpcs3) — a tabela pública de chaves dele
+  (`rpcs3/Crypto/key_vault.cpp`), que o `tools/fetch_keys.py` baixa para
+  descriptografar o `EBOOT.BIN` e o `game.self` do próprio jogador; o
+  `rpcs3 --decrypt` como alternativa; e a referência de comportamento do
+  toolkit.
 - [FFmpeg](https://ffmpeg.org/) (libavcodec, libavutil; LGPL/GPL, carregado em
   runtime a partir da instalação do Homebrew do próprio jogador, não
   distribuído aqui) — decodificação de vídeo.

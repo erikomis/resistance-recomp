@@ -20,6 +20,10 @@
 #   PS3RECOMP_FFMPEG_AVCODEC / PS3RECOMP_FFMPEG_AVUTIL
 #                 FFmpeg libraries for the video decoder (default: Homebrew's)
 #   PY            Python 3 (default: python3)
+#   RES_SELF_KEYS the key file tools/fetch_keys.py writes and res_decrypt reads
+#                 (default, macOS: ~/Library/Application Support/
+#                 resistance-recomp/keys/self_keys.txt); PS3_KEYS uses your own
+#                 scetool key file instead; RPCS3 the fallback decryptor
 #
 # The layout matters for more than these scripts: when the EBOOT exitspawns
 # game.self, port/stubs.cpp execs the sibling build directory
@@ -104,6 +108,54 @@ res_disc() {
     return 1
 }
 export PS3_VFS_ROOT
+
+# res_rpcs3 -> prints the RPCS3 executable (RPCS3=<path>, ~/Applications,
+# /Applications, or rpcs3 on PATH). Only a fallback for res_decrypt now.
+res_rpcs3() {
+    local c
+    for c in "$RPCS3" ~/Applications/RPCS3.app/Contents/MacOS/rpcs3 \
+             /Applications/RPCS3.app/Contents/MacOS/rpcs3 "$(command -v rpcs3)"; do
+        [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
+    done
+    return 1
+}
+
+# res_decrypt <SELF> <ELF> -> decrypts one of the game's executables.
+#
+# First with tools/decrypt_self.py, our own decryptor. Its keys are not in
+# this repository: tools/fetch_keys.py downloads RPCS3's public key table
+# (one source file, at a pinned commit, checked by its SHA-256) the first time
+# and keeps the keys in a file of your own, outside the repository (macOS:
+# ~/Library/Application Support/resistance-recomp/keys/self_keys.txt;
+# RES_SELF_KEYS moves it, PS3_KEYS uses a scetool key file you already have).
+# If that fails (no internet the first time, no pycryptodome in $PY) and
+# RPCS3 is installed, rpcs3 --decrypt is tried instead, as before.
+res_decrypt() {
+    local src=$1 elf=$2 keys rp out
+    mkdir -p "${elf:h}"
+    echo "  decrypting ${src:t} -> $elf"
+    keys=$PS3_KEYS
+    # (the || keeps a failed download from ending a set -e caller here)
+    [ -n "$keys" ] || keys=$("$PY" -I "$RES_ROOT/tools/fetch_keys.py") || keys=
+    if [ -n "$keys" ] &&
+       "$PY" -I "$RES_ROOT/tools/decrypt_self.py" "$src" -o "$elf" --keys "$keys" >/dev/null; then
+        return 0
+    fi
+    rm -f "$elf"
+    if ! rp=$(res_rpcs3); then
+        echo "Could not decrypt ${src:t}: see the message above. The first time, this needs an internet" >&2
+        echo "connection to download the decryption keys; connect and run the same command again." >&2
+        echo "(Or install RPCS3, or put an already decrypted $elf there yourself.)" >&2
+        return 1
+    fi
+    echo "  our decryptor did not work; trying RPCS3 ($rp)"
+    # rpcs3 --decrypt writes <name>.elf beside the SELF it is given.
+    if [ "${src:h:A}" != "${elf:h:A}" ]; then cp "$src" "${elf:h}/"; fi
+    "$rp" --decrypt "${elf:h}/${src:t}" >/dev/null 2>&1 || true
+    out=${elf:h}/${src:t:r}.elf
+    [ -f "$out" ] && [ "$out" != "$elf" ] && mv "$out" "$elf"
+    [ -f "$elf" ] || { echo "RPCS3 could not decrypt ${src:t} either (install the PS3 firmware in RPCS3 and try again)" >&2; return 1; }
+}
 
 # FFmpeg for cellVdec (built with -DPS3RECOMP_FFMPEG_RUNTIME=ON).
 if [ -z "$PS3RECOMP_FFMPEG_AVCODEC" ] || [ -z "$PS3RECOMP_FFMPEG_AVUTIL" ]; then

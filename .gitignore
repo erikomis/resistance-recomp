@@ -56,12 +56,19 @@ port/spu/jobmods_manifest.json
 port/spu_v17/
 port/recompiled/
 
-# Firmware and keys
+# Firmware and keys. tools/fetch_keys.py writes its key file outside the
+# repository (~/Library/Application Support/resistance-recomp/keys/); these
+# keep one out of git if it is ever pointed here, as does RPCS3's key table.
 fw/
 dev_flash/
 dev_flash*/
 *.keys
 *.KEYS
+keys/
+*keys*.txt
+*KEYS*.txt
+key_vault.cpp
+key_vault.h
 *.rap
 *.RAP
 *.rif

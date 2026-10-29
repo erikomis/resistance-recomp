@@ -9,9 +9,11 @@
 #   extract  /data/new_game.self out of the update's patch_06.psarc
 #            (RES_UPDATE_DIR, default $RES_ROOT/update: the folder holding
 #            your patch_01..patch_07.psarc) -> game/BCUS98107/modules_v17/game.self
-#   decrypt  rpcs3 --decrypt -> modules_v17/game.elf (RPCS3=<path> if it is not
-#            in ~/Applications or /Applications); checked against the sha256 of
-#            the tested ELF. Skipped when game.elf is already there.
+#   decrypt  tools/decrypt_self.py -> modules_v17/game.elf, with the keys
+#            tools/fetch_keys.py downloads from RPCS3's public source (as the
+#            disc's executables; tools/env.sh res_decrypt), rpcs3 --decrypt
+#            only as a fallback; checked against the sha256 of the tested ELF.
+#            Skipped when game.elf is already there.
 #   analyse  toolkit tools/ppu_loader.py -> analysis/BCUS98107/game_module_v17
 #   lift     toolkit tools/ppu_lifter.py (12 chunks, as 01.00)
 #            -> recompiled/BCUS98107/game_module_v17, with the RES_UNLOCK_FPS
@@ -47,8 +49,8 @@
 # (47C9CB480016D493, 5771C48D28664765, ...).
 #
 # Everything this writes is game-derived and .gitignore'd: never commit it.
-# Environment: RES_UPDATE_DIR, PS3RECOMP_DIR, PY, RPCS3, JOBS; tools/env.sh for
-# the rest.
+# Environment: RES_UPDATE_DIR, PS3RECOMP_DIR, PY, RPCS3, RES_SELF_KEYS, PS3_KEYS,
+# JOBS; tools/env.sh for the rest.
 set -e
 v17=${0:A:h}
 here=${v17:h}; source "$here/env.sh"      # RES_ROOT, RES_GAME, RES_BUILD, RES_OUT, PY
@@ -84,14 +86,8 @@ for s in $steps; do
     decrypt)
         say "decrypt"
         if [ ! -f "$M/game.elf" ]; then
-            rp=
-            for c in "$RPCS3" ~/Applications/RPCS3.app/Contents/MacOS/rpcs3 \
-                     /Applications/RPCS3.app/Contents/MacOS/rpcs3 "$(command -v rpcs3)"; do
-                [ -n "$c" ] && [ -x "$c" ] && { rp=$c; break; }
-            done
-            [ -n "$rp" ] || { echo "RPCS3 not found (RPCS3=<path>), or put a decrypted game.elf in $M" >&2; exit 1; }
-            "$rp" --decrypt "$M/game.self" >/dev/null 2>&1 || true
-            [ -f "$M/game.elf" ] || { echo "RPCS3 did not write $M/game.elf" >&2; exit 1; }
+            [ -f "$M/game.self" ] || { echo "no $M/game.self (step extract)" >&2; exit 1; }
+            res_decrypt "$M/game.self" "$M/game.elf" || exit 1     # tools/env.sh
         fi
         [ "$(head -c 4 "$M/game.elf")" = $'\x7fELF' ] || { echo "$M/game.elf is not an ELF" >&2; exit 1; }
         [ "$(shasum -a 256 "$M/game.elf" | cut -d' ' -f1)" = $ELF_SHA ] ||
