@@ -1,0 +1,6 @@
+{
+  "elf": "modules_v17/game.elf (game.self v1.7)",
+  "note": "newlib setjmp/longjmp; callers: Lua luaD_rawrunprotected func_0054BD60 (setjmp) and luaD_throw func_0054BCFC (longjmp). See eboot.sjlj.json.",
+  "setjmp": ["0x00665C60"],
+  "longjmp": ["0x00665D84"]
+}

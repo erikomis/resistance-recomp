@@ -13,7 +13,9 @@
 # lift; with an empty patch list the output is byte-identical to a lift without
 # --insn-patches. The lifter rewrites only the chunks whose text changes, so
 # the rebuild recompiles one or two of them. Use it on a lift made before the
-# patches existed (RES_UNLOCK_FPS / RES_MENU_60FPS then do nothing). Everything
+# patches existed (RES_UNLOCK_FPS / RES_MENU_60FPS then do nothing), or before
+# the setjmp/longjmp specs (<spec>.sjlj.json: Lua's pcall, without which
+# Campaign -> Location Select quits the game). Everything
 # it writes is game-derived and .gitignore'd. NOBUILD=1 skips the rebuild.
 set -e -o pipefail
 here=${0:A:h}; source "$here/env.sh"
@@ -34,10 +36,11 @@ for w in $which; do
         (( $# )) && { echo "no analysis for $w in $an (tools/rebuild.sh analyse)" >&2; exit 1; }
         continue
     fi
+    sj=(); [[ -f $P/$spec.sjlj.json ]] && sj=(--sjlj "$P/$spec.sjlj.json")
     print -P "%B==> lift $w%b"
     "$PY" "$TK/tools/ppu_lifter.py" "$elf" -j $JOBS --chunks $n \
         --functions "$an/$fn.functions.json" --hle-stubs "$an/$fn.imports.json" \
-        --insn-patches "$P/$spec.insn.json" --output "$out"
+        --insn-patches "$P/$spec.insn.json" $sj --output "$out"
     if [ -z "$NOBUILD" ] && [ -f "$RES_BUILD/$b/build.ninja" ]; then
         print -P "%B==> build $b%b"
         cmake --build "$RES_BUILD/$b" -j $JOBS

@@ -1,0 +1,6 @@
+{
+  "elf": "EBOOT.elf (disc 01.00)",
+  "note": "newlib setjmp/longjmp linked into the title. Their one caller each is Lua: luaD_rawrunprotected func_0053DDEC (setjmp, return 0x0053DE24) and luaD_throw func_0053DD88 (longjmp). Without host support a Lua error under pcall falls into the no-handler path (NULL panic, exit(1)): Campaign -> Location Select with -unlockalllevels.",
+  "setjmp": ["0x0070FC3C"],
+  "longjmp": ["0x0070FD60"]
+}

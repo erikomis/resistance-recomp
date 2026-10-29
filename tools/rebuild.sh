@@ -17,7 +17,8 @@
 #   lift     toolkit tools/ppu_lifter.py -> recompiled/BCUS98107{,/game_module}
 #            (16 and 12 chunks: the same split, byte for byte, as the tested lift),
 #            with the switchable instruction patches of port/patches/*.insn.json
-#            (RES_UNLOCK_FPS, RES_MENU_60FPS; port/patches.cpp)
+#            (RES_UNLOCK_FPS, RES_MENU_60FPS; port/patches.cpp) and the
+#            setjmp/longjmp of port/patches/*.sjlj.json (Lua's pcall)
 #   spu      tools/regen_spu_pm.sh -> port/spu/captured/,
 #            tools/regen_jobmods.sh -> port/spu/jobmod_*/, and
 #            tools/regen_rawspu.sh -> port/spu/rawspu0, rawspu1 (the raw-SPU
@@ -99,10 +100,12 @@ for s in $steps; do
         say "lift (EBOOT, then game.self)"
         "$PY" "$TK/tools/ppu_lifter.py" "$RES_GAME/EBOOT.elf" "${jobs[@]}" --chunks 16 \
             --functions "$AN/EBOOT.functions.json" --hle-stubs "$AN/EBOOT.imports.json" \
-            --insn-patches "$RES_ROOT/port/patches/eboot.insn.json" --output "$RC"
+            --insn-patches "$RES_ROOT/port/patches/eboot.insn.json" \
+            --sjlj "$RES_ROOT/port/patches/eboot.sjlj.json" --output "$RC"
         "$PY" "$TK/tools/ppu_lifter.py" "$RES_GAME/modules/game.elf" "${jobs[@]}" --chunks 12 \
             --functions "$AN/game_module/game.functions.json" --hle-stubs "$AN/game_module/game.imports.json" \
-            --insn-patches "$RES_ROOT/port/patches/game_100.insn.json" --output "$RC/game_module" ;;
+            --insn-patches "$RES_ROOT/port/patches/game_100.insn.json" \
+            --sjlj "$RES_ROOT/port/patches/game_100.sjlj.json" --output "$RC/game_module" ;;
     spu)
         say "spu (job-manager policy module, WWS job modules, raw-SPU programs)"
         PS3RECOMP_DIR=$TK SPU_PM_OUT=${SPU_PM_OUT:-$RES_ROOT/port/spu/captured} "$here/regen_spu_pm.sh" "$RES_GAME/EBOOT.elf"

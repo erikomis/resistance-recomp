@@ -457,6 +457,20 @@ int main(int argc, char** argv)
             uint8_t buf[0x1000];
             size_t n = fread(buf, 1, sizeof buf, f);
             fclose(f);
+            /* RES_LEVEL=<n>: start the campaign in level n (the disc's
+             * packed/levels/level<n>: 20-22, 30-32, ... 110-112, 120-121).
+             * The front end passes the level to start in the block itself: a
+             * flag byte at +0x10 and a big-endian int at +0x11, read by
+             * func_001EA984 into the variables "-level" sets (0 = the first
+             * level of a new campaign). game.self's own "-level" argument is
+             * overwritten by the block, so the block is the place to set it. */
+            const char* lv = getenv("RES_LEVEL");
+            if (lv && *lv && n >= 0x15 && memcmp(buf, "ELFtastic!", 10) == 0) {
+                const uint32_t level = (uint32_t)strtoul(lv, nullptr, 10);
+                buf[0x11] = (uint8_t)(level >> 24); buf[0x12] = (uint8_t)(level >> 16);
+                buf[0x13] = (uint8_t)(level >> 8);  buf[0x14] = (uint8_t)level;
+                printf("[boot] RES_LEVEL: starting in level %u\n", level);
+            }
             memcpy(vm_base + STACK_TOP - 0x1000, buf, n);
             run_stack_top = STACK_TOP - 0x1000;
             printf("[boot] exitspawn data: %zu bytes at 0x%08X\n", n, STACK_TOP - 0x1000);

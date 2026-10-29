@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/linux.yml b/.github/workflows/linux.yml
-index 67bb40b..27d02ca 100644
+index 67bb40b3..27d02ca7 100644
 --- a/.github/workflows/linux.yml
 +++ b/.github/workflows/linux.yml
 @@ -171,6 +171,24 @@ jobs:
@@ -39,7 +39,7 @@ index 67bb40b..27d02ca 100644
            # walk they are now computed without.
            ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }} -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.github/workflows/macos.yml b/.github/workflows/macos.yml
-index 19e9eb1..cee97da 100644
+index 19e9eb18..cee97da1 100644
 --- a/.github/workflows/macos.yml
 +++ b/.github/workflows/macos.yml
 @@ -74,6 +74,8 @@ jobs:
@@ -183,7 +183,7 @@ index 19e9eb1..cee97da 100644
            # walk they are now computed without.
            clang -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.gitignore b/.gitignore
-index 1bd8dfe..fe14320 100644
+index 1bd8dfe5..fe14320e 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -74,6 +74,8 @@ recompiled/
@@ -196,7 +196,7 @@ index 1bd8dfe..fe14320 100644
  # Decryption keys
  *.keys
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index bdd2f85..74d9f26 100644
+index bdd2f85a..74d9f269 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -132,7 +132,6 @@ target_include_directories(ps3recomp_runtime PRIVATE
@@ -231,7 +231,7 @@ index bdd2f85..74d9f26 100644
      if(NOT WIN32)
          find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
 diff --git a/docs/DIAGNOSTICS.md b/docs/DIAGNOSTICS.md
-index 4277c3f..dd8b2c8 100644
+index 4277c3f2..dd8b2c88 100644
 --- a/docs/DIAGNOSTICS.md
 +++ b/docs/DIAGNOSTICS.md
 @@ -3,14 +3,14 @@
@@ -261,7 +261,7 @@ index 4277c3f..dd8b2c8 100644
    `runtime/spu/spu_channels.c:289`  _(+3 more sites)_
  - **`SPU_PUTEA`** — SPU_PUTEA=1: the first few FULL destination addresses per SPU. The 1 MB bucket histogram showed spu1..3 writing only bucket 0 and spu0 buckets 1..3, with nothing in bucket 4 -- where the composite samples PS1 VRAM (RSX local + 0x400000). Buckets keep only 4 address bits, so that may be an artifact of where RSX local memory actually sits; the full EA settles it. */
 diff --git a/docs/SHADOW_COMPARISON.md b/docs/SHADOW_COMPARISON.md
-index df98ec6..b8c05ff 100644
+index df98ec6d..b8c05ff5 100644
 --- a/docs/SHADOW_COMPARISON.md
 +++ b/docs/SHADOW_COMPARISON.md
 @@ -7,8 +7,10 @@ non-depth textures and alpha-kill keep the existing raw sampling behavior.
@@ -279,7 +279,7 @@ index df98ec6..b8c05ff 100644
  
 diff --git a/include/ps3emu/env_cache.h b/include/ps3emu/env_cache.h
 new file mode 100644
-index 0000000..e156383
+index 00000000..e1563838
 --- /dev/null
 +++ b/include/ps3emu/env_cache.h
 @@ -0,0 +1,32 @@
@@ -315,9 +315,89 @@ index 0000000..e156383
 +}
 +
 +#endif /* PS3EMU_ENV_CACHE_H */
+diff --git a/include/ps3emu/hdd1_cache.h b/include/ps3emu/hdd1_cache.h
+new file mode 100644
+index 00000000..76d3b585
+--- /dev/null
++++ b/include/ps3emu/hdd1_cache.h
+@@ -0,0 +1,74 @@
++/*
++ * ps3recomp - where /dev_hdd1 (the system cache) lands on the host.
++ *
++ * On the console cellSysCacheMount answers getCachePath = "/dev_hdd1": the
++ * title sees its own cache directory as the ROOT of /dev_hdd1, and the
++ * firmware maps that root to the title's cache folder on the drive (RPCS3:
++ * dev_hdd1/caches/<cacheId>). Titles build their cache paths from that answer,
++ * and some only work with it: Resistance's file layer splits "/dev_hdd1/x"
++ * into the device "/dev_hdd1" and "x", and finds the device only if the cache
++ * path it was given is "/dev_hdd1" itself. Handed "/dev_hdd1/cache/<id>", its
++ * movie stash ("<cache>/hdd1_movie_stash", written when an in-level cutscene
++ * needs the memory) never opened, and the main thread retried the open for
++ * ever (level 30, the conversion-centre switch).
++ *
++ * cellSysCacheMount (libs/system/cellSysutil.c) now answers "/dev_hdd1" and
++ * publishes the mounted cache id in the environment (PS3_SYSCACHE_ID), and both
++ * halves of the split filesystem (runtime/ppu/ppu_fs.cpp and
++ * runtime/syscalls/sys_fs.c) map through ps3_hdd1_host_path:
++ *
++ *   /dev_hdd1/<rest>  ->  <PS3_HDD1_ROOT>/cache/<id>/<rest>
++ *   /dev_hdd1         ->  <PS3_HDD1_ROOT>/cache/<id>
++ *
++ * which is the same host folder the old "/dev_hdd1/cache/<id>/<rest>" answer
++ * resolved to, so caches written before keep working. A guest path that still
++ * spells "/dev_hdd1/cache/<id>/..." (an older build's answer kept in a save)
++ * is not mapped twice. With no cache mounted, /dev_hdd1/<rest> maps to
++ * <PS3_HDD1_ROOT>/<rest> as before.
++ *
++ * The id travels through the environment rather than a shared symbol so each
++ * file-system translation unit (also built alone into its own test harness)
++ * stays free of a link dependency on cellSysutil.
++ */
++#ifndef PS3EMU_HDD1_CACHE_H
++#define PS3EMU_HDD1_CACHE_H
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#define PS3_SYSCACHE_ID_ENV "PS3_SYSCACHE_ID"
++
++/* Map a guest /dev_hdd1 path under host root `root`. Returns 1 and writes
++ * `out` when `guest` is on /dev_hdd1, 0 when it is not (or there is no root,
++ * or the result would not fit: then `out` is left as an empty string). */
++static inline int ps3_hdd1_host_path(const char* guest, const char* root,
++                                     char* out, size_t cap)
++{
++    if (!guest || !root || !*root || !out || !cap) return 0;
++    if (strncmp(guest, "/dev_hdd1", 9) != 0) return 0;
++    if (guest[9] != '\0' && guest[9] != '/') return 0;     /* "/dev_hdd10" */
++    const char* rest = guest[9] ? guest + 10 : "";
++    const char* id = getenv(PS3_SYSCACHE_ID_ENV);
++    int n;
++    if (id && *id) {
++        /* Already spelled with the cache folder: do not add it again. */
++        size_t idn = strlen(id);
++        int spelled = strncmp(rest, "cache/", 6) == 0 &&
++                      strncmp(rest + 6, id, idn) == 0 &&
++                      (rest[6 + idn] == '\0' || rest[6 + idn] == '/');
++        if (spelled)
++            n = snprintf(out, cap, "%s/%s", root, rest);
++        else if (*rest)
++            n = snprintf(out, cap, "%s/cache/%s/%s", root, id, rest);
++        else
++            n = snprintf(out, cap, "%s/cache/%s", root, id);
++    } else {
++        n = snprintf(out, cap, "%s/%s", root, rest);
++    }
++    if (n < 0 || (size_t)n >= cap) { out[0] = '\0'; return 0; }
++    for (char* p = out; *p; p++) if (*p == '\\') *p = '/';
++    return 1;
++}
++
++#endif /* PS3EMU_HDD1_CACHE_H */
 diff --git a/include/ps3emu/host_input.h b/include/ps3emu/host_input.h
 new file mode 100644
-index 0000000..07924a4
+index 00000000..07924a4c
 --- /dev/null
 +++ b/include/ps3emu/host_input.h
 @@ -0,0 +1,71 @@
@@ -394,7 +474,7 @@ index 0000000..07924a4
 +#endif /* PS3EMU_HOST_INPUT_H */
 diff --git a/include/ps3emu/ps3_env_once.h b/include/ps3emu/ps3_env_once.h
 new file mode 100644
-index 0000000..40570da
+index 00000000..40570da2
 --- /dev/null
 +++ b/include/ps3emu/ps3_env_once.h
 @@ -0,0 +1,31 @@
@@ -430,7 +510,7 @@ index 0000000..40570da
 +
 +#endif /* PS3EMU_PS3_ENV_ONCE_H */
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 6f76df8..80959ce 100644
+index 6f76df8a..80959ce9 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
 @@ -20,6 +20,7 @@
@@ -1090,7 +1170,7 @@ index 6f76df8..80959ce 100644
          return CELL_AUDIO_ERROR_NOT_INIT;
 diff --git a/libs/audio/tests/test_audio_pacing.c b/libs/audio/tests/test_audio_pacing.c
 new file mode 100644
-index 0000000..daa9682
+index 00000000..daa96822
 --- /dev/null
 +++ b/libs/audio/tests/test_audio_pacing.c
 @@ -0,0 +1,124 @@
@@ -1220,7 +1300,7 @@ index 0000000..daa9682
 +#endif
 diff --git a/libs/audio/tests/test_audio_settings.c b/libs/audio/tests/test_audio_settings.c
 new file mode 100644
-index 0000000..41bae2d
+index 00000000..41bae2de
 --- /dev/null
 +++ b/libs/audio/tests/test_audio_settings.c
 @@ -0,0 +1,44 @@
@@ -1270,7 +1350,7 @@ index 0000000..41bae2d
 +}
 diff --git a/libs/codec/adec_ffmpeg.c b/libs/codec/adec_ffmpeg.c
 new file mode 100644
-index 0000000..d547c33
+index 00000000..d547c332
 --- /dev/null
 +++ b/libs/codec/adec_ffmpeg.c
 @@ -0,0 +1,390 @@
@@ -1666,7 +1746,7 @@ index 0000000..d547c33
 +#endif /* PS3RECOMP_FFMPEG_RUNTIME */
 diff --git a/libs/codec/adec_ffmpeg.h b/libs/codec/adec_ffmpeg.h
 new file mode 100644
-index 0000000..05e8357
+index 00000000..05e8357e
 --- /dev/null
 +++ b/libs/codec/adec_ffmpeg.h
 @@ -0,0 +1,94 @@
@@ -1765,7 +1845,7 @@ index 0000000..05e8357
 +
 +#endif /* PS3RECOMP_ADEC_FFMPEG_H */
 diff --git a/libs/codec/cellAdec.c b/libs/codec/cellAdec.c
-index 9bacce2..35d330e 100644
+index 9bacce2d..35d330ed 100644
 --- a/libs/codec/cellAdec.c
 +++ b/libs/codec/cellAdec.c
 @@ -1,15 +1,22 @@
@@ -2496,7 +2576,7 @@ index 9bacce2..35d330e 100644
 +    return (s32)CELL_ADEC_ERROR_EMPTY;
  }
 diff --git a/libs/codec/cellVdec.c b/libs/codec/cellVdec.c
-index 204a005..05f1c43 100644
+index 204a0055..05f1c434 100644
 --- a/libs/codec/cellVdec.c
 +++ b/libs/codec/cellVdec.c
 @@ -18,6 +18,28 @@
@@ -2790,7 +2870,7 @@ index 204a005..05f1c43 100644
  
  s32 cellVdecSetFrameRate(CellVdecHandle handle, u32 frameRateCode)
 diff --git a/libs/codec/ffmpeg_runtime.h b/libs/codec/ffmpeg_runtime.h
-index 6ec3bbc..93eefc0 100644
+index 6ec3bbcc..93eefc0d 100644
 --- a/libs/codec/ffmpeg_runtime.h
 +++ b/libs/codec/ffmpeg_runtime.h
 @@ -1,7 +1,7 @@
@@ -2803,7 +2883,7 @@ index 6ec3bbc..93eefc0 100644
   * with dlopen / LoadLibrary the first time a decoder is created, and only the
   * handful of functions the modules call are resolved into a table. So
 diff --git a/libs/codec/tests/CMakeLists.txt b/libs/codec/tests/CMakeLists.txt
-index 935169b..1a0ed0a 100644
+index 935169b1..1a0ed0a2 100644
 --- a/libs/codec/tests/CMakeLists.txt
 +++ b/libs/codec/tests/CMakeLists.txt
 @@ -1,4 +1,5 @@
@@ -2870,7 +2950,7 @@ index 935169b..1a0ed0a 100644
 +set_tests_properties(adec_decode_ac3 adec_disabled_ac3 PROPERTIES FIXTURES_REQUIRED adec_media)
 diff --git a/libs/codec/tests/test_adec_decode.c b/libs/codec/tests/test_adec_decode.c
 new file mode 100644
-index 0000000..b95def5
+index 00000000..b95def5f
 --- /dev/null
 +++ b/libs/codec/tests/test_adec_decode.c
 @@ -0,0 +1,383 @@
@@ -3258,7 +3338,7 @@ index 0000000..b95def5
 +    return 2;
 +}
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 7fa8cab..71c228c 100644
+index 7fa8cab9..71c228cb 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -4,10 +4,28 @@
@@ -4339,7 +4419,7 @@ index 7fa8cab..71c228c 100644
  }
  
 diff --git a/libs/input/cellPad.h b/libs/input/cellPad.h
-index 89c58ab..b35fcb6 100644
+index 89c58ab6..b35fcb6d 100644
 --- a/libs/input/cellPad.h
 +++ b/libs/input/cellPad.h
 @@ -187,6 +187,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info);
@@ -4353,7 +4433,7 @@ index 89c58ab..b35fcb6 100644
  s32 cellPadGetCapabilityInfo(u32 port_no, CellPadCapabilityInfo* info);
 diff --git a/libs/input/host_input_cocoa.h b/libs/input/host_input_cocoa.h
 new file mode 100644
-index 0000000..6236d00
+index 00000000..6236d00f
 --- /dev/null
 +++ b/libs/input/host_input_cocoa.h
 @@ -0,0 +1,166 @@
@@ -4525,7 +4605,7 @@ index 0000000..6236d00
 +#endif /* PS3RECOMP_HOST_INPUT_COCOA_H */
 diff --git a/libs/input/pad_input_map.h b/libs/input/pad_input_map.h
 new file mode 100644
-index 0000000..9b83eda
+index 00000000..9b83edab
 --- /dev/null
 +++ b/libs/input/pad_input_map.h
 @@ -0,0 +1,708 @@
@@ -5239,7 +5319,7 @@ index 0000000..9b83eda
 +#endif /* PS3RECOMP_PAD_INPUT_MAP_H */
 diff --git a/libs/input/tests/test_host_input_cocoa.m b/libs/input/tests/test_host_input_cocoa.m
 new file mode 100644
-index 0000000..61dcdd4
+index 00000000..61dcdd41
 --- /dev/null
 +++ b/libs/input/tests/test_host_input_cocoa.m
 @@ -0,0 +1,171 @@
@@ -5416,7 +5496,7 @@ index 0000000..61dcdd4
 +}
 diff --git a/libs/input/tests/test_host_input_cocoa_pad.c b/libs/input/tests/test_host_input_cocoa_pad.c
 new file mode 100644
-index 0000000..155c6af
+index 00000000..155c6af9
 --- /dev/null
 +++ b/libs/input/tests/test_host_input_cocoa_pad.c
 @@ -0,0 +1,25 @@
@@ -5447,7 +5527,7 @@ index 0000000..155c6af
 +void test_pad_reload_mouse(void) { s_mouse_on = -1; }
 diff --git a/libs/input/tests/test_pad_hotplug.c b/libs/input/tests/test_pad_hotplug.c
 new file mode 100644
-index 0000000..48d0b09
+index 00000000..48d0b097
 --- /dev/null
 +++ b/libs/input/tests/test_pad_hotplug.c
 @@ -0,0 +1,272 @@
@@ -5725,7 +5805,7 @@ index 0000000..48d0b09
 +}
 diff --git a/libs/input/tests/test_pad_input_map.c b/libs/input/tests/test_pad_input_map.c
 new file mode 100644
-index 0000000..4eef8a5
+index 00000000..4eef8a5a
 --- /dev/null
 +++ b/libs/input/tests/test_pad_input_map.c
 @@ -0,0 +1,352 @@
@@ -6083,7 +6163,7 @@ index 0000000..4eef8a5
 +}
 diff --git a/libs/input/tests/test_pad_keymap.c b/libs/input/tests/test_pad_keymap.c
 new file mode 100644
-index 0000000..2754b62
+index 00000000..2754b626
 --- /dev/null
 +++ b/libs/input/tests/test_pad_keymap.c
 @@ -0,0 +1,303 @@
@@ -6391,7 +6471,7 @@ index 0000000..2754b62
 +    return 0;
 +}
 diff --git a/libs/input/tests/test_pad_rumble.c b/libs/input/tests/test_pad_rumble.c
-index b5dec8a..9cbde31 100644
+index b5dec8a6..9cbde312 100644
 --- a/libs/input/tests/test_pad_rumble.c
 +++ b/libs/input/tests/test_pad_rumble.c
 @@ -1,5 +1,6 @@
@@ -6520,7 +6600,7 @@ index b5dec8a..9cbde31 100644
      printf("test_pad_rumble: ok\n");
 diff --git a/libs/input/tests/test_pad_sensor_mode.c b/libs/input/tests/test_pad_sensor_mode.c
 new file mode 100644
-index 0000000..a1b051e
+index 00000000..a1b051e1
 --- /dev/null
 +++ b/libs/input/tests/test_pad_sensor_mode.c
 @@ -0,0 +1,52 @@
@@ -6577,7 +6657,7 @@ index 0000000..a1b051e
 +    return 0;
 +}
 diff --git a/libs/network/cellNetCtl.c b/libs/network/cellNetCtl.c
-index c7926c0..a913b8c 100644
+index c7926c0c..a913b8c2 100644
 --- a/libs/network/cellNetCtl.c
 +++ b/libs/network/cellNetCtl.c
 @@ -344,10 +344,18 @@ static void netstart_broadcast(u32 status)
@@ -6618,7 +6698,7 @@ index c7926c0..a913b8c 100644
      return CELL_OK;
  }
 diff --git a/libs/network/sceNp.c b/libs/network/sceNp.c
-index 697901a..df0ef18 100644
+index 697901a0..df0ef18f 100644
 --- a/libs/network/sceNp.c
 +++ b/libs/network/sceNp.c
 @@ -274,6 +274,69 @@ s32 sceNpManagerGetOnlineId(SceNpOnlineId* onlineId) { return sceNpGetOnlineId(0
@@ -6692,7 +6772,7 @@ index 697901a..df0ef18 100644
   * returned OK without writing, and the title read whatever was in its stack. */
  s32 sceNpManagerGetContentRatingFlag(s32* isRestricted, s32* age)
 diff --git a/libs/network/sceNp.h b/libs/network/sceNp.h
-index a2318a0..72c2676 100644
+index a2318a0d..72c26761 100644
 --- a/libs/network/sceNp.h
 +++ b/libs/network/sceNp.h
 @@ -29,6 +29,8 @@ extern "C" {
@@ -6722,7 +6802,7 @@ index a2318a0..72c2676 100644
   * path of an EDAT/SELF; the klicensee is handed to the EDAT reader, which then
 diff --git a/libs/network/tests/test_netstart_offline.c b/libs/network/tests/test_netstart_offline.c
 new file mode 100644
-index 0000000..8e3902b
+index 00000000..8e3902b8
 --- /dev/null
 +++ b/libs/network/tests/test_netstart_offline.c
 @@ -0,0 +1,61 @@
@@ -6789,7 +6869,7 @@ index 0000000..8e3902b
 +}
 diff --git a/libs/network/tests/test_np_ticket_offline.c b/libs/network/tests/test_np_ticket_offline.c
 new file mode 100644
-index 0000000..7835583
+index 00000000..7835583b
 --- /dev/null
 +++ b/libs/network/tests/test_np_ticket_offline.c
 @@ -0,0 +1,79 @@
@@ -6873,7 +6953,7 @@ index 0000000..7835583
 +    return 0;
 +}
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 19a8516..e0e27b9 100644
+index 19a8516f..56c942f9 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
 @@ -39,6 +39,7 @@ uint32_t g_ydkj_real_spurs_ea   = 0;   /* real CellSpurs instance EA (for the ta
@@ -7195,11 +7275,154 @@ index 19a8516..e0e27b9 100644
              printf("[cellSpurs] ReadyCountStore(wid=%u, value=%u)\n", wid, value);
          else if (_n == 32)
              printf("[cellSpurs] ReadyCountStore further logs suppressed\n");
+@@ -2087,7 +2318,9 @@ s32 cellSpursEventFlagWait(CellSpursEventFlag* eventFlag, u16* bits,
+     vm_write16(bits_ea, current);
+     u16 received = (mode == CELL_SPURS_EVENT_FLAG_AND) ? pattern
+                                                        : (u16)(current & pattern);
+-    { static int _n = 0; if (PS3_LOG_FIRST(_n, 40))
++    { static int _n = 0; static int _cap = -1;
++      if (_cap < 0) { const char* e = getenv("PS3_LFQ_LOG"); _cap = e ? atoi(e) : 40; }
++      if (PS3_LOG_FIRST(_n, _cap))
+         fprintf(stderr, "[cellSpurs] EventFlagWait WAKE tid=%lu flagEA=0x%08X "
+                 "pattern=0x%04X got=0x%04X (waits=%u)\n",
+                 (unsigned long)GetCurrentThreadId(), ea, pattern, current, waits); }
+@@ -3415,6 +3648,103 @@ s32 _cellSpursLFQueueInitialize(u64 owner_ea, u64 queue_ea, u64 buffer_ea,
+     return CELL_OK;
+ }
+ 
++/* _cellSpursLFQueuePushBody(lfqueue, data, isBlocking) -- NID 0x8A85674D.
++ *
++ * The Wws_Job producer side for Resistance 2: the PPU builds a job entry on
++ * its own stack (caller at 0x008757F0: r4 = sp+0x70, r5 = 0, and it tolerates
++ * CELL_OK or CELL_SPURS_CORE_ERROR_AGAIN, i.e. a TryPush that may report a
++ * full queue) and hands it to the queue the SPU task consumes. The queue is
++ * GUEST BE state: the game built it itself (no HLE init trace), and the SPU
++ * consumer reads the header straight out of main memory -- so, exactly as
++ * _cellSpursLFQueueInitialize documents above, the bytes in guest memory ARE
++ * the interface and this must write the big-endian ring state, not a host
++ * struct.
++ *
++ * Bring-up is facts-first: log the args and the queue's whole header line,
++ * then push with the canonical CellSyncLFQueue ring (see below -- the
++ * Resistance 1 derivation was superseded when the first boot test showed the
++ * SPU kernel spinning on GETLLAR with a u32-written push index: the consumer
++ * decodes the RPCS3 cellSync.h layout) and wake the parked WAIT_SIGNAL task.
++ * If the printed header disagrees, fix HERE first -- the SPU consumer is real
++ * code and cannot be negotiated with. */
++s32 _cellSpursLFQueuePushBody(u64 queue_ea, u64 data_ea, u32 isBlocking)
++{
++    const uint32_t q = (uint32_t)queue_ea;
++    if (!q || !data_ea) return CELL_SPURS_CORE_ERROR_NULL_POINTER;
++
++    /* PS3_LFQ_LOG=<n>: trace the first n pushes, uncapped by the default 8.
++     * The default cap once hid pushes 9+ entirely, which read as "the
++     * producer stopped" when the producer may have been early-returning or
++     * never called at all -- the cycle trace needs every attempt. */
++    static int _n = 0;
++    static int _cap = -1;
++    if (_cap < 0) { const char* e = getenv("PS3_LFQ_LOG"); _cap = e ? atoi(e) : 8; }
++    const int log = PS3_LOG_FIRST(_n, _cap);
++
++    /* Canonical CellSyncLFQueue groups (RPCS3 cellSync.h -- the layout the
++     * SPU consumer decodes): pop1 u32 @+0x00 (h1 completed-pop @0x00,
++     * h4 reserved-pop @+0x06), push1/push3 u32 @+0x08 (m_h5 completed-push
++     * u16 @+0x08, m_h6 pending-signal bitmap u16 @+0x0A, h7 flag @+0x0C,
++     * h8 reserved-push @+0x0E), size @+0x10, depth @+0x14, buffer @+0x18.
++     * The consumer's has-work test is (m_h5 - h4) mod 2*depth > 0, so the
++     * producer's completed-push counter is what must advance -- a 32-bit
++     * write of 1 to +0x08 lands the low half in h6 (BE) and h5 stays 0:
++     * the first boot test spun the kernel on GETLLAR exactly so. */
++    const u32 size     = vm_read32(q + 0x10);
++    const u32 depth    = vm_read32(q + 0x14);
++    const u32 buffer   = (u32)vm_read64(q + 0x18);
++    const u32 span     = depth * 2;
++    const s32 pop_h4   = (s32)(vm_read16(q + 0x06));
++    const u32 push_h5  = vm_read16(q + 0x08);
++
++    if (log) {
++        printf("[cellSpurs] _LFQueuePushBody tid=%lu (q=0x%08X data=0x%08X block=%u) pop_h1=%u pop_h4=%u push_h5=%u push_h8=%u size=%u depth=%u buf=0x%08X dir=%08X\n",
++               (unsigned long)GetCurrentThreadId(),
++               q, (u32)data_ea, isBlocking,
++               vm_read16(q + 0x00), pop_h4, push_h5, vm_read16(q + 0x0E),
++               size, depth, buffer, vm_read32(q + 0x24));
++        for (int w = 0; w < 32; w++)
++            printf("  +%02X:%08X%s", w * 4, vm_read32(q + w * 4),
++                   (w % 8 == 7) ? "\n" : " ");
++    }
++
++    /* Header sanity: if the ring fields are not the ring we know, refuse
++     * rather than corrupt guest state the consumer owns. AGAIN keeps the
++     * tolerated-error path of the TryPush caller alive without lying. */
++    if (!size || !depth || span > 0x10000 || size > 256 || depth > 4096) {
++        if (log) printf("[cellSpurs] _LFQueuePushBody tid=%lu: header is not the canonical ring (size=%u depth=%u) -> AGAIN\n",
++                        (unsigned long)GetCurrentThreadId(), size, depth);
++        return CELL_SPURS_CORE_ERROR_AGAIN;
++    }
++
++    s32 count = (s32)push_h5 - pop_h4;
++    if (count < 0) count += (s32)span;
++    if ((u32)count >= depth) {
++        /* Full: TryPush semantics (the caller at 0x8757F0 retries on AGAIN). */
++        if (log) printf("[cellSpurs] _LFQueuePushBody tid=%lu: full (count=%d depth=%u) -> AGAIN\n",
++                        (unsigned long)GetCurrentThreadId(), count, depth);
++        return CELL_SPURS_CORE_ERROR_AGAIN;
++    }
++
++    const u32 slot = push_h5 >= depth ? push_h5 - depth : push_h5;
++    memcpy(vm_base + buffer + slot * size, vm_base + (u32)data_ea, size);
++    /* Completed-push counter, wrapped at 2*depth (RPCS3 CompletePushPointer:
++     * var3 = m_h5 + var9; if (var3 >= depth*2) var3 -= depth*2). */
++    const u16 next_h5 = (u16)((push_h5 + 1 >= span) ? 0 : push_h5 + 1);
++    vm_write16(q + 0x08, next_h5);
++
++    { extern int spu_taskset_signal_parked_obj_any(uint32_t);
++      extern int spu_taskset_signal_parked_force(void);
++      int woke = spu_taskset_signal_parked_obj_any(q);
++      if (!woke) woke = spu_taskset_signal_parked_force();
++      if (log) {
++          printf("[cellSpurs] _LFQueuePushBody tid=%lu: pushed %u bytes to slot %u (push_h5 %u -> %u), woke %d parked task(s)\n",
++                 (unsigned long)GetCurrentThreadId(), size, slot, push_h5, next_h5, woke);
++          printf("  entry: "); for (int w = 0; w < 8; w++) printf("%08X ", vm_read32((u32)data_ea + w * 4)); printf("\n");
++      } }
++    return CELL_OK;
++}
++
+ s32 cellSpursLFQueueAttachLv2EventQueue(u64 queue_ea)
+ {
+     static int _n = 0;
+diff --git a/libs/spurs/cellSpurs.h b/libs/spurs/cellSpurs.h
+index a19c93ae..c53daaad 100644
+--- a/libs/spurs/cellSpurs.h
++++ b/libs/spurs/cellSpurs.h
+@@ -306,6 +306,7 @@ s32 cellSpursQueueAttachLv2EventQueue(u64 queue_ea);
+ s32 cellSpursQueueSize(u64 queue_ea, u64 size_ea);
+ s32 _cellSpursLFQueueInitialize(u64 owner_ea, u64 queue_ea, u64 buffer_ea,
+                                 u32 size, u32 depth, u32 direction);
++s32 _cellSpursLFQueuePushBody(u64 queue_ea, u64 data_ea, u32 isBlocking);
+ s32 cellSpursLFQueueAttachLv2EventQueue(u64 queue_ea);
+ 
+ s32 cellSpursEventFlagSet(CellSpursEventFlag* eventFlag, u16 bits);
 diff --git a/libs/system/cellSysutil.c b/libs/system/cellSysutil.c
-index 2176d38..566c64e 100644
+index 2176d389..c73cdde9 100644
 --- a/libs/system/cellSysutil.c
 +++ b/libs/system/cellSysutil.c
-@@ -428,6 +428,13 @@ s32 cellSysutilGetSystemParamInt(s32 id, u32 value_ea)
+@@ -7,6 +7,7 @@
+ 
+ #include "cellSysutil.h"
+ #include "ps3emu/guest_call.h"
++#include "ps3emu/hdd1_cache.h"   /* PS3_SYSCACHE_ID_ENV */
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -21,6 +22,7 @@
+ #  ifndef mkdir
+ #    define mkdir(p, m) _mkdir(p)
+ #  endif
++#  define setenv(n, v, o) _putenv_s((n), (v))
+ #endif
+ 
+ /* Guest-memory stores — out-params from the recompiled title are guest VM
+@@ -428,6 +430,13 @@ s32 cellSysutilGetSystemParamInt(s32 id, u32 value_ea)
      case CELL_SYSUTIL_SYSTEMPARAM_ID_SUMMERTIME:     v = 0; break; /* No DST */
      case CELL_SYSUTIL_SYSTEMPARAM_ID_GAME_PARENTAL_LEVEL:           v = 0; break;
      case CELL_SYSUTIL_SYSTEMPARAM_ID_GAME_PARENTAL_LEVEL0_RESTRICT: v = 0; break;
@@ -7213,7 +7436,24 @@ index 2176d38..566c64e 100644
      case CELL_SYSUTIL_SYSTEMPARAM_ID_CURRENT_USER_HAS_NP_ACCOUNT:   v = 1; break;
      case CELL_SYSUTIL_SYSTEMPARAM_ID_CAMERA_PLFREQ:  v = 0; break; /* 60Hz */
      case CELL_SYSUTIL_SYSTEMPARAM_ID_PAD_RUMBLE:     v = 1; break; /* Rumble on */
-@@ -675,3 +682,33 @@ s32 cellSysutilIsMeetingApp(void)
+@@ -560,7 +569,15 @@ s32 cellSysCacheMount(char* param)
+     cache_id[32] = '\0';
+     printf("[cellSysutil] SysCacheMount(id='%s')\n", cache_id);
+ 
+-    snprintf(s_cache_path, CELL_SYSCACHE_PATH_MAX, "/dev_hdd1/cache/%s", cache_id);
++    /* The console answers "/dev_hdd1": the title's cache folder IS the root of
++     * /dev_hdd1 (ps3emu/hdd1_cache.h). The fs layers map /dev_hdd1/x to
++     * <PS3_HDD1_ROOT>/cache/<cacheId>/x, the folder created below, through the
++     * id published here. Resistance's file layer finds the cache device only
++     * under this exact name: with "/dev_hdd1/cache/<id>" its in-level movie
++     * stash never opened and the game froze (level 30). */
++    snprintf(s_cache_path, CELL_SYSCACHE_PATH_MAX, "/dev_hdd1");
++    if (cache_id[0] && !strchr(cache_id, '/') && strcmp(cache_id, ".") && strcmp(cache_id, ".."))
++        setenv(PS3_SYSCACHE_ID_ENV, cache_id, 1);
+     size_t n = strlen(s_cache_path);
+     if (n > 135) n = 135;
+     memcpy(vm_base + ea + 0x20, s_cache_path, n);
+@@ -675,3 +692,33 @@ s32 cellSysutilIsMeetingApp(void)
  {
      return 0; /* Not a meeting app */
  }
@@ -7248,7 +7488,7 @@ index 2176d38..566c64e 100644
 +    return CELL_OK;
 +}
 diff --git a/libs/system/cellSysutil.h b/libs/system/cellSysutil.h
-index 238e188..d265b33 100644
+index 238e1880..d265b33b 100644
 --- a/libs/system/cellSysutil.h
 +++ b/libs/system/cellSysutil.h
 @@ -27,7 +27,17 @@ extern "C" {
@@ -7286,7 +7526,7 @@ index 238e188..d265b33 100644
  #endif
 diff --git a/libs/system/tests/test_license_area.c b/libs/system/tests/test_license_area.c
 new file mode 100644
-index 0000000..58ad248
+index 00000000..58ad2481
 --- /dev/null
 +++ b/libs/system/tests/test_license_area.c
 @@ -0,0 +1,52 @@
@@ -7344,7 +7584,7 @@ index 0000000..58ad248
 +}
 diff --git a/libs/system/tests/test_sysconf.c b/libs/system/tests/test_sysconf.c
 new file mode 100644
-index 0000000..eddf0bf
+index 00000000..eddf0bf0
 --- /dev/null
 +++ b/libs/system/tests/test_sysconf.c
 @@ -0,0 +1,51 @@
@@ -7400,7 +7640,7 @@ index 0000000..eddf0bf
 +    return 0;
 +}
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index efad9b9..ef96751 100644
+index efad9b92..ef96751c 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
 @@ -27,6 +27,7 @@ static u32 s_gcm_context_ea = 0;
@@ -7857,7 +8097,7 @@ index efad9b9..ef96751 100644
      memset(s_io_address_table, 0xFF, sizeof(s_io_address_table));
      memset(s_ea_address_table, 0xFF, sizeof(s_ea_address_table));
 diff --git a/libs/video/rsx_dispatch.c b/libs/video/rsx_dispatch.c
-index 7350528..d281db7 100644
+index 7350528d..d281db71 100644
 --- a/libs/video/rsx_dispatch.c
 +++ b/libs/video/rsx_dispatch.c
 @@ -327,11 +327,23 @@ void rsx_dispatch_method(rsx_dispatch* rsx, u32 method, u32 arg)
@@ -7890,7 +8130,7 @@ index 7350528..d281db7 100644
  
      /* Transform program upload window: word goes to instruction slot
 diff --git a/libs/video/rsx_dispatch.h b/libs/video/rsx_dispatch.h
-index b58a830..19d3e3c 100644
+index b58a830b..19d3e3c0 100644
 --- a/libs/video/rsx_dispatch.h
 +++ b/libs/video/rsx_dispatch.h
 @@ -224,6 +224,17 @@ static inline u32 rsx_dsp_resolve_vertex_index(u32 index, u32 base_index)
@@ -7912,7 +8152,7 @@ index b58a830..19d3e3c 100644
  typedef struct rsx_dsp_index_array {
      u32 offset;
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index f99986b..13fd3d2 100644
+index f99986b3..13fd3d2f 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -22,6 +22,10 @@
@@ -10620,7 +10860,7 @@ index f99986b..13fd3d2 100644
  }
  
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index 4dec1d6..f45ee11 100644
+index 4dec1d63..f45ee118 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
 @@ -65,6 +65,14 @@ typedef enum {
@@ -10817,7 +11057,7 @@ index 4dec1d6..f45ee11 100644
  /*
   * These are the neutral parts the unit tests in libs/video/tests exercise
 diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
-index 5ce72ef..e31f763 100644
+index 5ce72ef6..e31f7630 100644
 --- a/libs/video/rsx_fp_decompiler.c
 +++ b/libs/video/rsx_fp_decompiler.c
 @@ -359,6 +359,11 @@ static const char* input_expr(u32 input_src)
@@ -11012,7 +11252,7 @@ index 5ce72ef..e31f763 100644
   * 32-bit exports bypass the integer framebuffer's RGB transfer function. */
  int rsx_fp_srgb_output_enabled(u32 packer, u32 ctrl, u32 color_format)
 diff --git a/libs/video/rsx_fp_decompiler.h b/libs/video/rsx_fp_decompiler.h
-index 670e886..8873612 100644
+index 670e8863..88736122 100644
 --- a/libs/video/rsx_fp_decompiler.h
 +++ b/libs/video/rsx_fp_decompiler.h
 @@ -85,6 +85,13 @@ int rsx_fp_apply_alpha_test(char* hlsl, u32 out_size, u32 func, float ref);
@@ -11063,7 +11303,7 @@ index 670e886..8873612 100644
   * half float and X32/W32Z32Y32X32 use a 32-bit float. */
 diff --git a/libs/video/rsx_host_surface.h b/libs/video/rsx_host_surface.h
 new file mode 100644
-index 0000000..66a3f7e
+index 00000000..66a3f7e6
 --- /dev/null
 +++ b/libs/video/rsx_host_surface.h
 @@ -0,0 +1,223 @@
@@ -11291,7 +11531,7 @@ index 0000000..66a3f7e
 +
 +#endif /* PS3RECOMP_RSX_HOST_SURFACE_H */
 diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
-index 2e65b8e..8fed07e 100644
+index 2e65b8ee..8fed07eb 100644
 --- a/libs/video/rsx_live_draw.c
 +++ b/libs/video/rsx_live_draw.c
 @@ -22,7 +22,7 @@
@@ -11367,7 +11607,7 @@ index 2e65b8e..8fed07e 100644
              if (PS3_LOG_FIRST(n_dbg, 24)) {
                  fprintf(stderr, "[alias-miss] tex %u:0x%08X fmt=0x%02X %ux%u target=%u surf:",
 diff --git a/libs/video/rsx_metal_backend.h b/libs/video/rsx_metal_backend.h
-index baba40f..f10654e 100644
+index baba40f0..f10654eb 100644
 --- a/libs/video/rsx_metal_backend.h
 +++ b/libs/video/rsx_metal_backend.h
 @@ -11,6 +11,15 @@
@@ -11404,7 +11644,7 @@ index baba40f..f10654e 100644
  
  /* Present one frame: clear the drawable to the colour last received through the
 diff --git a/libs/video/rsx_metal_backend.m b/libs/video/rsx_metal_backend.m
-index 5b20d8a..181cf71 100644
+index 5b20d8ac..181cf714 100644
 --- a/libs/video/rsx_metal_backend.m
 +++ b/libs/video/rsx_metal_backend.m
 @@ -56,6 +56,22 @@
@@ -14199,7 +14439,7 @@ index 5b20d8a..181cf71 100644
              }];
              [cb commit];        /* no wait: the CPU goes on to the next frame */
 diff --git a/libs/video/rsx_shader_msl.cpp b/libs/video/rsx_shader_msl.cpp
-index 61cabc3..53ce15e 100644
+index 61cabc31..53ce15ee 100644
 --- a/libs/video/rsx_shader_msl.cpp
 +++ b/libs/video/rsx_shader_msl.cpp
 @@ -104,7 +104,7 @@ bool hlsl_to_spirv(const char* hlsl, EShLanguage lang, std::vector<unsigned int>
@@ -14251,7 +14491,7 @@ index 61cabc3..53ce15e 100644
  }
  
 diff --git a/libs/video/rsx_texture_layout.c b/libs/video/rsx_texture_layout.c
-index 131cc0d..dda87f1 100644
+index 131cc0d8..dda87f1f 100644
 --- a/libs/video/rsx_texture_layout.c
 +++ b/libs/video/rsx_texture_layout.c
 @@ -300,6 +300,29 @@ void rsx_texture_decode(void* dst, u32 dst_pitch,
@@ -14307,7 +14547,7 @@ index 131cc0d..dda87f1 100644
      if (!(control1 & 0xFFFFu)) control1 = 0xAAE4u;   /* unset -> identity */
  
 diff --git a/libs/video/rsx_vertex_compact.c b/libs/video/rsx_vertex_compact.c
-index 7fa5f31..de4dd26 100644
+index 7fa5f314..de4dd262 100644
 --- a/libs/video/rsx_vertex_compact.c
 +++ b/libs/video/rsx_vertex_compact.c
 @@ -177,13 +177,21 @@ void rsx_vertex_fetch_plan_set_inline(
@@ -14527,7 +14767,7 @@ index 7fa5f31..de4dd26 100644
      rsx_vertex_remap* remap, rsx_vertex_ref* refs, u32 count,
      u32* unique_count)
 diff --git a/libs/video/rsx_vertex_compact.h b/libs/video/rsx_vertex_compact.h
-index ad21361..8b821e4 100644
+index ad213615..8b821e4b 100644
 --- a/libs/video/rsx_vertex_compact.h
 +++ b/libs/video/rsx_vertex_compact.h
 @@ -25,6 +25,15 @@ typedef struct rsx_vertex_layout_plan {
@@ -14599,7 +14839,7 @@ index ad21361..8b821e4 100644
      const rsx_vertex_remap* remap, u32 occurrence);
  
 diff --git a/libs/video/rsx_vp_decompiler.c b/libs/video/rsx_vp_decompiler.c
-index b9ed32b..68badc2 100644
+index b9ed32be..68badc23 100644
 --- a/libs/video/rsx_vp_decompiler.c
 +++ b/libs/video/rsx_vp_decompiler.c
 @@ -132,11 +132,27 @@ static void emit_store(Out* b, const char* dst_fmt, u32 idx, const char* m)
@@ -14674,7 +14914,7 @@ index b9ed32b..68badc2 100644
          }
          /* ---- scalar ALU (reads SRC2) ---- */
 diff --git a/libs/video/rsx_vp_decompiler.h b/libs/video/rsx_vp_decompiler.h
-index ecc53fc..390d263 100644
+index ecc53fce..390d263d 100644
 --- a/libs/video/rsx_vp_decompiler.h
 +++ b/libs/video/rsx_vp_decompiler.h
 @@ -57,6 +57,16 @@ int rsx_vp_decompile(const u8* ucode, u32 max_bytes, char* out, u32 out_size);
@@ -14695,7 +14935,7 @@ index ecc53fc..390d263 100644
   * sampler sN, and turns TXL for that unit into SampleLevel(..., LOD 0).
   * Unmasked units retain the defined-zero fallback. */
 diff --git a/libs/video/tests/test_color_feedback_engine.c b/libs/video/tests/test_color_feedback_engine.c
-index d2d870d..63b8208 100644
+index d2d870d8..63b82088 100644
 --- a/libs/video/tests/test_color_feedback_engine.c
 +++ b/libs/video/tests/test_color_feedback_engine.c
 @@ -31,6 +31,10 @@ int main(void){vm_base=calloc(1,GUEST_BYTES);ppu_vm_size=GUEST_BYTES;
@@ -14711,7 +14951,7 @@ index d2d870d..63b8208 100644
   free(vm_base);printf("engine feedback checks=%u failures=%u\n",checks,failures);return failures?1:0;}
 diff --git a/libs/video/tests/test_env_cache.c b/libs/video/tests/test_env_cache.c
 new file mode 100644
-index 0000000..2d12a63
+index 00000000..2d12a633
 --- /dev/null
 +++ b/libs/video/tests/test_env_cache.c
 @@ -0,0 +1,43 @@
@@ -14759,7 +14999,7 @@ index 0000000..2d12a63
 +    return 0;
 +}
 diff --git a/libs/video/tests/test_fp_decompiler.c b/libs/video/tests/test_fp_decompiler.c
-index 650c021..301b540 100644
+index 650c0211..301b540c 100644
 --- a/libs/video/tests/test_fp_decompiler.c
 +++ b/libs/video/tests/test_fp_decompiler.c
 @@ -520,6 +520,183 @@ int main(void)
@@ -14947,7 +15187,7 @@ index 650c021..301b540 100644
      printf("Results: %d passed, %d failed\n", g_pass, g_fail);
      return g_fail ? 1 : 0;
 diff --git a/libs/video/tests/test_gcm_fifo_user_command.c b/libs/video/tests/test_gcm_fifo_user_command.c
-index 78dfcd1..bdd3b6f 100644
+index 78dfcd1b..bdd3b6f2 100644
 --- a/libs/video/tests/test_gcm_fifo_user_command.c
 +++ b/libs/video/tests/test_gcm_fifo_user_command.c
 @@ -36,6 +36,9 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -14961,7 +15201,7 @@ index 78dfcd1..bdd3b6f 100644
  void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
 diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
-index 455e2c6..9eda12f 100644
+index 455e2c65..9eda12f0 100644
 --- a/libs/video/tests/test_gcm_flip_stream.c
 +++ b/libs/video/tests/test_gcm_flip_stream.c
 @@ -50,6 +50,9 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -14975,7 +15215,7 @@ index 455e2c6..9eda12f 100644
  void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
 diff --git a/libs/video/tests/test_gcm_flip_wrap.c b/libs/video/tests/test_gcm_flip_wrap.c
-index 4938056..dbc1c14 100644
+index 49380567..dbc1c148 100644
 --- a/libs/video/tests/test_gcm_flip_wrap.c
 +++ b/libs/video/tests/test_gcm_flip_wrap.c
 @@ -39,6 +39,9 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -14989,7 +15229,7 @@ index 4938056..dbc1c14 100644
  void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
 diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
-index c63febe..01fa194 100644
+index c63febe4..01fa1942 100644
 --- a/libs/video/tests/test_gcm_get_on_jump.c
 +++ b/libs/video/tests/test_gcm_get_on_jump.c
 @@ -48,6 +48,9 @@ int  rsx_process_method(rsx_state* state, u32 method, u32 data)
@@ -15003,7 +15243,7 @@ index c63febe..01fa194 100644
  void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
 diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
-index 2f79ae7..4c62e55 100644
+index 2f79ae73..4c62e55b 100644
 --- a/libs/video/tests/test_gcm_get_on_release.c
 +++ b/libs/video/tests/test_gcm_get_on_release.c
 @@ -46,6 +46,9 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -15018,7 +15258,7 @@ index 2f79ae7..4c62e55 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
 diff --git a/libs/video/tests/test_gcm_zpass_report.c b/libs/video/tests/test_gcm_zpass_report.c
 new file mode 100644
-index 0000000..8e1c2be
+index 00000000..8e1c2be6
 --- /dev/null
 +++ b/libs/video/tests/test_gcm_zpass_report.c
 @@ -0,0 +1,221 @@
@@ -15245,7 +15485,7 @@ index 0000000..8e1c2be
 +}
 diff --git a/libs/video/tests/test_index_decode.c b/libs/video/tests/test_index_decode.c
 new file mode 100644
-index 0000000..8bff6e9
+index 00000000..8bff6e95
 --- /dev/null
 +++ b/libs/video/tests/test_index_decode.c
 @@ -0,0 +1,124 @@
@@ -15375,7 +15615,7 @@ index 0000000..8bff6e9
 +}
 diff --git a/libs/video/tests/test_metal_bind_diff.m b/libs/video/tests/test_metal_bind_diff.m
 new file mode 100644
-index 0000000..65276ec
+index 00000000..65276ec3
 --- /dev/null
 +++ b/libs/video/tests/test_metal_bind_diff.m
 @@ -0,0 +1,117 @@
@@ -15497,7 +15737,7 @@ index 0000000..65276ec
 +    }
 +}
 diff --git a/libs/video/tests/test_metal_depth_readback.m b/libs/video/tests/test_metal_depth_readback.m
-index 75b8139..89e2f0e 100644
+index 75b8139c..89e2f0ef 100644
 --- a/libs/video/tests/test_metal_depth_readback.m
 +++ b/libs/video/tests/test_metal_depth_readback.m
 @@ -52,7 +52,18 @@ int main(void)
@@ -15522,7 +15762,7 @@ index 75b8139..89e2f0e 100644
          CHECK(read_depth(depth,0,0,4,3,out,24)==0,"full depth readback with padded rows");
 diff --git a/libs/video/tests/test_metal_depth_rgba8.m b/libs/video/tests/test_metal_depth_rgba8.m
 new file mode 100644
-index 0000000..6606e9d
+index 00000000..6606e9d3
 --- /dev/null
 +++ b/libs/video/tests/test_metal_depth_rgba8.m
 @@ -0,0 +1,240 @@
@@ -15768,7 +16008,7 @@ index 0000000..6606e9d
 +}
 diff --git a/libs/video/tests/test_metal_host_surface.m b/libs/video/tests/test_metal_host_surface.m
 new file mode 100644
-index 0000000..c0be854
+index 00000000..c0be8545
 --- /dev/null
 +++ b/libs/video/tests/test_metal_host_surface.m
 @@ -0,0 +1,264 @@
@@ -16038,7 +16278,7 @@ index 0000000..c0be854
 +}
 diff --git a/libs/video/tests/test_metal_image_io.m b/libs/video/tests/test_metal_image_io.m
 new file mode 100644
-index 0000000..bcfafc1
+index 00000000..bcfafc1c
 --- /dev/null
 +++ b/libs/video/tests/test_metal_image_io.m
 @@ -0,0 +1,61 @@
@@ -16105,7 +16345,7 @@ index 0000000..bcfafc1
 +}
 diff --git a/libs/video/tests/test_metal_occlusion.m b/libs/video/tests/test_metal_occlusion.m
 new file mode 100644
-index 0000000..6e9c096
+index 00000000..6e9c0967
 --- /dev/null
 +++ b/libs/video/tests/test_metal_occlusion.m
 @@ -0,0 +1,168 @@
@@ -16278,7 +16518,7 @@ index 0000000..6e9c096
 +    }
 +}
 diff --git a/libs/video/tests/test_metal_present_post.m b/libs/video/tests/test_metal_present_post.m
-index 357ec01..a8820fc 100644
+index 357ec012..a8820fcf 100644
 --- a/libs/video/tests/test_metal_present_post.m
 +++ b/libs/video/tests/test_metal_present_post.m
 @@ -1,6 +1,8 @@
@@ -16433,7 +16673,7 @@ index 357ec01..a8820fc 100644
      return 0;
 diff --git a/libs/video/tests/test_metal_rect_clears.m b/libs/video/tests/test_metal_rect_clears.m
 new file mode 100644
-index 0000000..afc25ac
+index 00000000..afc25ac3
 --- /dev/null
 +++ b/libs/video/tests/test_metal_rect_clears.m
 @@ -0,0 +1,139 @@
@@ -16578,7 +16818,7 @@ index 0000000..afc25ac
 +}
 diff --git a/libs/video/tests/test_metal_res_scale.m b/libs/video/tests/test_metal_res_scale.m
 new file mode 100644
-index 0000000..d574cd9
+index 00000000..d574cd9b
 --- /dev/null
 +++ b/libs/video/tests/test_metal_res_scale.m
 @@ -0,0 +1,124 @@
@@ -16708,7 +16948,7 @@ index 0000000..d574cd9
 +}
 diff --git a/libs/video/tests/test_metal_shader_cache.m b/libs/video/tests/test_metal_shader_cache.m
 new file mode 100644
-index 0000000..ae78079
+index 00000000..ae780793
 --- /dev/null
 +++ b/libs/video/tests/test_metal_shader_cache.m
 @@ -0,0 +1,77 @@
@@ -16791,7 +17031,7 @@ index 0000000..ae78079
 +}
 diff --git a/libs/video/tests/test_metal_stage_ring.m b/libs/video/tests/test_metal_stage_ring.m
 new file mode 100644
-index 0000000..016f9fa
+index 00000000..016f9fa7
 --- /dev/null
 +++ b/libs/video/tests/test_metal_stage_ring.m
 @@ -0,0 +1,71 @@
@@ -16868,7 +17108,7 @@ index 0000000..016f9fa
 +}
 diff --git a/libs/video/tests/test_metal_vbuf.m b/libs/video/tests/test_metal_vbuf.m
 new file mode 100644
-index 0000000..2650df6
+index 00000000..2650df6a
 --- /dev/null
 +++ b/libs/video/tests/test_metal_vbuf.m
 @@ -0,0 +1,64 @@
@@ -16938,7 +17178,7 @@ index 0000000..2650df6
 +}
 diff --git a/libs/video/tests/test_metal_vstreams.m b/libs/video/tests/test_metal_vstreams.m
 new file mode 100644
-index 0000000..5dc3132
+index 00000000..5dc31323
 --- /dev/null
 +++ b/libs/video/tests/test_metal_vstreams.m
 @@ -0,0 +1,145 @@
@@ -17088,7 +17328,7 @@ index 0000000..5dc3132
 +    }
 +}
 diff --git a/libs/video/tests/test_nv3089_engine_read.c b/libs/video/tests/test_nv3089_engine_read.c
-index 5fc3034..4777672 100644
+index 5fc30341..4777672d 100644
 --- a/libs/video/tests/test_nv3089_engine_read.c
 +++ b/libs/video/tests/test_nv3089_engine_read.c
 @@ -40,6 +40,9 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -17103,7 +17343,7 @@ index 5fc3034..4777672 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
 diff --git a/libs/video/tests/test_program_memo.c b/libs/video/tests/test_program_memo.c
 new file mode 100644
-index 0000000..524a7d8
+index 00000000..524a7d8b
 --- /dev/null
 +++ b/libs/video/tests/test_program_memo.c
 @@ -0,0 +1,127 @@
@@ -17235,7 +17475,7 @@ index 0000000..524a7d8
 +    return g_failures ? 1 : 0;
 +}
 diff --git a/libs/video/tests/test_rsx_draw_engine.c b/libs/video/tests/test_rsx_draw_engine.c
-index aee6109..b6ab8d6 100644
+index aee6109f..b6ab8d61 100644
 --- a/libs/video/tests/test_rsx_draw_engine.c
 +++ b/libs/video/tests/test_rsx_draw_engine.c
 @@ -14,6 +14,7 @@
@@ -18106,7 +18346,7 @@ index aee6109..b6ab8d6 100644
      free(vm_base);
      printf(g_failures ? "\n%d check(s) FAILED\n" : "\nall checks passed\n",
 diff --git a/libs/video/tests/test_shader_msl.c b/libs/video/tests/test_shader_msl.c
-index de2a6dc..399270d 100644
+index de2a6dc6..399270d4 100644
 --- a/libs/video/tests/test_shader_msl.c
 +++ b/libs/video/tests/test_shader_msl.c
 @@ -20,6 +20,8 @@
@@ -18242,7 +18482,7 @@ index de2a6dc..399270d 100644
      {
          u8 fp[16];
 diff --git a/libs/video/tests/test_shadow_compare_metal.m b/libs/video/tests/test_shadow_compare_metal.m
-index 8844a8a..d4d2a64 100644
+index 8844a8ab..d4d2a646 100644
 --- a/libs/video/tests/test_shadow_compare_metal.m
 +++ b/libs/video/tests/test_shadow_compare_metal.m
 @@ -7,7 +7,7 @@
@@ -18255,7 +18495,7 @@ index 8844a8a..d4d2a64 100644
   s_dev=MTLCreateSystemDefaultDevice();if(!s_dev)return 2;s_queue=[s_dev newCommandQueue];vm_base=calloc(1,4096);
   rsx_test_fp_instr(vm_base+256,RSX_TEST_FP_OPC(0x18)|RSX_TEST_FP_MASK_XYZW|RSX_TEST_FP_INSRC_TC0|RSX_TEST_FP_END,RSX_TEST_FP_SRC_INPUT|RSX_TEST_FP_SWZ_IDENT);
 diff --git a/libs/video/tests/test_texture_layout.c b/libs/video/tests/test_texture_layout.c
-index b2f93a7..d6b8a19 100644
+index b2f93a7b..d6b8a190 100644
 --- a/libs/video/tests/test_texture_layout.c
 +++ b/libs/video/tests/test_texture_layout.c
 @@ -479,6 +479,32 @@ static void test_decode_argb_linear(void)
@@ -18333,7 +18573,7 @@ index b2f93a7..d6b8a19 100644
      test_remap_y16x16_lanes();
 diff --git a/libs/video/tests/test_texture_packs.c b/libs/video/tests/test_texture_packs.c
 new file mode 100644
-index 0000000..ae76f56
+index 00000000..ae76f562
 --- /dev/null
 +++ b/libs/video/tests/test_texture_packs.c
 @@ -0,0 +1,208 @@
@@ -18547,7 +18787,7 @@ index 0000000..ae76f56
 +}
 diff --git a/libs/video/tests/test_vertex_cache.c b/libs/video/tests/test_vertex_cache.c
 new file mode 100644
-index 0000000..9a17def
+index 00000000..9a17def9
 --- /dev/null
 +++ b/libs/video/tests/test_vertex_cache.c
 @@ -0,0 +1,826 @@
@@ -19378,7 +19618,7 @@ index 0000000..9a17def
 +    return 0;
 +}
 diff --git a/libs/video/tests/test_vertex_fetch_plan.c b/libs/video/tests/test_vertex_fetch_plan.c
-index 79f3cc6..6f093da 100644
+index 79f3cc66..6f093dad 100644
 --- a/libs/video/tests/test_vertex_fetch_plan.c
 +++ b/libs/video/tests/test_vertex_fetch_plan.c
 @@ -80,7 +80,8 @@ static void ref_prepare(rsx_vertex_fetch_plan* plan, const rsx_vertex_ref* refs,
@@ -19455,7 +19695,7 @@ index 79f3cc6..6f093da 100644
      static u8 inl[8192];
 diff --git a/libs/video/tests/test_vp_branch_engine.c b/libs/video/tests/test_vp_branch_engine.c
 new file mode 100644
-index 0000000..c6ddbb9
+index 00000000..c6ddbb9b
 --- /dev/null
 +++ b/libs/video/tests/test_vp_branch_engine.c
 @@ -0,0 +1,143 @@
@@ -19604,7 +19844,7 @@ index 0000000..c6ddbb9
 +}
 diff --git a/libs/video/tests/test_zpass_engine.c b/libs/video/tests/test_zpass_engine.c
 new file mode 100644
-index 0000000..7dbc8f1
+index 00000000..7dbc8f16
 --- /dev/null
 +++ b/libs/video/tests/test_zpass_engine.c
 @@ -0,0 +1,151 @@
@@ -19760,7 +20000,7 @@ index 0000000..7dbc8f1
 +    return g_failures ? 1 : 0;
 +}
 diff --git a/runtime/host/host_posix.c b/runtime/host/host_posix.c
-index ae7c60b..aa9229e 100644
+index ae7c60ba..aa9229ed 100644
 --- a/runtime/host/host_posix.c
 +++ b/runtime/host/host_posix.c
 @@ -333,6 +333,23 @@ static void upload_textured_quad(void)
@@ -19877,7 +20117,7 @@ index ae7c60b..aa9229e 100644
                   : (do_draw == 10) ? MRT_A_ARGB
                   : (do_draw == 9) ? MRT_B_ARGB
 diff --git a/runtime/memory/vm.h b/runtime/memory/vm.h
-index c4acf2a..bde031a 100644
+index c4acf2a0..bde031ae 100644
 --- a/runtime/memory/vm.h
 +++ b/runtime/memory/vm.h
 @@ -50,6 +50,13 @@ extern "C" {
@@ -19904,7 +20144,7 @@ index c4acf2a..bde031a 100644
  
  /*
 diff --git a/runtime/ppu/ppu_context.h b/runtime/ppu/ppu_context.h
-index 4199c58..c736d65 100644
+index 4199c58b..c736d65c 100644
 --- a/runtime/ppu/ppu_context.h
 +++ b/runtime/ppu/ppu_context.h
 @@ -103,9 +103,16 @@ typedef struct ppu_context {
@@ -19925,7 +20165,7 @@ index 4199c58..c736d65 100644
       * r2 (TOC) gets set from the ELF entry descriptor.
       * r13 (SDA base) gets set from the module loader. */
 diff --git a/runtime/ppu/ppu_fs.cpp b/runtime/ppu/ppu_fs.cpp
-index 4d54b72..7b53fa7 100644
+index 4d54b72b..c6d909b3 100644
 --- a/runtime/ppu/ppu_fs.cpp
 +++ b/runtime/ppu/ppu_fs.cpp
 @@ -23,6 +23,7 @@
@@ -19936,14 +20176,30 @@ index 4d54b72..7b53fa7 100644
  #include <atomic>
  #include <sys/stat.h>
  #include "../platform/win32_dirent.h"   /* <dirent.h>, or a Win32 stand-in */
-@@ -77,6 +78,7 @@ extern "C" void     vm_write32(uint64_t a, uint32_t v);
+@@ -77,6 +78,8 @@ extern "C" void     vm_write32(uint64_t a, uint32_t v);
  extern "C" void     vm_write64(uint64_t a, uint64_t v);
  #include "../platform/win32_backtrace.h"   /* RtlCaptureStackBackTrace / GetModuleHandleA on POSIX */
  #include "ps3emu/log_first.h"
 +#include "ps3emu/ps3_env_once.h"   /* getenv("...") once per call site */
++#include "ps3emu/hdd1_cache.h"     /* /dev_hdd1 -> the mounted system cache */
  
  /* Host root that the PS3 mount points map into (dir containing PS3_GAME). */
  extern "C" const char* ppu_vfs_root = ".";
+@@ -152,11 +155,10 @@ static void host_path(char* out, size_t cap, const char* guest)
+      * same convention as PS3_HDD0_ROOT. */
+     static const char* hdd1_root = nullptr; static int hdd1_init = 0;
+     if (!hdd1_init) { hdd1_root = getenv("PS3_HDD1_ROOT"); hdd1_init = 1; }
+-    if (hdd1_root && *hdd1_root && strncmp(guest, "/dev_hdd1/", 10) == 0) {
+-        snprintf(out, cap, "%s/%s", hdd1_root, guest + 10);
+-        for (char* p = out; *p; p++) if (*p == '\\') *p = '/';
++    /* With a cache mounted, /dev_hdd1 is the title's cache folder (see
++     * ps3emu/hdd1_cache.h): /dev_hdd1/x -> <root>/cache/<id>/x. */
++    if (ps3_hdd1_host_path(guest, hdd1_root, out, cap))
+         return;
+-    }
+ 
+     /* /dev_flash is FIRMWARE, not game data — mapping it into the game root (the
+      * old behaviour) makes every firmware lookup miss. YDKJ's FMOD asks for
 @@ -208,18 +210,52 @@ static FILE* g_files[FS_MAX];
  static uint8_t g_fd_usm[FS_MAX];
  static char    g_fd_path[FS_MAX][192];   /* guest path per fd (diagnostics) */   /* 1 if this fd is an open .usm movie (read tracker) */
@@ -20178,8 +20434,29 @@ index 4d54b72..7b53fa7 100644
          HOST_LOCKFILE(f);
          const int64_t pos = (int64_t)HOST_FTELL64(f);
          if (HOST_FSEEK64(f, offset) == 0)
+diff --git a/runtime/ppu/ppu_hle.cpp b/runtime/ppu/ppu_hle.cpp
+index b44816b0..5ac9071e 100644
+--- a/runtime/ppu/ppu_hle.cpp
++++ b/runtime/ppu/ppu_hle.cpp
+@@ -221,8 +221,16 @@ static void hle_top_note(uint32_t nid, const char* name, const ppu_context* ctx,
+     for (int j = 0; j < ht_used; j++) ht_n[j] = 0;
+ }
+ extern "C" uint32_t ppu_prof_resolve_host(void* ra);
++#include "ppu_tls.h"   /* PPU_THREAD_LOCAL, for headers generated before it */
++/* Nesting of ps3_hle_call on this host thread. runtime/ppu/ppu_sjlj.c refuses a
++ * guest longjmp that would jump over an HLE handler's frame (one that runs
++ * guest code on the caller's context): the guards below would never run. */
++static PPU_THREAD_LOCAL int g_hle_depth = 0;
++extern "C" int* ps3_hle_depth_slot(void) { return &g_hle_depth; }
++
+ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+ {
++    struct _HleDepth { _HleDepth() { ++g_hle_depth; } ~_HleDepth() { --g_hle_depth; } } _hle_depth;
+     /* HLE_BT_EVERY=<n>: dump the calling thread's guest stack every nth HLE
+      * call it makes. WAITBT_EVERY only samples threads that are blocking on an
+      * event queue, which misses a thread that stops looping while it is BUSY --
 diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
-index f54150d..494ef87 100644
+index f54150d9..494ef877 100644
 --- a/runtime/ppu/ppu_loader.cpp
 +++ b/runtime/ppu/ppu_loader.cpp
 @@ -972,6 +972,12 @@ extern "C" int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val)
@@ -20324,8 +20601,371 @@ index f54150d..494ef87 100644
      ctx.gpr[1] = stack_top;   /* stack pointer */
      ctx.gpr[2] = toc;         /* TOC base (r2) */
  
+diff --git a/runtime/ppu/ppu_sjlj.c b/runtime/ppu/ppu_sjlj.c
+new file mode 100644
+index 00000000..5a363f3c
+--- /dev/null
++++ b/runtime/ppu/ppu_sjlj.c
+@@ -0,0 +1,250 @@
++/*
++ * ps3recomp - a title's own setjmp/longjmp, carried out on the host stack.
++ * See ppu_sjlj.h for the scheme; this file keeps the host side of it.
++ *
++ * Per host thread there is a small table of slots, one per guest setjmp whose
++ * caller is still running: the guest jmp_buf address it was made with, the
++ * host jmp_buf the rewritten call site setjmp'd into, the host frame of that
++ * caller, and the guest state a longjmp to it must arrive with (the guest
++ * context, r1, the return address). The lifted caller frees its slots on each
++ * exit (ppu_sjlj_leave); a longjmp frees those of the frames it skips. Host
++ * stacks grow down, so a slot whose frame is below the frame now running
++ * belongs to a call that is gone: each new setjmp drops those as well.
++ *
++ * A host longjmp skips every frame between the longjmp and the setjmp site.
++ * Lifted functions own nothing that needs a destructor, but the runtime's
++ * indirect-call dispatcher counts its nesting per thread (the recursion guard
++ * and the vcall stack), and a frame of it that is skipped never takes its
++ * count back down; those counts are restored to their value at the setjmp.
++ * g_trampoline_fn is cleared (a skipped drain loop could have left it set)
++ * and g_active_ctx is put back to what it was at the setjmp.
++ *
++ * A longjmp is only carried out when the slot for its jmp_buf was made on the
++ * same guest context (an HLE -> guest callback runs on a context of its own,
++ * and jumping out of it would skip the HLE code that called it) at the same
++ * HLE call nesting (an HLE handler that runs guest code on the caller's
++ * context has guards a jump would skip), its host frame is above the current
++ * one, and the guest r1/LR the longjmp body just restored are the ones the
++ * setjmp was made with. Anything else returns to the lifted longjmp, as
++ * before this support existed, after a log line.
++ *
++ * Environment:
++ *   PPU_SJLJ=0      never jump (every longjmp returns, as without --sjlj)
++ *   PPU_SJLJ_LOG=1  log every setjmp-site jump (first 64, then every 4096th)
++ */
++#include "ppu_sjlj.h"
++#include "ppu_tls.h"
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++/* The runtime's own ppu_context: same layout as the one the lifter's
++ * HEADER_PREAMBLE writes into ppu_recomp.h, which this file does not need. */
++#include "ppu_context.h"
++
++extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++extern PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
++int* ps3_ppu_dispatch_depth_slot(void);
++int* ps3_ppu_vcall_sp_slot(void);
++int* ps3_hle_depth_slot(void);
++
++#define SJLJ_SLOTS 128
++
++typedef struct sjlj_slot {
++    jmp_buf      jb;
++    uintptr_t    frame;    /* host frame of the function that made the setjmp */
++    ppu_context* ctx;      /* guest context it was made on                     */
++    ppu_context* active;   /* g_active_ctx then                                */
++    uint32_t     buf;      /* guest jmp_buf (r3 at the call)                   */
++    uint32_t     r1;       /* guest r1 at the call                             */
++    uint32_t     ret;      /* guest return address of the call                 */
++    int          depth;    /* indirect-call nesting then                       */
++    int          vsp;      /* vcall stack pointer then                         */
++    int          hle;      /* HLE call nesting then                            */
++    int          used;
++} sjlj_slot;
++
++typedef struct sjlj_thread {
++    sjlj_slot slot[SJLJ_SLOTS];
++    int       top;         /* slots [0, top) may be in use */
++    int       live;
++    jmp_buf   scratch;     /* handed out when no slot is free; never jumped to */
++} sjlj_thread;
++
++static PPU_THREAD_LOCAL sjlj_thread* t_sjlj;
++
++static volatile uint64_t s_enters, s_jumps, s_fallbacks;
++
++static int sjlj_env(const char* name, int dflt)
++{
++    const char* e = getenv(name);
++    return e && *e ? atoi(e) : dflt;
++}
++
++static int sjlj_enabled(void)
++{
++    static int on = -1;
++    if (on < 0) on = sjlj_env("PPU_SJLJ", 1) != 0;
++    return on;
++}
++
++static int sjlj_log_on(void)
++{
++    static int on = -1;
++    if (on < 0) on = sjlj_env("PPU_SJLJ_LOG", 0) != 0;
++    return on;
++}
++
++static sjlj_thread* sjlj_self(void)
++{
++    if (!t_sjlj) t_sjlj = (sjlj_thread*)calloc(1, sizeof(sjlj_thread));
++    return t_sjlj;
++}
++
++static void sjlj_free(sjlj_thread* t, sjlj_slot* s)
++{
++    s->used = 0;
++    t->live--;
++}
++
++static void sjlj_trim(sjlj_thread* t)
++{
++    while (t->top > 0 && !t->slot[t->top - 1].used) t->top--;
++}
++
++/* Drop the slots of frames below `frame` (they have returned, or are being
++ * unwound). */
++static void sjlj_drop_below(sjlj_thread* t, uintptr_t frame)
++{
++    for (int i = 0; i < t->top; i++) {
++        sjlj_slot* s = &t->slot[i];
++        if (s->used && s->frame < frame) sjlj_free(t, s);
++    }
++    sjlj_trim(t);
++}
++
++jmp_buf* ppu_sjlj_enter(struct ppu_context* ctx, uint32_t ret_addr, void* host_frame)
++{
++    sjlj_thread* t = sjlj_self();
++    static jmp_buf s_oom_scratch;   /* calloc failed: shared, never jumped to */
++    if (!t) return &s_oom_scratch;
++    __atomic_fetch_add(&s_enters, 1, __ATOMIC_RELAXED);
++    if (!sjlj_enabled()) return &t->scratch;
++
++    const uintptr_t frame = (uintptr_t)host_frame;
++    const uint32_t buf = (uint32_t)ctx->gpr[3];
++    sjlj_slot* hit = NULL;
++    sjlj_slot* free_slot = NULL;
++    for (int i = 0; i < t->top; i++) {
++        sjlj_slot* s = &t->slot[i];
++        if (s->used && s->frame < frame) sjlj_free(t, s);  /* returned */
++        if (!s->used) { if (!free_slot) free_slot = s; continue; }
++        if (s->buf == buf) hit = s;   /* the guest reuses this jmp_buf */
++    }
++    sjlj_slot* s = hit ? hit : free_slot;
++    if (!s && t->top < SJLJ_SLOTS) s = &t->slot[t->top++];
++    if (!s) {
++        static int n = 0;
++        if (n < 8) {
++            n++;
++            fprintf(stderr, "[sjlj] %d setjmp frames live on this thread; the setjmp "
++                            "returning to 0x%08X (jmp_buf 0x%08X) gets no host context\n",
++                    SJLJ_SLOTS, ret_addr, buf);
++        }
++        return &t->scratch;
++    }
++    if (!s->used) {
++        s->used = 1;
++        t->live++;
++    }
++    s->frame  = frame;
++    s->ctx    = ctx;
++    s->active = g_active_ctx;
++    s->buf    = buf;
++    s->r1     = (uint32_t)ctx->gpr[1];
++    s->ret    = ret_addr;
++    s->depth  = *ps3_ppu_dispatch_depth_slot();
++    s->vsp    = *ps3_ppu_vcall_sp_slot();
++    s->hle    = *ps3_hle_depth_slot();
++    return &s->jb;
++}
++
++void ppu_sjlj_leave(void* host_frame)
++{
++    sjlj_thread* t = t_sjlj;
++    if (!t || !t->live) return;
++    const uintptr_t frame = (uintptr_t)host_frame;
++    for (int i = 0; i < t->top; i++) {
++        sjlj_slot* s = &t->slot[i];
++        if (s->used && s->frame <= frame) sjlj_free(t, s);
++    }
++    sjlj_trim(t);
++}
++
++static void sjlj_fallback(struct ppu_context* ctx, uint32_t buf, const char* why)
++{
++    uint64_t n = __atomic_add_fetch(&s_fallbacks, 1, __ATOMIC_RELAXED);
++    if (n <= 16 || (n & 1023) == 0)
++        fprintf(stderr, "[sjlj] longjmp(jmp_buf 0x%08X) not carried out: %s "
++                        "(r1=0x%08X lr=0x%08X tid=%llu, #%llu); the longjmp returns\n",
++                buf, why, (uint32_t)ctx->gpr[1], (uint32_t)ctx->lr,
++                (unsigned long long)ctx->thread_id, (unsigned long long)n);
++}
++
++void ppu_sjlj_longjmp(struct ppu_context* ctx, uint64_t buf64)
++{
++    const uint32_t buf = (uint32_t)buf64;
++    sjlj_thread* t = t_sjlj;
++    if (!sjlj_enabled()) { sjlj_fallback(ctx, buf, "PPU_SJLJ=0"); return; }
++    sjlj_slot* s = NULL;
++    if (t)
++        for (int i = 0; i < t->top; i++)
++            if (t->slot[i].used && t->slot[i].buf == buf) { s = &t->slot[i]; break; }
++    if (!s) { sjlj_fallback(ctx, buf, "no setjmp made with it on this thread"); return; }
++    if (s->ctx != ctx) {
++        sjlj_fallback(ctx, buf, "its setjmp was made on another guest context "
++                                "(jumping out of an HLE callback)");
++        return;
++    }
++    if (*ps3_hle_depth_slot() != s->hle) {
++        sjlj_fallback(ctx, buf, "it would jump over an HLE call that runs guest code");
++        return;
++    }
++    if ((uintptr_t)PPU_SJLJ_FRAME() >= s->frame) {
++        sjlj_free(t, s);
++        sjlj_trim(t);
++        sjlj_fallback(ctx, buf, "the function that made the setjmp has returned");
++        return;
++    }
++    if ((uint32_t)ctx->gpr[1] != s->r1 || (uint32_t)ctx->lr != s->ret) {
++        char why[160];
++        snprintf(why, sizeof why, "the jmp_buf holds r1=0x%08X lr=0x%08X, its setjmp "
++                                  "was made with r1=0x%08X returning to 0x%08X",
++                 (uint32_t)ctx->gpr[1], (uint32_t)ctx->lr, s->r1, s->ret);
++        sjlj_fallback(ctx, buf, why);
++        return;
++    }
++    sjlj_drop_below(t, s->frame);
++
++    *ps3_ppu_dispatch_depth_slot() = s->depth;
++    *ps3_ppu_vcall_sp_slot() = s->vsp;
++    g_trampoline_fn = 0;
++    g_active_ctx = s->active;
++
++    uint64_t n = __atomic_add_fetch(&s_jumps, 1, __ATOMIC_RELAXED);
++    if (sjlj_log_on() && (n <= 64 || (n & 4095) == 0))
++        fprintf(stderr, "[sjlj] longjmp #%llu: jmp_buf 0x%08X -> setjmp returning to "
++                        "0x%08X, value %lld (r1=0x%08X tid=%llu)\n",
++                (unsigned long long)n, buf, s->ret, (long long)ctx->gpr[3], s->r1,
++                (unsigned long long)ctx->thread_id);
++    PPU_SJLJ_HOST_LONGJMP(s->jb, 1);
++}
++
++void ppu_sjlj_get_stats(ppu_sjlj_stats* out)
++{
++    out->enters = s_enters;
++    out->jumps = s_jumps;
++    out->fallbacks = s_fallbacks;
++    out->live = t_sjlj ? (uint32_t)t_sjlj->live : 0;
++}
+diff --git a/runtime/ppu/ppu_sjlj.h b/runtime/ppu/ppu_sjlj.h
+new file mode 100644
+index 00000000..5372d6d2
+--- /dev/null
++++ b/runtime/ppu/ppu_sjlj.h
+@@ -0,0 +1,101 @@
++/*
++ * ps3recomp - a title's own setjmp/longjmp, carried out on the host stack
++ *
++ * A title that links a libc setjmp/longjmp (newlib's, in a PS3 SDK title)
++ * cannot use it as lifted code: the guest longjmp restores r1, r2, the
++ * non-volatile GPRs/FPRs/VRs, CR and LR from the jmp_buf and "returns" from
++ * the setjmp call a second time -- but a static recompilation runs every guest
++ * function as a host function, so restoring the guest registers unwinds no
++ * host frame. The lifted longjmp just returns to its caller, which carries on
++ * as if the jump had happened. Lua's error handling is the common victim:
++ * luaD_throw longjmps to the luaD_rawrunprotected that pcall made, and when
++ * the longjmp returns it falls into the "no handler" path (panic, exit(1)).
++ *
++ * The lifter's --sjlj option names the title's setjmp and longjmp functions.
++ * Each direct call to the setjmp becomes
++ *
++ *     if (PPU_SJLJ_ENTER(ctx, <return address>) == 0) func_<setjmp>(ctx);
++ *
++ * a HOST setjmp in the caller's own frame, into a host jmp_buf this runtime
++ * keeps per host thread, keyed by the guest jmp_buf address (r3), before the
++ * guest setjmp body saves the guest registers as usual. The longjmp's body
++ * runs as lifted (it restores the guest registers and computes the return
++ * value) and then calls ppu_sjlj_longjmp, which host-longjmps to the matching
++ * setjmp site: the call there "returns" a second time, with the guest state
++ * the jmp_buf held and r3 = the longjmp value. Every exit of a function with
++ * setjmp sites calls ppu_sjlj_leave, so the runtime knows when a setjmp stops
++ * being a valid target. When there is no matching live
++ * site (the setjmp was not one of the rewritten calls, its frame has
++ * returned, it was made on another guest context -- e.g. outside the HLE
++ * callback the longjmp runs in), ppu_sjlj_longjmp logs it and returns, which
++ * is the behaviour without this support.
++ *
++ * Generated code includes this header only where it uses it, so a lift
++ * without --sjlj does not change.
++ */
++#ifndef PS3RECOMP_PPU_SJLJ_H
++#define PS3RECOMP_PPU_SJLJ_H
++
++#include <setjmp.h>
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++struct ppu_context;
++
++/* The host jmp_buf for the guest setjmp the caller is about to make with
++ * jmp_buf = ctx->gpr[3]. ret_addr is the guest return address of the call (the
++ * LR the guest setjmp saves), host_frame the frame address of the lifted
++ * function making the call. Never NULL: without a free slot it is a scratch
++ * buffer no longjmp is ever sent to. */
++jmp_buf* ppu_sjlj_enter(struct ppu_context* ctx, uint32_t ret_addr, void* host_frame);
++
++/* Called on every exit of a lifted function that has setjmp sites (with
++ * PPU_SJLJ_FRAME() of that function): its setjmps, and any made deeper, are
++ * no longer valid targets. */
++void ppu_sjlj_leave(void* host_frame);
++
++/* Called by the lifted guest longjmp after it restored the guest registers
++ * from the jmp_buf at `buf` (r3 on entry). Does not return when the matching
++ * setjmp site is live; returns (after a log line) when it is not. */
++void ppu_sjlj_longjmp(struct ppu_context* ctx, uint64_t buf);
++
++/* Counters for tests and diagnostics. */
++typedef struct ppu_sjlj_stats {
++    uint64_t enters;      /* setjmp sites entered                         */
++    uint64_t jumps;       /* longjmps carried out                         */
++    uint64_t fallbacks;   /* longjmps with no live site (returned instead) */
++    uint32_t live;        /* slots in use on this host thread             */
++} ppu_sjlj_stats;
++void ppu_sjlj_get_stats(ppu_sjlj_stats* out);
++
++#ifdef __cplusplus
++}
++#endif
++
++/* No signal-mask save: the guest does not expect one, and it is a syscall on
++ * macOS. */
++#if defined(_WIN32)
++#  define PPU_SJLJ_HOST_SETJMP(jb)     setjmp(jb)
++#  define PPU_SJLJ_HOST_LONGJMP(jb, v) longjmp((jb), (v))
++#else
++#  define PPU_SJLJ_HOST_SETJMP(jb)     _setjmp(jb)
++#  define PPU_SJLJ_HOST_LONGJMP(jb, v) _longjmp((jb), (v))
++#endif
++
++#if defined(_MSC_VER) && !defined(__clang__)
++#  include <intrin.h>
++#  define PPU_SJLJ_FRAME() ((void*)_AddressOfReturnAddress())
++#else
++#  define PPU_SJLJ_FRAME() __builtin_frame_address(0)
++#endif
++
++/* The setjmp has to be invoked in the frame that later resumes, so this is a
++ * macro used as the whole controlling expression of an `if` (one of the forms
++ * C allows setjmp in): `if (PPU_SJLJ_ENTER(ctx, ret) == 0) <guest setjmp>`. */
++#define PPU_SJLJ_ENTER(ctx, ret) \
++    PPU_SJLJ_HOST_SETJMP(*ppu_sjlj_enter((ctx), (ret), PPU_SJLJ_FRAME()))
++
++#endif /* PS3RECOMP_PPU_SJLJ_H */
 diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
-index 1a393fd..02c63b0 100644
+index 1a393fde..02c63b00 100644
 --- a/runtime/ppu/ppu_sysprx.cpp
 +++ b/runtime/ppu/ppu_sysprx.cpp
 @@ -21,6 +21,10 @@
@@ -20353,7 +20993,7 @@ index 1a393fd..02c63b0 100644
  
 diff --git a/runtime/ppu/tests/test_fs_rw_switch.cpp b/runtime/ppu/tests/test_fs_rw_switch.cpp
 new file mode 100644
-index 0000000..9533b5f
+index 00000000..9533b5f7
 --- /dev/null
 +++ b/runtime/ppu/tests/test_fs_rw_switch.cpp
 @@ -0,0 +1,143 @@
@@ -20500,8 +21140,336 @@ index 0000000..9533b5f
 +    printf("%s (%d failed)\n", fails ? "FAIL" : "PASS", fails);
 +    return fails ? 1 : 0;
 +}
+diff --git a/runtime/ppu/tests/test_ppu_sjlj.cpp b/runtime/ppu/tests/test_ppu_sjlj.cpp
+new file mode 100644
+index 00000000..5809552d
+--- /dev/null
++++ b/runtime/ppu/tests/test_ppu_sjlj.cpp
+@@ -0,0 +1,322 @@
++// Guest setjmp/longjmp carried out on the host stack (runtime/ppu/ppu_sjlj.c).
++//
++// The guest program below is written the way tools/ppu_lifter.py lifts code
++// with --sjlj: a newlib-style setjmp/longjmp pair (the longjmp body ends in
++// ppu_sjlj_longjmp), a Lua-style "protected call" whose call to the setjmp is
++// a PPU_SJLJ_ENTER site, a "throw" that longjmps to the innermost protected
++// call, and bodies the protected call reaches through ps3_indirect_call.
++//
++//   1. a body that returns: status 0, nothing jumps
++//   2. a throw 40 indirect calls deep: caught; r1, r2, r14-r31, CR and LR are
++//      the protected call's again and the dispatcher's nesting counts are back
++//   3. nested protected calls: the inner catches the inner throw, the outer
++//      the outer one
++//   4. one jmp_buf (one frame address) reused 2000 times: no slot leak
++//   5. a throw through a jmp_buf whose protected call has returned: the
++//      longjmp returns (the behaviour without host support) and is counted
++//   6. a throw from a second guest context (an HLE callback's) to a protected
++//      call made on the first: refused the same way
++//   7. a throw from inside an HLE call that runs guest code on the caller's
++//      context: refused the same way (the HLE frame's guards must run)
++//
++// Built by tools/test_ppu_sjlj.py against the real ppu_loader.cpp.
++#include "ppu_recomp.h"
++#include "ppu_sjlj.h"
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <cstdint>
++#include "win32_compat.h"
++
++extern "C" {
++uint8_t* vm_base;
++uint32_t ppu_hle_inject_base = 0x20000000;
++int spu_coh_is_reserved(uint32_t) { return 0; }
++void spu_coh_notify_write(uint32_t) { std::abort(); }
++void spu_lockline_lock(void) { std::abort(); }
++void spu_lockline_unlock(void) { std::abort(); }
++int spu_raw_reg_load(uint32_t, uint32_t*) { std::abort(); }
++void spu_raw_reg_store(uint32_t, uint32_t, unsigned) { std::abort(); }
++void cellGcm_ref_on_poll(void) { std::abort(); }
++HANDLE CreateThread(void*, SIZE_T, PS3_THREAD_FN, LPVOID, DWORD, DWORD*) { std::abort(); }
++BOOL CloseHandle(HANDLE) { std::abort(); }
++DWORD GetFileAttributesA(const char*) { return INVALID_FILE_ATTRIBUTES; }
++uint64_t ppu_thread_register_main(void) { return 1; }
++void (*g_ppu_thread_entry_trampoline)(uint32_t, uint64_t, uint32_t, uint64_t);
++const func_entry function_table[1] = {{0, nullptr, nullptr}};   // registered by hand below
++const uint64_t function_table_count = 0;
++uint32_t ps3_hle_count(void) { return 0; }
++void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
++void ps3_indirect_call(ppu_context* ctx);
++int* ps3_ppu_dispatch_depth_slot(void);
++int* ps3_ppu_vcall_sp_slot(void);
++// ppu_hle.cpp's (not linked here)
++static int s_hle_depth;
++int* ps3_hle_depth_slot(void) { return &s_hle_depth; }
++extern PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
++extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++}
++
++#define DRAIN_TRAMPOLINE(ctx) do { while (g_trampoline_fn) { void (*_tf)(void*) = g_trampoline_fn; \
++    g_trampoline_fn = 0; _tf((void*)(ctx)); } } while (0)
++
++// Guest addresses (code addresses are only keys for ps3_indirect_call).
++static const uint32_t A_SETJMP = 0x10000, A_LONGJMP = 0x10100, A_PROTECT = 0x10200,
++                      A_THROW = 0x10300, A_RETURN_OK = 0x10400, A_DEEP = 0x10500,
++                      A_NESTED = 0x10600, A_INNER = 0x10700, A_CALLBACK = 0x10800,
++                      A_IN_HLE = 0x10900;
++static const uint32_t RET_PROTECT_SETJMP = A_PROTECT + 0x24;   // return address of its setjmp call
++static const uint32_t STATE = 0x40000;   // "lua_State": +0 errorJmp, +8 depth arg, +0x10 code
++static const uint32_t STACK_TOP = 0xF0000;
++
++// struct longjmp_frame { u32 prev; pad; jmp_buf b (0xC0) at +0x10; u32 status at +0xD0 }
++enum { LJ_PREV = 0, LJ_BUF = 0x10, LJ_STATUS = 0xD0, LJ_SIZE = 0xE0 };
++
++static unsigned s_panics, s_bodies_after_throw;
++
++// ---- newlib-style setjmp / longjmp (jmp_buf: r1 r2 r14..r31 lr cr) -----------
++static void g_setjmp(ppu_context* ctx)
++{
++    ctx->gpr[3] = (ctx->gpr[3] + 15) & ~15ull;
++    vm_write64(ctx->gpr[3] + 0x0, ctx->gpr[1]);
++    vm_write64(ctx->gpr[3] + 0x8, ctx->gpr[2]);
++    for (int r = 14; r < 32; r++) vm_write64(ctx->gpr[3] + 0x10 + 8 * (r - 14), ctx->gpr[r]);
++    vm_write64(ctx->gpr[3] + 0xA0, ctx->lr);
++    vm_write64(ctx->gpr[3] + 0xA8, ctx->cr);
++    ctx->gpr[3] = 0;
++}
++
++static void g_longjmp(ppu_context* ctx)
++{
++    const uint64_t _sjlj_buf = ctx->gpr[3];
++    ctx->gpr[3] = (ctx->gpr[3] + 15) & ~15ull;
++    ctx->gpr[1] = vm_read64(ctx->gpr[3] + 0x0);
++    ctx->gpr[2] = vm_read64(ctx->gpr[3] + 0x8);
++    for (int r = 14; r < 32; r++) ctx->gpr[r] = vm_read64(ctx->gpr[3] + 0x10 + 8 * (r - 14));
++    ctx->lr = vm_read64(ctx->gpr[3] + 0xA0);
++    ctx->cr = (uint32_t)vm_read64(ctx->gpr[3] + 0xA8);
++    ctx->gpr[3] = ctx->gpr[4] ? ctx->gpr[4] : 1;
++    ppu_sjlj_longjmp(ctx, _sjlj_buf); return;
++}
++
++// ---- protect(L = r3, body = r4) -> r3 = status ------------------------------
++// Its exits call ppu_sjlj_leave, as the lifter emits them for a body with a
++// setjmp site.
++static void g_protect(ppu_context* ctx)
++{
++    uint64_t _cs_31 = ctx->gpr[31];
++    vm_write64(ctx->gpr[1] - 0x200, ctx->gpr[1]); ctx->gpr[1] -= 0x200;
++    vm_write64(ctx->gpr[1] + 0x210, ctx->lr);
++    vm_write64(ctx->gpr[1] + 0x1F8, ctx->gpr[31]);
++    ctx->gpr[31] = ctx->gpr[3];                                 // L
++    vm_write64(ctx->gpr[1] + 0x1F0, ctx->gpr[4]);               // body
++    const uint64_t lj = ctx->gpr[1] + 0x70;
++    vm_write32(lj + LJ_PREV, vm_read32(ctx->gpr[31]));
++    vm_write32(lj + LJ_STATUS, 0);
++    vm_write32(ctx->gpr[31], (uint32_t)lj);                     // L->errorJmp = &lj
++    ctx->gpr[3] = lj + LJ_BUF;
++    ctx->lr = RET_PROTECT_SETJMP; if (PPU_SJLJ_ENTER(ctx, RET_PROTECT_SETJMP) == 0) g_setjmp(ctx); DRAIN_TRAMPOLINE(ctx);
++    if (ctx->gpr[3] == 0) {
++        ctx->ctr = vm_read64(ctx->gpr[1] + 0x1F0);
++        ctx->gpr[3] = ctx->gpr[31];
++        ctx->lr = A_PROTECT + 0x40; ps3_indirect_call(ctx); DRAIN_TRAMPOLINE(ctx);
++    }
++    const uint64_t lj2 = ctx->gpr[1] + 0x70;
++    vm_write32(ctx->gpr[31], vm_read32(lj2 + LJ_PREV));         // L->errorJmp = lj.prev
++    ctx->gpr[3] = vm_read32(lj2 + LJ_STATUS);
++    ctx->lr = vm_read64(ctx->gpr[1] + 0x210);
++    ctx->gpr[1] += 0x200;
++    ctx->gpr[31] = _cs_31;
++    { ppu_sjlj_leave(PPU_SJLJ_FRAME()); return; }
++    ppu_sjlj_leave(PPU_SJLJ_FRAME());  /* sjlj: end of body */
++}
++
++// ---- throw(L = r3, code = r4) -----------------------------------------------
++static void g_throw(ppu_context* ctx)
++{
++    const uint32_t lj = vm_read32(ctx->gpr[3]);
++    if (lj) {
++        vm_write32(lj + LJ_STATUS, (uint32_t)ctx->gpr[4]);
++        ctx->gpr[3] = lj + LJ_BUF;
++        ctx->gpr[4] = 1;
++        ctx->lr = A_THROW + 0x20; g_longjmp(ctx); DRAIN_TRAMPOLINE(ctx);
++    }
++    ++s_panics;   // luaD_throw's no-handler path: G(L)->panic(L); exit(1)
++}
++
++static void g_return_ok(ppu_context* ctx) { ctx->gpr[3] = 0; }
++
++// deep(L): recurse STATE+8 levels through ps3_indirect_call with its own frames
++// and clobbered non-volatiles, then throw code 2.
++static void g_deep(ppu_context* ctx)
++{
++    vm_write64(ctx->gpr[1] - 0x80, ctx->gpr[1]); ctx->gpr[1] -= 0x80;
++    for (int r = 14; r < 32; r++) ctx->gpr[r] = 0xDEAD0000u + r;
++    ctx->cr = 0x12345678u;
++    ctx->gpr[2] = 0x7777;
++    const uint32_t left = vm_read32(STATE + 8);
++    if (left) {
++        vm_write32(STATE + 8, left - 1);
++        ctx->gpr[3] = STATE;
++        ctx->ctr = A_DEEP;
++        ctx->lr = A_DEEP + 0x30; ps3_indirect_call(ctx); DRAIN_TRAMPOLINE(ctx);
++    } else {
++        ctx->gpr[3] = STATE; ctx->gpr[4] = 2;
++        ctx->lr = A_DEEP + 0x40; g_throw(ctx); DRAIN_TRAMPOLINE(ctx);
++    }
++    ++s_bodies_after_throw;      // never reached when the throw is carried out
++    ctx->gpr[1] += 0x80;
++}
++
++static uint32_t s_inner_status;
++static void g_inner(ppu_context* ctx)
++{
++    ctx->gpr[3] = STATE; ctx->gpr[4] = 2;
++    ctx->lr = A_INNER + 0x10; g_throw(ctx); DRAIN_TRAMPOLINE(ctx);
++    ++s_bodies_after_throw;
++}
++
++// nested(L): protect(L, inner) must give 2, then throw 3 to the outer protect
++static void g_nested(ppu_context* ctx)
++{
++    vm_write64(ctx->gpr[1] - 0x80, ctx->gpr[1]); ctx->gpr[1] -= 0x80;
++    ctx->gpr[3] = STATE; ctx->gpr[4] = A_INNER;
++    ctx->lr = A_NESTED + 0x10; g_protect(ctx); DRAIN_TRAMPOLINE(ctx);
++    s_inner_status = (uint32_t)ctx->gpr[3];
++    ctx->gpr[3] = STATE; ctx->gpr[4] = 3;
++    ctx->lr = A_NESTED + 0x20; g_throw(ctx); DRAIN_TRAMPOLINE(ctx);
++    ++s_bodies_after_throw;
++    ctx->gpr[1] += 0x80;
++}
++
++// callback body: throws from a second context, the way an HLE callback would
++static void g_callback(ppu_context* ctx)
++{
++    ppu_context cb;
++    std::memset(&cb, 0, sizeof cb);
++    cb.gpr[1] = 0x80000;
++    cb.gpr[3] = STATE; cb.gpr[4] = 4;
++    ppu_context* saved = g_active_ctx;
++    g_active_ctx = &cb;
++    g_throw(&cb);
++    g_active_ctx = saved;
++    ctx->gpr[3] = 0;
++}
++
++// an HLE handler that runs guest code on the caller's context (ps3_hle_call
++// counts its nesting), and the guest code throws
++static void g_in_hle(ppu_context* ctx)
++{
++    ++*ps3_hle_depth_slot();
++    ctx->gpr[3] = STATE; ctx->gpr[4] = 6;
++    const ppu_context before = *ctx;
++    g_throw(ctx);
++    *ctx = before;   // the refused longjmp's body restored the protected call's registers
++    --*ps3_hle_depth_slot();
++    ctx->gpr[3] = 0;
++}
++
++static unsigned s_fails;
++static void check(bool ok, const char* what)
++{
++    std::printf("[%s] %s\n", ok ? "PASS" : "FAIL", what);
++    s_fails += !ok;
++}
++
++static uint32_t run_protect(ppu_context* ctx, uint32_t body)
++{
++    ctx->gpr[3] = STATE; ctx->gpr[4] = body;
++    ctx->lr = 0x10F00; g_protect(ctx); DRAIN_TRAMPOLINE(ctx);
++    return (uint32_t)ctx->gpr[3];
++}
++
++int main()
++{
++    vm_base = (uint8_t*)std::calloc(1, 0x100000);
++    ppu_register_function(A_RETURN_OK, g_return_ok);
++    ppu_register_function(A_DEEP, g_deep);
++    ppu_register_function(A_NESTED, g_nested);
++    ppu_register_function(A_INNER, g_inner);
++    ppu_register_function(A_CALLBACK, g_callback);
++    ppu_register_function(A_IN_HLE, g_in_hle);
++
++    static ppu_context ctx;
++    ctx.gpr[1] = STACK_TOP;
++    ctx.gpr[2] = 0x1234;
++    for (int r = 14; r < 32; r++) ctx.gpr[r] = 0xC0DE0000u + r;
++    ctx.cr = 0x22220000u;
++    g_active_ctx = &ctx;
++    ppu_sjlj_stats st0, st;
++    ppu_sjlj_get_stats(&st0);
++
++    // 1
++    uint32_t status = run_protect(&ctx, A_RETURN_OK);
++    ppu_sjlj_get_stats(&st);
++    check(status == 0 && st.jumps == st0.jumps && st.enters == st0.enters + 1,
++          "a body that returns: status 0, no jump");
++
++    // 2
++    vm_write32(STATE + 8, 40);
++    status = run_protect(&ctx, A_DEEP);
++    ppu_sjlj_get_stats(&st);
++    bool regs = ctx.gpr[1] == STACK_TOP && ctx.gpr[2] == 0x1234 && ctx.cr == 0x22220000u;
++    for (int r = 14; r < 32; r++) regs = regs && ctx.gpr[r] == 0xC0DE0000u + r;
++    check(status == 2 && st.jumps == st0.jumps + 1 && s_bodies_after_throw == 0,
++          "a throw 40 indirect calls deep is caught by the protected call (status 2)");
++    check(regs, "r1, r2, r14-r31 and CR are the caller's again");
++    check(*ps3_ppu_dispatch_depth_slot() == 0 && *ps3_ppu_vcall_sp_slot() == 0,
++          "the dispatcher's nesting counts are back to 0 after jumping over 41 frames");
++    check(g_trampoline_fn == nullptr && g_active_ctx == &ctx, "trampoline cleared, active context kept");
++    check(vm_read32(STATE) == 0, "the protected call unlinked its handler");
++
++    // 3
++    status = run_protect(&ctx, A_NESTED);
++    check(s_inner_status == 2 && status == 3 && s_bodies_after_throw == 0,
++          "nested protected calls: inner caught 2, outer caught 3");
++
++    // 4
++    unsigned caught = 0;
++    for (int i = 0; i < 2000; i++) {
++        vm_write32(STATE + 8, (uint32_t)(i % 7));
++        caught += run_protect(&ctx, A_DEEP) == 2;
++        if (i % 3 == 0) caught += run_protect(&ctx, A_RETURN_OK) == 0 ? 0 : 1000000;
++    }
++    ppu_sjlj_get_stats(&st);
++    check(caught == 2000, "2000 throws through one reused jmp_buf are all caught");
++    check(st.live <= 2, "no setjmp slot leaks (live slots after the loop <= 2)");
++    char msg[96];
++    std::snprintf(msg, sizeof msg, "  (live slots %u, setjmp sites entered %llu, jumps %llu)",
++                  st.live, (unsigned long long)st.enters, (unsigned long long)st.jumps);
++    std::puts(msg);
++
++    // 5: a stale handler: the protected call that set it up has returned
++    const uint64_t stale = STACK_TOP - 0x200 + 0x70;
++    vm_write32(STATE, (uint32_t)stale);
++    const unsigned panics0 = s_panics;
++    const uint64_t fb0 = st.fallbacks;
++    const ppu_context before = ctx;
++    ctx.gpr[3] = STATE; ctx.gpr[4] = 5;
++    g_throw(&ctx);
++    ctx = before;   // the guest longjmp body did restore the stale registers
++    ppu_sjlj_get_stats(&st);
++    check(s_panics == panics0 + 1 && st.fallbacks == fb0 + 1,
++          "a longjmp to a returned setjmp frame returns (old behaviour) and is counted");
++    vm_write32(STATE, 0);
++
++    // 6
++    status = run_protect(&ctx, A_CALLBACK);
++    ppu_sjlj_get_stats(&st);
++    // (status 4: the throw stored its code before its longjmp was refused)
++    check(status == 4 && s_panics == panics0 + 2 && st.fallbacks == fb0 + 2,
++          "a longjmp from another guest context (an HLE callback) is refused");
++    check(g_active_ctx == &ctx && ctx.gpr[1] == STACK_TOP, "the first context is intact");
++
++    // 7
++    status = run_protect(&ctx, A_IN_HLE);
++    ppu_sjlj_get_stats(&st);
++    check(status == 6 && s_panics == panics0 + 3 && st.fallbacks == fb0 + 3 &&
++          *ps3_ppu_dispatch_depth_slot() == 0,
++          "a longjmp over an HLE frame (guest code run on the same context) is refused");
++
++    return s_fails ? 1 : 0;
++}
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 59f5e4b..00ff9b6 100644
+index 59f5e4b8..00ff9b6d 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -27,7 +27,7 @@
@@ -21016,7 +21984,7 @@ index 59f5e4b..00ff9b6 100644
              return;
          }
 diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
-index bc7017d..f6ea345 100644
+index bc7017da..f6ea3455 100644
 --- a/runtime/spu/spu_coherency.c
 +++ b/runtime/spu/spu_coherency.c
 @@ -52,9 +52,32 @@ void spu_lockline_lock(void)
@@ -21074,7 +22042,7 @@ index bc7017d..f6ea345 100644
              /* SPU_PUTLLC_WHY=1: name the agent that killed it. A PUTLLC that
               * always fails for "no reservation" is useless without knowing who
 diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
-index f46d415..77640c5 100644
+index f46d415f..77640c58 100644
 --- a/runtime/spu/spu_context.h
 +++ b/runtime/spu/spu_context.h
 @@ -39,17 +39,17 @@ extern "C" {
@@ -21467,7 +22435,7 @@ index f46d415..77640c5 100644
   * brsl/bisl frame is live (host_depth>0); at 0 the frame was destroyed (task
   * resume / restack unwind) so dispatch to the link register instead -- faithful
 diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
-index 7b0debe..d16b601 100644
+index 7b0debec..d16b6012 100644
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -728,10 +728,19 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
@@ -21663,7 +22631,7 @@ index 7b0debe..d16b601 100644
  
      /* Execute the transfer.
 diff --git a/runtime/spu/spu_drain.c b/runtime/spu/spu_drain.c
-index fc3cea1..45877a0 100644
+index fc3cea12..45877a02 100644
 --- a/runtime/spu/spu_drain.c
 +++ b/runtime/spu/spu_drain.c
 @@ -36,7 +36,7 @@ void* volatile    g_pm_flow_ctx = 0;
@@ -21867,7 +22835,7 @@ index fc3cea1..45877a0 100644
                  void (*vf)(spu_context*) = spu_take_interrupt(ctx, fn);
                  if (!ctx->int_enable) {   /* taken (a take clears the enable; a deferral leaves it) */
 diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
-index 3f7d733..4d340f0 100644
+index 3f7d7337..4d340f0f 100644
 --- a/runtime/spu/spu_helpers.h
 +++ b/runtime/spu/spu_helpers.h
 @@ -788,9 +788,7 @@ SPU__NV_INLINE u128 spu__nv_fa(u128 a, u128 b, uint32_t negb) {
@@ -22141,7 +23109,7 @@ index 3f7d733..4d340f0 100644
  
  
 diff --git a/runtime/spu/spu_raw.c b/runtime/spu/spu_raw.c
-index f6dc8be..038fbb1 100644
+index f6dc8bef..038fbb1c 100644
 --- a/runtime/spu/spu_raw.c
 +++ b/runtime/spu/spu_raw.c
 @@ -229,10 +229,27 @@ void spu_raw_note_image(uint32_t src_ea, uint32_t entry)
@@ -22375,7 +23343,7 @@ index f6dc8be..038fbb1 100644
  
      case SPU_RAW_IN_MBOX:
 diff --git a/runtime/spu/spu_workload.c b/runtime/spu/spu_workload.c
-index 2008961..8cf8da5 100644
+index 20089610..f4a66d01 100644
 --- a/runtime/spu/spu_workload.c
 +++ b/runtime/spu/spu_workload.c
 @@ -13,6 +13,7 @@
@@ -22448,8 +23416,64 @@ index 2008961..8cf8da5 100644
  unsigned spu_workload_count(void) { return s_registry_count; }
  
  /* ---- SPU ELF loader (32-bit big-endian) -------------------------------- */
+@@ -1077,7 +1126,43 @@ int spu_taskset_consume_wake(uint32_t taskset_ea)
+     return 0;
+ }
+ 
+-/* Signal every task of `taskset_ea` currently parked. Returns how many. */
++/* Signal every task parked on `wait_obj` (whatever its taskset). If the task
++ * named no object (0 recorded), it matches anything.
++ *
++ * Resistance 2's Wws_Job path: the PPU enqueues a job with
++ * _cellSpursLFQueuePushBody, which knows only the queue EA, not the taskset --
++ * and the parked task's wait object (LS 0x2FD0 of the task-API argument) may
++ * or may not be the queue. The push handler tries this first and falls back
++ * to spu_taskset_signal_parked_force() when nothing matched. */
++int spu_taskset_signal_parked_obj_any(uint32_t wait_obj)
++{
++    int n = 0;
++    for (int i = 0; i < SPU_PARKED_MAX; i++) {
++        uint64_t k = s_parked[i];
++        if (!k) continue;
++        if (s_parked_obj[i] && s_parked_obj[i] != wait_obj) continue;
++        spu_taskset_signal_task((uint32_t)(k >> 32), (uint32_t)(k & 0xFFFFFFFFu) - 1u);
++        n++;
++    }
++    return n;
++}
++
++/* Signal EVERY task parked in WAIT_SIGNAL, whatever object it named. The
++ * push handler's fallback: an unread job sitting in the queue while its only
++ * consumer sleeps is the worse state to be left in, and at bring-up there is
++ * exactly one parked task to overshoot on. */
++int spu_taskset_signal_parked_force(void)
++{
++    int n = 0;
++    for (int i = 0; i < SPU_PARKED_MAX; i++) {
++        uint64_t k = s_parked[i];
++        if (!k) continue;
++        spu_taskset_signal_task((uint32_t)(k >> 32), (uint32_t)(k & 0xFFFFFFFFu) - 1u);
++        n++;
++    }
++    return n;
++}
++
+ /* Wake only the task parked on `wait_obj` (0 = any task of the taskset).
+  * The guest names its wait object in the WAIT_SIGNAL argument, and for YDKJ`s
+  * CRI tasks the flag the PPU sets is exactly wait_obj + 0x80 -- so a Set can
+@@ -1142,7 +1227,9 @@ void spu_taskset_signal_task(uint32_t taskset_ea, uint32_t taskId)
+     pthread_cond_broadcast(&s_sig_cv);
+     pthread_mutex_unlock(&s_sig_lock);
+ #endif
+-    { static int _n = 0; if (PS3_LOG_FIRST(_n, 24))
++    { static int _n = 0; static int _cap = -1;
++      if (_cap < 0) { const char* e = getenv("PS3_LFQ_LOG"); _cap = e ? atoi(e) * 3 + 24 : 24; }
++      if (PS3_LOG_FIRST(_n, _cap))
+         fprintf(stderr, "[spu_workload] signal task %u (taskset 0x%08X)\n",
+                 taskId, taskset_ea); fflush(stderr); }
+     /* SPU_SIG_STATS=1: signals per second per (taskset, task, caller). */
 diff --git a/runtime/spu/spu_workload.h b/runtime/spu/spu_workload.h
-index f8a726e..09c982f 100644
+index f8a726e0..09c982f9 100644
 --- a/runtime/spu/spu_workload.h
 +++ b/runtime/spu/spu_workload.h
 @@ -58,6 +58,28 @@ spu_lifted_entry_fn spu_workload_find(uint64_t fingerprint);
@@ -22482,7 +23506,7 @@ index f8a726e..09c982f 100644
   * kernel handoff: kernel context at LS 0x100, entry ABI of
   * cellSpursModuleEntry(context, ea) with the workload's u64 data in r4.
 diff --git a/runtime/spu/spurs_job.c b/runtime/spu/spurs_job.c
-index bb8f122..81dd81d 100644
+index bb8f1226..81dd81dc 100644
 --- a/runtime/spu/spurs_job.c
 +++ b/runtime/spu/spurs_job.c
 @@ -43,6 +43,7 @@
@@ -22494,7 +23518,7 @@ index bb8f122..81dd81d 100644
  extern uint8_t* vm_base;
  extern int spu_run_with_halt(void (*)(spu_context*), spu_context*);
 diff --git a/runtime/spu/spurs_policy.c b/runtime/spu/spurs_policy.c
-index 905b351..efd8c39 100644
+index 905b3517..efd8c398 100644
 --- a/runtime/spu/spurs_policy.c
 +++ b/runtime/spu/spurs_policy.c
 @@ -27,6 +27,7 @@
@@ -22558,7 +23582,7 @@ index 905b351..efd8c39 100644
      ctx->gpr[5]._u32[0] = 0;                           /* poll status */
 diff --git a/runtime/spu/tests/test_spu_cflt_fast.c b/runtime/spu/tests/test_spu_cflt_fast.c
 new file mode 100644
-index 0000000..6433225
+index 00000000..6433225e
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_cflt_fast.c
 @@ -0,0 +1,39 @@
@@ -22603,7 +23627,7 @@ index 0000000..6433225
 +}
 diff --git a/runtime/spu/tests/test_spu_decrementer.c b/runtime/spu/tests/test_spu_decrementer.c
 new file mode 100644
-index 0000000..9c984d2
+index 00000000..9c984d26
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_decrementer.c
 @@ -0,0 +1,112 @@
@@ -22721,7 +23745,7 @@ index 0000000..9c984d2
 +void spu_thread_publish_ctx(uint32_t tid, void* ctx) { (void)tid; (void)ctx; }
 diff --git a/runtime/spu/tests/test_spu_dma_repeat.c b/runtime/spu/tests/test_spu_dma_repeat.c
 new file mode 100644
-index 0000000..add088d
+index 00000000..add088d0
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_dma_repeat.c
 @@ -0,0 +1,116 @@
@@ -22842,7 +23866,7 @@ index 0000000..add088d
 +uint32_t g_spu_image_src_ea, g_spu_image_ls_start, g_spu_image_span;
 +void spu_thread_publish_ctx(uint32_t tid, void* ctx) { (void)tid; (void)ctx; }
 diff --git a/runtime/spu/tests/test_spu_float_neon.c b/runtime/spu/tests/test_spu_float_neon.c
-index ac634cd..cac44d1 100644
+index ac634cd9..cac44d13 100644
 --- a/runtime/spu/tests/test_spu_float_neon.c
 +++ b/runtime/spu/tests/test_spu_float_neon.c
 @@ -80,6 +80,7 @@ int main(void)
@@ -22910,7 +23934,7 @@ index ac634cd..cac44d1 100644
       * must still round to nearest: 1 + (2^-53 + 2^-60) -> 1 + 2^-52. */
      {
 diff --git a/runtime/spu/tests/test_spu_lifted_start.c b/runtime/spu/tests/test_spu_lifted_start.c
-index 7f5ef56..6fa63c2 100644
+index 7f5ef56f..6fa63c26 100644
 --- a/runtime/spu/tests/test_spu_lifted_start.c
 +++ b/runtime/spu/tests/test_spu_lifted_start.c
 @@ -104,6 +104,8 @@ int64_t lv2_spu_lock_line_classify(uint32_t a, uint64_t f) { (void)a; (void)f; r
@@ -23016,7 +24040,7 @@ index 7f5ef56..6fa63c2 100644
      signal(SIGSEGV, guard_fault);
      signal(SIGBUS,  guard_fault);
 diff --git a/runtime/spu/tests/test_spu_mfc_slots.c b/runtime/spu/tests/test_spu_mfc_slots.c
-index f7eff36..8677bd7 100644
+index f7eff36a..8677bd7c 100644
 --- a/runtime/spu/tests/test_spu_mfc_slots.c
 +++ b/runtime/spu/tests/test_spu_mfc_slots.c
 @@ -206,6 +206,9 @@ int main(void)
@@ -23031,7 +24055,7 @@ index f7eff36..8677bd7 100644
      CHECK(reusere->queue_count == 0);
 diff --git a/runtime/spu/tests/test_spu_poison_scan.c b/runtime/spu/tests/test_spu_poison_scan.c
 new file mode 100644
-index 0000000..710392d
+index 00000000..710392d8
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_poison_scan.c
 @@ -0,0 +1,84 @@
@@ -23120,7 +24144,7 @@ index 0000000..710392d
 +#endif
 +}
 diff --git a/runtime/spu/tests/test_spu_user_event_port.c b/runtime/spu/tests/test_spu_user_event_port.c
-index 26e7db3..478ec1e 100644
+index 26e7db33..478ec1e7 100644
 --- a/runtime/spu/tests/test_spu_user_event_port.c
 +++ b/runtime/spu/tests/test_spu_user_event_port.c
 @@ -12,6 +12,7 @@
@@ -23173,7 +24197,7 @@ index 26e7db3..478ec1e 100644
      r = send_event(0x2A, &ms);
 diff --git a/runtime/spu/tests/test_spu_workload_masked.c b/runtime/spu/tests/test_spu_workload_masked.c
 new file mode 100644
-index 0000000..f9d6aea
+index 00000000..f9d6aea8
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_workload_masked.c
 @@ -0,0 +1,81 @@
@@ -23259,7 +24283,7 @@ index 0000000..f9d6aea
 +    return 0;
 +}
 diff --git a/runtime/syscalls/lv2_register.c b/runtime/syscalls/lv2_register.c
-index 8815650..6aeb999 100644
+index 8815650c..6aeb9996 100644
 --- a/runtime/syscalls/lv2_register.c
 +++ b/runtime/syscalls/lv2_register.c
 @@ -1603,6 +1603,7 @@ static SRWLOCK s_spu_port_lock = SRWLOCK_INIT;
@@ -23303,7 +24327,7 @@ index 8815650..6aeb999 100644
          }
      }
 diff --git a/runtime/syscalls/sys_cond.c b/runtime/syscalls/sys_cond.c
-index 45235ea..e1311a2 100644
+index 45235ea6..e1311a27 100644
 --- a/runtime/syscalls/sys_cond.c
 +++ b/runtime/syscalls/sys_cond.c
 @@ -195,7 +195,10 @@ int64_t sys_cond_wait(ppu_context* ctx)
@@ -23317,8 +24341,32 @@ index 45235ea..e1311a2 100644
      m->owner_tid = ctx->thread_id;
      m->lock_count = depth;
      return result;
+diff --git a/runtime/syscalls/sys_fs.c b/runtime/syscalls/sys_fs.c
+index f076ef89..75ca10e6 100644
+--- a/runtime/syscalls/sys_fs.c
++++ b/runtime/syscalls/sys_fs.c
+@@ -5,6 +5,7 @@
+ #include "sys_fs.h"
+ #include "../../libs/filesystem/edat.h"
+ #include "../memory/vm.h"
++#include "../../include/ps3emu/hdd1_cache.h"   /* /dev_hdd1 -> the mounted system cache */
+ #include <string.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -177,8 +178,9 @@ void sys_fs_translate_path(const char* ps3_path, char* host_path, int host_path_
+     {
+         static const char* hdd1_root = NULL; static int hdd1_init = 0;
+         if (!hdd1_init) { hdd1_root = getenv("PS3_HDD1_ROOT"); hdd1_init = 1; }
+-        if (hdd1_root && *hdd1_root && strncmp(ps3_path, "/dev_hdd1/", 10) == 0) {
+-            snprintf(host_path, (size_t)host_path_size, "%s/%s", hdd1_root, ps3_path + 10);
++        /* /dev_hdd1 is the mounted cache folder: ps3emu/hdd1_cache.h. */
++        if (host_path_size > 0 &&
++            ps3_hdd1_host_path(ps3_path, hdd1_root, host_path, (size_t)host_path_size)) {
+             fs_normalize_sep(host_path);
+             return;
+         }
 diff --git a/runtime/syscalls/sys_mutex.c b/runtime/syscalls/sys_mutex.c
-index 2e760ea..86ad90d 100644
+index 2e760ea5..86ad90d6 100644
 --- a/runtime/syscalls/sys_mutex.c
 +++ b/runtime/syscalls/sys_mutex.c
 @@ -8,6 +8,10 @@
@@ -23495,7 +24543,7 @@ index 2e760ea..86ad90d 100644
      m->owner_tid = caller_tid;
      m->lock_count++;
 diff --git a/runtime/syscalls/sys_mutex.h b/runtime/syscalls/sys_mutex.h
-index bfe849d..08b20e4 100644
+index bfe849d8..08b20e46 100644
 --- a/runtime/syscalls/sys_mutex.h
 +++ b/runtime/syscalls/sys_mutex.h
 @@ -62,6 +62,7 @@ typedef struct sys_mutex_info {
@@ -23507,7 +24555,7 @@ index bfe849d..08b20e4 100644
  #ifdef _WIN32
      CRITICAL_SECTION cs;
 diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
-index c64b0b8..cf7878e 100644
+index c64b0b8d..cf7878e7 100644
 --- a/runtime/syscalls/sys_ppu_thread.c
 +++ b/runtime/syscalls/sys_ppu_thread.c
 @@ -1250,6 +1250,17 @@ int64_t sys_ppu_thread_get_join_state(ppu_context* ctx)
@@ -23586,7 +24634,7 @@ index c64b0b8..cf7878e 100644
      }
  
 diff --git a/runtime/syscalls/sys_semaphore.c b/runtime/syscalls/sys_semaphore.c
-index a05eeec..8ac3d6f 100644
+index a05eeecf..8ac3d6f5 100644
 --- a/runtime/syscalls/sys_semaphore.c
 +++ b/runtime/syscalls/sys_semaphore.c
 @@ -9,6 +9,7 @@
@@ -23598,7 +24646,7 @@ index a05eeec..8ac3d6f 100644
  /* ---------------------------------------------------------------------------
   * Globals
 diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
-index 5683446..fc6c7c3 100644
+index 5683446d..fc6c7c3a 100644
 --- a/runtime/syscalls/sys_timer.c
 +++ b/runtime/syscalls/sys_timer.c
 @@ -12,7 +12,11 @@
@@ -23686,7 +24734,7 @@ index 5683446..fc6c7c3 100644
  }
  
 diff --git a/runtime/syscalls/sys_timer.h b/runtime/syscalls/sys_timer.h
-index 7b38fcb..f3d4163 100644
+index 7b38fcbb..f3d4163a 100644
 --- a/runtime/syscalls/sys_timer.h
 +++ b/runtime/syscalls/sys_timer.h
 @@ -32,6 +32,15 @@ extern "C" {
@@ -23706,10 +24754,20 @@ index 7b38fcb..f3d4163 100644
  /* Sub-millisecond timed-wait support for the lv2 sync primitives.
   * SleepConditionVariableCS / WaitForSingleObject floor a timed wait to 1 ms,
 diff --git a/templates/project/CMakeLists.txt b/templates/project/CMakeLists.txt
-index 3504138..83fd870 100644
+index 3504138a..f773d4ff 100644
 --- a/templates/project/CMakeLists.txt
 +++ b/templates/project/CMakeLists.txt
-@@ -249,6 +249,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+@@ -121,6 +121,9 @@ set(PS3RECOMP_SCAFFOLD
+     "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"
+     "${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp"
+     "${PS3RECOMP_DIR}/runtime/ppu/ppu_sysprx.cpp"
++    # Host side of the lifter's --sjlj (a title's setjmp/longjmp); unused
++    # without it.
++    "${PS3RECOMP_DIR}/runtime/ppu/ppu_sjlj.c"
+ )
+ 
+ # ---------------------------------------------------------------------------
+@@ -249,6 +252,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
          # The lift spells PPC arithmetic as signed C arithmetic, which must wrap;
          # without this, clang exploits overflow UB (e.g. folds "x*x < 0" to false).
          -fwrapv
@@ -23722,9 +24780,77 @@ index 3504138..83fd870 100644
      )
  elseif(MSVC)
      target_compile_options(${PROJECT_NAME} PRIVATE
+diff --git a/tests/test_hdd1_cache.c b/tests/test_hdd1_cache.c
+new file mode 100644
+index 00000000..82e70bcd
+--- /dev/null
++++ b/tests/test_hdd1_cache.c
+@@ -0,0 +1,62 @@
++/* /dev_hdd1 -> host mapping of the mounted system cache (ps3emu/hdd1_cache.h).
++ *
++ *   clang -std=gnu17 -I include tests/test_hdd1_cache.c -o /tmp/test_hdd1_cache && /tmp/test_hdd1_cache
++ */
++#include "ps3emu/hdd1_cache.h"
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++static unsigned checks;
++#define CHECK(x) do { ++checks; if (!(x)) { fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (0)
++
++static int maps(const char* guest, const char* root, const char* want)
++{
++    char out[256];
++    memset(out, 'x', sizeof out);
++    if (!ps3_hdd1_host_path(guest, root, out, sizeof out)) return want == NULL;
++    if (!want) { fprintf(stderr, "  '%s' mapped to '%s', expected no mapping\n", guest, out); return 0; }
++    if (strcmp(out, want)) { fprintf(stderr, "  '%s' -> '%s', expected '%s'\n", guest, out, want); return 0; }
++    return 1;
++}
++
++int main(void)
++{
++    /* No cache mounted: /dev_hdd1/x -> <root>/x (the old mapping). */
++    unsetenv(PS3_SYSCACHE_ID_ENV);
++    CHECK(maps("/dev_hdd1/cache/BCUS98107/PROFILE.SAV", "/h1", "/h1/cache/BCUS98107/PROFILE.SAV"));
++    CHECK(maps("/dev_hdd1/x", "/h1", "/h1/x"));
++    CHECK(maps("/dev_hdd1", "/h1", "/h1/"));
++
++    /* Mounted: the cache folder is the root of /dev_hdd1. */
++    setenv(PS3_SYSCACHE_ID_ENV, "BCUS98107", 1);
++    CHECK(maps("/dev_hdd1/hdd1_movie_stash", "/h1", "/h1/cache/BCUS98107/hdd1_movie_stash"));
++    CHECK(maps("/dev_hdd1/PROFILE.SAV", "/h1", "/h1/cache/BCUS98107/PROFILE.SAV"));
++    CHECK(maps("/dev_hdd1/a/b.dat", "/h1", "/h1/cache/BCUS98107/a/b.dat"));
++    CHECK(maps("/dev_hdd1", "/h1", "/h1/cache/BCUS98107"));
++    CHECK(maps("/dev_hdd1/", "/h1", "/h1/cache/BCUS98107"));
++    /* The old answer's spelling lands in the same folder, not cache/<id>/cache/<id>. */
++    CHECK(maps("/dev_hdd1/cache/BCUS98107/PROFILE.SAV", "/h1", "/h1/cache/BCUS98107/PROFILE.SAV"));
++    CHECK(maps("/dev_hdd1/cache/BCUS98107", "/h1", "/h1/cache/BCUS98107"));
++    /* Another title's folder name is just a path inside this cache. */
++    CHECK(maps("/dev_hdd1/cache/BCUS98107X/f", "/h1", "/h1/cache/BCUS98107/cache/BCUS98107X/f"));
++    /* Not /dev_hdd1. */
++    CHECK(maps("/dev_hdd10/x", "/h1", NULL));
++    CHECK(maps("/dev_hdd0/game/x", "/h1", NULL));
++    CHECK(maps("/dev_bdvd/PS3_GAME", "/h1", NULL));
++    /* No root, no mapping (the caller falls back to its mount table). */
++    CHECK(maps("/dev_hdd1/x", "", NULL));
++    CHECK(maps("/dev_hdd1/x", NULL, NULL));
++    /* Windows separators come out as '/'. */
++    CHECK(maps("/dev_hdd1/a\\b", "C:\\h1", "C:/h1/cache/BCUS98107/a/b"));
++
++    /* Too small: no mapping, and an empty string rather than a truncated path. */
++    char small[12];
++    memset(small, 'x', sizeof small);
++    CHECK(ps3_hdd1_host_path("/dev_hdd1/hdd1_movie_stash", "/h1", small, sizeof small) == 0);
++    CHECK(small[0] == '\0');
++    CHECK(ps3_hdd1_host_path("/dev_hdd1/x", "/h1", small, 0) == 0);
++
++    printf("%u hdd1 cache mapping checks PASS\n", checks);
++    return 0;
++}
 diff --git a/third_party/smaa/AreaTex.h b/third_party/smaa/AreaTex.h
 new file mode 100644
-index 0000000..6c8a00b
+index 00000000..6c8a00b6
 --- /dev/null
 +++ b/third_party/smaa/AreaTex.h
 @@ -0,0 +1,14980 @@
@@ -38710,7 +39836,7 @@ index 0000000..6c8a00b
 +#endif
 diff --git a/third_party/smaa/LICENSE.txt b/third_party/smaa/LICENSE.txt
 new file mode 100644
-index 0000000..dbce0e6
+index 00000000..dbce0e6b
 --- /dev/null
 +++ b/third_party/smaa/LICENSE.txt
 @@ -0,0 +1,24 @@
@@ -38740,7 +39866,7 @@ index 0000000..dbce0e6
 +CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 diff --git a/third_party/smaa/SMAA.hlsl b/third_party/smaa/SMAA.hlsl
 new file mode 100644
-index 0000000..2c8d497
+index 00000000..2c8d4979
 --- /dev/null
 +++ b/third_party/smaa/SMAA.hlsl
 @@ -0,0 +1,1361 @@
@@ -40107,7 +41233,7 @@ index 0000000..2c8d497
 +#endif // SMAA_INCLUDE_PS
 diff --git a/third_party/smaa/SearchTex.h b/third_party/smaa/SearchTex.h
 new file mode 100644
-index 0000000..9a65bba
+index 00000000..9a65bba9
 --- /dev/null
 +++ b/third_party/smaa/SearchTex.h
 @@ -0,0 +1,132 @@
@@ -40245,7 +41371,7 @@ index 0000000..9a65bba
 +#endif
 diff --git a/third_party/smaa/smaa_msl.h b/third_party/smaa/smaa_msl.h
 new file mode 100644
-index 0000000..1549723
+index 00000000..15497237
 --- /dev/null
 +++ b/third_party/smaa/smaa_msl.h
 @@ -0,0 +1,502 @@
@@ -40753,7 +41879,7 @@ index 0000000..1549723
 +    "\n";
 diff --git a/third_party/smaa/smaa_passes.hlsl b/third_party/smaa/smaa_passes.hlsl
 new file mode 100644
-index 0000000..f9b86de
+index 00000000..f9b86ded
 --- /dev/null
 +++ b/third_party/smaa/smaa_passes.hlsl
 @@ -0,0 +1,54 @@
@@ -40813,7 +41939,7 @@ index 0000000..f9b86de
 +}
 diff --git a/tools/host_window/host_display.h b/tools/host_window/host_display.h
 new file mode 100644
-index 0000000..9288d91
+index 00000000..9288d917
 --- /dev/null
 +++ b/tools/host_window/host_display.h
 @@ -0,0 +1,91 @@
@@ -40910,7 +42036,7 @@ index 0000000..9288d91
 +#endif /* PS3RECOMP_HOST_DISPLAY_H */
 diff --git a/tools/host_window/host_window.m b/tools/host_window/host_window.m
 new file mode 100644
-index 0000000..ee3d300
+index 00000000..ee3d3003
 --- /dev/null
 +++ b/tools/host_window/host_window.m
 @@ -0,0 +1,878 @@
@@ -41794,7 +42920,7 @@ index 0000000..ee3d300
 +}
 diff --git a/tools/host_window/test_host_display.c b/tools/host_window/test_host_display.c
 new file mode 100644
-index 0000000..95df325
+index 00000000..95df325f
 --- /dev/null
 +++ b/tools/host_window/test_host_display.c
 @@ -0,0 +1,50 @@
@@ -41850,7 +42976,7 @@ index 0000000..95df325
 +}
 diff --git a/tools/host_window/test_host_window_offscreen.m b/tools/host_window/test_host_window_offscreen.m
 new file mode 100644
-index 0000000..d09d222
+index 00000000..d09d222a
 --- /dev/null
 +++ b/tools/host_window/test_host_window_offscreen.m
 @@ -0,0 +1,112 @@
@@ -41968,7 +43094,7 @@ index 0000000..d09d222
 +}
 diff --git a/tools/host_window/test_host_window_upscale.m b/tools/host_window/test_host_window_upscale.m
 new file mode 100644
-index 0000000..b5941e6
+index 00000000..b5941e69
 --- /dev/null
 +++ b/tools/host_window/test_host_window_upscale.m
 @@ -0,0 +1,89 @@
@@ -42062,7 +43188,7 @@ index 0000000..b5941e6
 +    return 0;
 +}
 diff --git a/tools/lift_jobmods.py b/tools/lift_jobmods.py
-index 1c07c88..3a945d5 100644
+index 1c07c887..3a945d5e 100644
 --- a/tools/lift_jobmods.py
 +++ b/tools/lift_jobmods.py
 @@ -157,17 +157,18 @@ def main():
@@ -42140,10 +43266,10 @@ index 1c07c88..3a945d5 100644
  
  def emit_register(manifest, REGISTER_C, sym_prefix):
 diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
-index 9d9df71..e7b8d03 100644
+index 9d9df717..9dcbc093 100644
 --- a/tools/ppu_lifter.py
 +++ b/tools/ppu_lifter.py
-@@ -657,6 +657,31 @@ _CRSET_RE = re.compile(
+@@ -657,6 +657,80 @@ _CRSET_RE = re.compile(
      r"ctx->cr = \(ctx->cr & ~\(0xFu << (?P<shift>\d+)\)\) \| \(cr_val << (?P<shift2>\d+)\); \}$")
  _CRBR_RE = re.compile(
      r"^(?P<ind>\s*)if \((?P<neg>!)?\(+ctx->cr >> (?P<shift>\d+)\) & (?P<mask>0x[0-9A-Fa-f]+|\d+)\)+\) (?P<rest>.*)$")
@@ -42172,10 +43298,59 @@ index 9d9df71..e7b8d03 100644
 +        out[addr] = (int(str(e["orig"]), 0) & 0xFFFFFFFF,
 +                     int(str(e["new"]), 0) & 0xFFFFFFFF, guard)
 +    return out
++
++
++# --sjlj: the first words of newlib's PPC64 setjmp and longjmp (the libc the
++# PS3 SDK links): align the jmp_buf pointer to 16, then store / load r1 first.
++SJLJ_SIGNATURES = {
++    "setjmp":  (0x3863000F, 0x786306E4, 0xF8230000),   # addi r3,r3,15; rldicr r3,r3,0,59; std r1,0(r3)
++    "longjmp": (0x3863000F, 0x786306E4, 0xE8230000),   # addi r3,r3,15; rldicr r3,r3,0,59; ld r1,0(r3)
++}
++
++
++def load_sjlj_spec(path: str) -> dict[str, dict[int, tuple[int, ...]]]:
++    """Read an --sjlj file naming a title's setjmp and longjmp functions:
++
++        {"setjmp": ["0x0070FC3C"], "longjmp": ["0x0070FD60"]}
++
++    An entry may also be {"addr": "0x...", "expect": ["0x3863000F", ...]}: the
++    words the function must start with (newlib's are the default, see
++    SJLJ_SIGNATURES). -> {"setjmp": {addr: words}, "longjmp": {addr: words}}."""
++    with open(path) as f:
++        spec = json.load(f)
++    out: dict[str, dict[int, tuple[int, ...]]] = {"setjmp": {}, "longjmp": {}}
++    for kind in out:
++        for e in spec.get(kind, []):
++            if isinstance(e, dict):
++                addr = int(str(e["addr"]), 0)
++                words = tuple(int(str(w), 0) & 0xFFFFFFFF
++                              for w in e.get("expect", SJLJ_SIGNATURES[kind]))
++            else:
++                addr, words = int(str(e), 0), SJLJ_SIGNATURES[kind]
++            if addr & 3 or addr in out["setjmp"] or addr in out["longjmp"]:
++                sys.exit(f"[ppu_lifter] {path}: bad or duplicate {kind} address 0x{addr:08X}")
++            out[kind][addr] = words
++    if not out["setjmp"] or not out["longjmp"]:
++        sys.exit(f"[ppu_lifter] {path}: needs at least one setjmp and one longjmp")
++    return out
++
++
++def find_sjlj_candidates(read_u32, starts) -> dict[str, list[int]]:
++    """Function starts whose first words are newlib's setjmp / longjmp."""
++    found: dict[str, list[int]] = {"setjmp": [], "longjmp": []}
++    for a in sorted(starts):
++        try:
++            words = tuple(read_u32(a + 4 * i) for i in range(3))
++        except Exception:
++            continue
++        for kind, sig in SJLJ_SIGNATURES.items():
++            if words == sig:
++                found[kind].append(a)
++    return found
  
  
  def _crval_to_c(val: str, mask: int, decl_a: str, a_expr: str, b_expr: str) -> str:
-@@ -875,6 +900,10 @@ class PPULifter:
+@@ -875,6 +949,15 @@ class PPULifter:
          # Module primary TOC (r2). Set by main() only when the ELF yields exactly
          # one TOC candidate; enables the `ld r2, N(r1)` restore lowering below.
          self.toc_base: int = 0
@@ -42183,10 +43358,15 @@ index 9d9df71..e7b8d03 100644
 +        # {addr -> (original word, replacement word, guard symbol)}. See
 +        # _patched_translate.
 +        self.insn_patches: dict[int, tuple[int, int, str]] = {}
++        # Guest setjmp/longjmp functions (--sjlj): a direct call to one of
++        # sjlj_setjmp is lifted as a host setjmp site, a body in sjlj_longjmp
++        # ends in ppu_sjlj_longjmp. See runtime/ppu/ppu_sjlj.h.
++        self.sjlj_setjmp: set[int] = set()
++        self.sjlj_longjmp: set[int] = set()
          # addr(int) -> recovered name label (from Ghidra analysis). Emitted as a
          # comment above func_ADDR so dispatch stays address-based.
          self.name_map: dict[int, str] = {}
-@@ -980,7 +1009,11 @@ class PPULifter:
+@@ -980,7 +1063,11 @@ class PPULifter:
                  func.body_lines.append(f"loc_{insn.addr:08X}:")
                  emitted_labels.add(insn.addr)
  
@@ -42199,7 +43379,95 @@ index 9d9df71..e7b8d03 100644
              if c_line:
                  func.body_lines.append(f"    {c_line}")
  
-@@ -1325,6 +1358,39 @@ class PPULifter:
+@@ -1193,9 +1280,87 @@ class PPULifter:
+                        for _n, _off in sorted(_mem_snap.items()) if _n not in _reg_snap]
+             func.body_lines = _decls + func.body_lines
+ 
++        if self.sjlj_setjmp or self.sjlj_longjmp:
++            self._sjlj_finish(func)
+         self.functions.append(func)
+         return func
+ 
++    _SJLJ_SITE_TAG = "  /* sjlj setjmp site */"
++    _SJLJ_TRAMP_RE = re.compile(r"g_trampoline_fn = \(void\(\*\)\(void\*\)\)\w*?func_([0-9A-Fa-f]{8})")
++
++    def _sjlj_finish(self, func: "LiftedFunction") -> None:
++        """--sjlj: check a body with setjmp sites, and hook a longjmp body.
++
++        A setjmp site is a host setjmp in this host function's frame, so the
++        guest frame that made the setjmp must live and die with it. A body
++        that hands the rest of its guest frame to another host function (a
++        fall-through or a trampoline to an address that is not a function
++        entry) would leave the host frame dead while the guest jmp_buf is
++        still valid; such a site is lifted as a plain call, with a warning.
++
++        A longjmp body runs as lifted (it restores the guest registers from
++        the jmp_buf and computes the return value); its return becomes a call
++        to ppu_sjlj_longjmp, which does not come back when the setjmp site is
++        live."""
++        tag = self._SJLJ_SITE_TAG
++        # A fall-through after a final `blr` and its alignment nops is dead.
++        live_fallthrough = func.fallthrough_to
++        if live_fallthrough:
++            for l in reversed(func.body_lines):
++                st = l.strip()
++                if st in ("", "/* nop */;"):
++                    continue
++                if st == "return;":
++                    live_fallthrough = 0
++                break
++        if any(tag in l for l in func.body_lines):
++            why = None
++            if live_fallthrough:
++                why = f"it falls through to 0x{func.fallthrough_to:08X}"
++            else:
++                for l in func.body_lines:
++                    for m in self._SJLJ_TRAMP_RE.finditer(l):
++                        t = int(m.group(1), 16)
++                        if t not in self.function_entries:
++                            why = f"it continues in func_{t:08X}"
++                            break
++                    if why:
++                        break
++            if why:
++                print(f"  WARNING: sjlj: {func.name} keeps its setjmp call(s) plain: "
++                      f"{why}, so its frame outlives the host function", flush=True)
++                for i, l in enumerate(func.body_lines):
++                    if tag in l:
++                        func.body_lines[i] = re.sub(
++                            r"if \(PPU_SJLJ_ENTER\(ctx, 0x[0-9A-F]{8}u\) == 0\) ", "",
++                            l).replace(tag, "")
++            else:
++                # Every exit frees this frame's setjmps (ppu_sjlj_leave): a
++                # longjmp through a jmp_buf whose function has returned must
++                # not land in a dead host frame.
++                leave = "ppu_sjlj_leave(PPU_SJLJ_FRAME());"
++                for i, l in enumerate(func.body_lines):
++                    if "return;" in l:
++                        func.body_lines[i] = re.sub(r"\breturn;", f"{{ {leave} return; }}", l)
++                func.body_lines.append(f"    {leave}  /* sjlj: end of body */")
++        if func.start_addr in self.sjlj_longjmp:
++            if live_fallthrough:
++                raise ValueError(f"sjlj: longjmp {func.name} falls through to "
++                                 f"0x{func.fallthrough_to:08X}")
++            hooked = 0
++            for i, l in enumerate(func.body_lines):
++                st = l.strip()
++                if st == "return;":
++                    func.body_lines[i] = l.replace(
++                        "return;", "ppu_sjlj_longjmp(ctx, _sjlj_buf); return;  /* sjlj longjmp */")
++                    hooked += 1
++                elif "return" in st or "g_trampoline_fn" in st:
++                    raise ValueError(f"sjlj: longjmp {func.name} has an exit the hook "
++                                     f"cannot follow: {st!r}")
++            if not hooked:
++                raise ValueError(f"sjlj: longjmp {func.name} has no return")
++            func.body_lines.insert(0, "    const uint64_t _sjlj_buf = ctx->gpr[3];  /* sjlj longjmp: jmp_buf */")
++
+     # ------------------------------------------------------------------ #
+     # Per-instruction translation
+     # ------------------------------------------------------------------ #
+@@ -1325,6 +1490,39 @@ class PPULifter:
          code2 = self._translate_op(alt, func)
          return code if code2.startswith("/* TODO") else code2
  
@@ -42239,7 +43507,20 @@ index 9d9df71..e7b8d03 100644
      def _translate(self, insn: Instruction, func: LiftedFunction) -> str:
          code = self._oe_wrap(insn, self._translate_xo_base(insn, func))
          mn = insn.mnemonic
-@@ -3965,6 +4031,12 @@ class PPULifter:
+@@ -1928,6 +2126,12 @@ class PPULifter:
+                 # PPC `bl` sets LR = return address (next instr). Emit it so mflr
+                 # reads the correct value AND stack-saved LRs are real return
+                 # addresses -> reliable back-chain unwinding for diagnostics.
++                if tgt in self.sjlj_setjmp:
++                    # A host setjmp in THIS frame, then the guest setjmp; a guest
++                    # longjmp to it resumes here with the call "returning" again.
++                    return (f"ctx->lr = 0x{insn.addr + 4:08X}; "
++                            f"if (PPU_SJLJ_ENTER(ctx, 0x{insn.addr + 4:08X}u) == 0) "
++                            f"{self.prefix}func_{tgt:08X}(ctx); DRAIN_TRAMPOLINE(ctx);  /* sjlj setjmp site */")
+                 return f"ctx->lr = 0x{insn.addr + 4:08X}; {self.prefix}func_{tgt:08X}(ctx); DRAIN_TRAMPOLINE(ctx);"
+             except ValueError:
+                 return f"/* bl {target} */;"
+@@ -3965,6 +4169,14 @@ class PPULifter:
          if label:
              lines.append(f"/* {label} */")
          weak = "__attribute__((weak)) " if getattr(self, "weak_emit", False) else ""
@@ -42249,45 +43530,50 @@ index 9d9df71..e7b8d03 100644
 +        for g in guards:
 +            lines += ["#ifdef __cplusplus", f'extern "C" int {g};', "#else",
 +                      f"extern int {g};", "#endif"]
++        if any("PPU_SJLJ_ENTER(" in bl or "ppu_sjlj_longjmp(" in bl for bl in func.body_lines):
++            lines.append('#include "ppu_sjlj.h"  /* --sjlj; runtime/ppu */')
          lines.append(f"void {weak}{func.name}(ppu_context* ctx) {{")
          for bline in _fuse_cr(func.body_lines):
              lines.append(f"    {bline}" if not bline.endswith(":") else bline)
-@@ -4660,7 +4732,7 @@ _WORKER_STATE: dict = {}
+@@ -4660,7 +4872,7 @@ _WORKER_STATE: dict = {}
  
  def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
                   function_entries=None, code_lo=0, code_hi=None, jump_tables=None,
 -                 toc_base=0):
-+                 toc_base=0, insn_patches=None):
++                 toc_base=0, insn_patches=None, sjlj=None):
      _WORKER_STATE["segs"] = segs
      _WORKER_STATE["be"] = big_endian
      _WORKER_STATE["names"] = name_map
-@@ -4675,6 +4747,7 @@ def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
+@@ -4675,6 +4887,8 @@ def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
      _WORKER_STATE["code_lo"] = code_lo
      _WORKER_STATE["code_hi"] = code_hi
      _WORKER_STATE["jump_tables"] = jump_tables or {}
 +    _WORKER_STATE["insn_patches"] = insn_patches or {}
++    _WORKER_STATE["sjlj"] = sjlj or (set(), set())
  
  
  def _worker_lift(task):
-@@ -4690,6 +4763,7 @@ def _worker_lift(task):
+@@ -4690,6 +4904,8 @@ def _worker_lift(task):
      lifter.code_hi = _WORKER_STATE.get("code_hi", None)
      lifter.jump_tables = _WORKER_STATE.get("jump_tables", {})
      lifter.toc_base = _WORKER_STATE.get("toc_base", 0)
 +    lifter.insn_patches = _WORKER_STATE.get("insn_patches", {})
++    lifter.sjlj_setjmp, lifter.sjlj_longjmp = _WORKER_STATE.get("sjlj", (set(), set()))
      results = []
      for start, end in bounds:
          blob = b""
-@@ -4724,7 +4798,8 @@ def _parallel_lift(lifter, func_bounds, segs, big_endian, jobs):
+@@ -4724,7 +4940,9 @@ def _parallel_lift(lifter, func_bounds, segs, big_endian, jobs):
                     initargs=(segs, big_endian, lifter.name_map, lifter.prefix,
                               lifter.hle_stub_nids, lifter.function_entries,
                               lifter.code_lo, lifter.code_hi, lifter.jump_tables,
 -                             getattr(lifter, "toc_base", 0)))
 +                             getattr(lifter, "toc_base", 0),
-+                             lifter.insn_patches))
++                             lifter.insn_patches,
++                             (lifter.sjlj_setjmp, lifter.sjlj_longjmp)))
      try:
          for idx0, results, ct, bt in pool.imap_unordered(_worker_lift, tasks):
              results_by_idx[idx0] = results
-@@ -4810,6 +4885,12 @@ def main() -> None:
+@@ -4810,6 +5028,21 @@ def main() -> None:
                               "instead of its literal .lib.stub trampoline, and "
                               "split out as its own 0x20-byte function so direct "
                               "calls to it dispatch to the HLE handler.")
@@ -42297,20 +43583,64 @@ index 9d9df71..e7b8d03 100644
 +                             "is emitted as `if (guard) {new} else {orig}`, guard "
 +                             "being an int the port defines. The input must hold "
 +                             "`orig` at `addr` or the lift stops.")
++    parser.add_argument("--sjlj", metavar="FILE", default=None,
++                        help="JSON {setjmp: [addr], longjmp: [addr]} naming the "
++                             "title's own setjmp/longjmp functions. Direct calls "
++                             "to the setjmp become host setjmp sites and the "
++                             "longjmp ends in a host longjmp to them, so a guest "
++                             "longjmp unwinds the host stack "
++                             "(runtime/ppu/ppu_sjlj.h). Each function must start "
++                             "with newlib's setjmp/longjmp words, or the "
++                             "entry's `expect` list.")
      args = parser.parse_args()
  
      # Load firmware-import stubs (addr -> NID) up front; applied to func_bounds
-@@ -5266,6 +5347,9 @@ def main() -> None:
+@@ -5266,6 +5499,44 @@ def main() -> None:
      lifter.hle_stub_nids = hle_stubs
      lifter.function_entries = _func_entries
      lifter.jump_tables = jt_dispatchers
 +    if args.insn_patches:
 +        lifter.insn_patches = load_insn_patches(args.insn_patches)
 +        print(f"  insn-patches: {len(lifter.insn_patches)} from {args.insn_patches}")
++    if args.sjlj:
++        _sj = load_sjlj_spec(args.sjlj)
++
++        def _sj_u32(a):
++            for _va, _d in seg_blobs:
++                if _va <= a and a + 4 <= _va + len(_d):
++                    return int.from_bytes(_d[a - _va:a - _va + 4],
++                                          "big" if big_endian else "little")
++            raise KeyError(a)
++        _starts = {s for s, _ in func_bounds}
++        for _kind, _ents in _sj.items():
++            for _a, _words in _ents.items():
++                if _a not in _starts:
++                    sys.exit(f"[ppu_lifter] --sjlj: {_kind} 0x{_a:08X} is not a "
++                             f"function start of this lift")
++                try:
++                    _have = tuple(_sj_u32(_a + 4 * _i) for _i in range(len(_words)))
++                except KeyError:
++                    _have = ()
++                if _have != _words:
++                    sys.exit(f"[ppu_lifter] --sjlj: {_kind} 0x{_a:08X} starts with "
++                             + " ".join(f"{_w:08X}" for _w in _have) + ", expected "
++                             + " ".join(f"{_w:08X}" for _w in _words)
++                             + " (wrong binary for this spec?)")
++        lifter.sjlj_setjmp = set(_sj["setjmp"])
++        lifter.sjlj_longjmp = set(_sj["longjmp"])
++        print(f"  sjlj: setjmp " + ", ".join(f"0x{_a:08X}" for _a in sorted(_sj["setjmp"]))
++              + "; longjmp " + ", ".join(f"0x{_a:08X}" for _a in sorted(_sj["longjmp"]))
++              + f" from {args.sjlj}")
++        # Say so when the binary has a newlib setjmp/longjmp the spec leaves out.
++        for _kind, _found in find_sjlj_candidates(_sj_u32, _starts).items():
++            for _a in _found:
++                if _a not in _sj[_kind]:
++                    print(f"  WARNING: sjlj: 0x{_a:08X} starts like newlib's {_kind} "
++                          f"but is not in {args.sjlj}", flush=True)
  
      # Optional: load a recovered-name map (from Ghidra analysis) to annotate
      # generated functions with meaningful names as comments.
-@@ -5313,6 +5397,16 @@ def main() -> None:
+@@ -5313,6 +5584,26 @@ def main() -> None:
      if total_mid:
          print(f"  Generated {total_mid} mid-function tail-entry wrappers total")
  
@@ -42324,11 +43654,21 @@ index 9d9df71..e7b8d03 100644
 +            sys.exit("[ppu_lifter] insn patches at no lifted instruction: " +
 +                     ", ".join(f"0x{a:08X}" for a in missing))
 +
++    if args.sjlj:
++        _sites = sum(bl.count("PPU_SJLJ_ENTER(") for f in lifter.functions for bl in f.body_lines)
++        _hooks = {f.start_addr for f in lifter.functions
++                  if any("ppu_sjlj_longjmp(" in bl for bl in f.body_lines)}
++        print(f"  sjlj: {_sites} setjmp call site(s), {len(_hooks)} longjmp body(ies) hooked")
++        _missing = sorted(lifter.sjlj_longjmp - _hooks)
++        if _missing:
++            sys.exit("[ppu_lifter] --sjlj: longjmp not lifted: " +
++                     ", ".join(f"0x{a:08X}" for a in _missing))
++
      os.makedirs(args.output, exist_ok=True)
  
      header_path = os.path.join(args.output, args.header_name)
 diff --git a/tools/spu_lifter.py b/tools/spu_lifter.py
-index ec62f26..b33852a 100644
+index ec62f269..b33852a2 100644
 --- a/tools/spu_lifter.py
 +++ b/tools/spu_lifter.py
 @@ -204,11 +204,23 @@ class LiftedFunction:
@@ -42514,7 +43854,7 @@ index ec62f26..b33852a 100644
          print(f"  {len(lifter.bi_r0_jump)} `bi $r0` computed-jump site(s) "
 diff --git a/tools/test_license_area.py b/tools/test_license_area.py
 new file mode 100644
-index 0000000..4ea58ca
+index 00000000..4ea58ca3
 --- /dev/null
 +++ b/tools/test_license_area.py
 @@ -0,0 +1,28 @@
@@ -42548,7 +43888,7 @@ index 0000000..4ea58ca
 +    subprocess.run([str(binary)], check=True, timeout=10, env=env, cwd=temporary)
 diff --git a/tools/test_ppu_fs_rw_switch.py b/tools/test_ppu_fs_rw_switch.py
 new file mode 100644
-index 0000000..c24ed9f
+index 00000000..c24ed9f9
 --- /dev/null
 +++ b/tools/test_ppu_fs_rw_switch.py
 @@ -0,0 +1,88 @@
@@ -42642,7 +43982,7 @@ index 0000000..c24ed9f
 +    sys.exit(main())
 diff --git a/tools/test_ppu_lifter_insn_patches.py b/tools/test_ppu_lifter_insn_patches.py
 new file mode 100644
-index 0000000..f466a82
+index 00000000..f466a820
 --- /dev/null
 +++ b/tools/test_ppu_lifter_insn_patches.py
 @@ -0,0 +1,70 @@
@@ -42716,9 +44056,421 @@ index 0000000..f466a82
 +
 +if __name__ == "__main__":
 +    main()
+diff --git a/tools/test_ppu_lifter_sjlj.py b/tools/test_ppu_lifter_sjlj.py
+new file mode 100644
+index 00000000..ffd144eb
+--- /dev/null
++++ b/tools/test_ppu_lifter_sjlj.py
+@@ -0,0 +1,347 @@
++#!/usr/bin/env python3
++"""--sjlj: a title's setjmp/longjmp lifted as host setjmp/longjmp.
++
++A small hand-assembled program -- a newlib-shaped setjmp/longjmp pair, a
++Lua-shaped protected call (luaD_rawrunprotected: setjmp, then the body
++through bctrl), a throw (luaD_throw: longjmp to the innermost handler, or
++"panic" when it returns) and a body that recurses before throwing -- is lifted
++and checked:
++
++1. Without --sjlj nothing changes: no sjlj text in the output.
++2. With it the setjmp call is a PPU_SJLJ_ENTER site in the caller, every exit
++   of that caller frees its setjmps, the longjmp body ends in
++   ppu_sjlj_longjmp, ppu_sjlj.h is included before both, and the serial and
++   parallel lifts agree.
++3. A spec whose address does not hold newlib's words stops the lift; a
++   newlib-shaped setjmp the spec leaves out is reported; a setjmp call in a
++   function whose guest frame continues in another host function stays a
++   plain call, with a warning.
++4. The lifted program, built with the real ppu_loader.cpp and ppu_sjlj.c,
++   runs: a throw from 6 calls deep reaches the protected call with the value
++   it threw and the caller's r1/r31 restored; a throw through a jmp_buf whose
++   protected call has returned comes back as before (the "panic" path).
++
++Run: python tools/test_ppu_lifter_sjlj.py
++"""
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from ppu_disasm import disassemble_bytes  # noqa: E402
++
++ROOT = Path(__file__).resolve().parents[1]
++BASE = 0x10000
++
++
++# ---- a tiny assembler: just the forms the program uses ----------------------
++def _d(op, rt, ra, imm):
++    return (op << 26) | (rt << 21) | (ra << 16) | (imm & 0xFFFF)
++
++
++def addi(rt, ra, imm): return _d(14, rt, ra, imm)
++def li(rt, imm): return _d(14, rt, 0, imm)
++def lwz(rt, d, ra): return _d(32, rt, ra, d)
++def stw(rs, d, ra): return _d(36, rs, ra, d)
++def std(rs, ds, ra): return (62 << 26) | (rs << 21) | (ra << 16) | (ds & 0xFFFC)
++def stdu(rs, ds, ra): return std(rs, ds, ra) | 1
++def ld(rt, ds, ra): return (58 << 26) | (rt << 21) | (ra << 16) | (ds & 0xFFFC)
++def cmpwi(ra, imm): return (11 << 26) | (ra << 16) | (imm & 0xFFFF)
++def mr(ra, rs): return (31 << 26) | (rs << 21) | (ra << 16) | (rs << 11) | (444 << 1)
++
++
++MFLR0, MTLR0, MFCR0, MTCRF0 = 0x7C0802A6, 0x7C0803A6, 0x7C000026, 0x7C0FF120
++MTCTR0, BCTRL, BLR, NOP = 0x7C0903A6, 0x4E800421, 0x4E800020, 0x60000000
++ALIGN16 = (0x3863000F, 0x786306E4)            # addi r3,r3,15; rldicr r3,r3,0,59
++SUBFC_R0_R4_R3, ADDZE_R3_R4 = 0x7C041810, 0x7C640194
++
++
++def assemble(items):
++    """items: ints, ('label', name), or ('bl'|'b'|'beq'|'bne', name)."""
++    labels, addr = {}, BASE
++    for it in items:
++        if isinstance(it, tuple) and it[0] == "label":
++            labels[it[1]] = addr
++        else:
++            addr += 4
++    out, addr = [], BASE
++    for it in items:
++        if isinstance(it, tuple):
++            kind, name = it
++            if kind == "label":
++                continue
++            d = labels[name] - addr
++            w = {"bl": (18 << 26) | (d & 0x3FFFFFC) | 1,
++                 "b": (18 << 26) | (d & 0x3FFFFFC),
++                 "beq": (16 << 26) | (12 << 21) | (2 << 16) | (d & 0xFFFC),
++                 "bne": (16 << 26) | (4 << 21) | (2 << 16) | (d & 0xFFFC)}[kind]
++        else:
++            w = it
++        out.append(w)
++        addr += 4
++    return b"".join(w.to_bytes(4, "big") for w in out), labels
++
++
++def program():
++    items = [
++        # setjmp: jmp_buf = r1 r2 r31 lr cr
++        ("label", "setjmp"), *ALIGN16,
++        std(1, 0, 3), std(2, 8, 3), std(31, 0x10, 3),
++        MFLR0, std(0, 0x18, 3), MFCR0, std(0, 0x20, 3), li(3, 0), BLR,
++        ("label", "longjmp"), *ALIGN16,
++        ld(1, 0, 3), ld(2, 8, 3), ld(31, 0x10, 3),
++        ld(0, 0x18, 3), MTLR0, ld(0, 0x20, 3), MTCRF0,
++        li(3, 0), SUBFC_R0_R4_R3, ADDZE_R3_R4, BLR,
++        # protect(L = r3, body = r4) -> r3 = 0 or the thrown value
++        ("label", "protect"),
++        MFLR0, std(31, -8, 1), std(0, 16, 1), stdu(1, -0x100, 1),
++        mr(31, 3), std(4, 0xC8, 1),
++        addi(3, 1, 0x70), stw(3, 0, 31),          # L->errorJmp = jmp_buf
++        ("bl", "setjmp"), NOP,
++        cmpwi(3, 0), ("bne", "caught"),
++        ld(0, 0xC8, 1), MTCTR0, mr(3, 31), BCTRL,
++        li(3, 0),
++        ("label", "caught"),
++        li(0, 0), stw(0, 0, 31),                  # L->errorJmp = NULL
++        addi(1, 1, 0x100), ld(0, 16, 1), MTLR0, ld(31, -8, 1), BLR,
++        # throw(L = r3, value = r4): longjmp, or -1 ("panic") if that returns
++        ("label", "throw"),
++        MFLR0, std(0, 16, 1), stdu(1, -0x70, 1),
++        lwz(3, 0, 3), cmpwi(3, 0), ("beq", "panic"),
++        ("bl", "longjmp"), NOP,
++        ("label", "panic"),
++        li(3, -1), addi(1, 1, 0x70), ld(0, 16, 1), MTLR0, BLR,
++        # deep(L): L->count levels of recursion (clobbering r31), then throw 7
++        ("label", "deep"),
++        MFLR0, std(31, -8, 1), std(0, 16, 1), stdu(1, -0x80, 1),
++        lwz(9, 4, 3), cmpwi(9, 0), ("beq", "do_throw"),
++        addi(9, 9, -1), stw(9, 4, 3), li(31, 0x55),
++        ("bl", "deep"), ("b", "deep_out"),
++        ("label", "do_throw"),
++        li(4, 7), ("bl", "throw"),
++        ("label", "deep_out"),
++        addi(1, 1, 0x80), ld(0, 16, 1), MTLR0, ld(31, -8, 1), BLR,
++        # split(r3 = jmp_buf): its guest frame continues in another function
++        ("label", "split"),
++        ("bl", "setjmp"), ("b", "other_mid"),
++        ("label", "other"),
++        li(3, 1), li(3, 2),
++        ("label", "other_mid"),
++        li(3, 3), BLR,
++        ("label", "end"),
++    ]
++    return assemble(items)
++
++
++CODE, L = program()
++FUNCS = ["setjmp", "longjmp", "protect", "throw", "deep", "split", "other"]
++
++
++def a(name):
++    return f"0x{L[name]:08X}"
++
++
++def lift(root, spec, jobs="1", tag=""):
++    out = root / f"out{tag}{jobs}"
++    cmd = [sys.executable, str(Path(__file__).with_name("ppu_lifter.py")),
++           str(root / "code.bin"), "--raw", "--base", hex(BASE),
++           "--functions", str(root / "functions.json"), "--jobs", jobs,
++           "--output", str(out)]
++    if spec is not None:
++        (root / f"sjlj{tag}.json").write_text(json.dumps(spec))
++        cmd += ["--sjlj", str(root / f"sjlj{tag}.json")]
++    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
++                       text=True, timeout=300)
++    text = "".join(p.read_text() for p in sorted(out.glob("ppu_recomp*.cpp"))) \
++        if r.returncode == 0 else ""
++    return r, text, out
++
++
++def func_text(text, name):
++    start = text.index(f"void func_{L[name]:08X}(ppu_context* ctx) {{")
++    return text[start:text.index("\n}\n", start)]
++
++
++def run_program(root, out):
++    """Build the lifted program with the real scaffold and run it."""
++    sys.path.insert(0, str(Path(__file__).resolve().parent))
++    driver = root / "driver.cpp"
++    driver.write_text(DRIVER.replace("@PROTECT@", a("protect")).replace("@THROW@", a("throw"))
++                      .replace("@DEEP@", a("deep")))
++    inc = ["-I" + str(out), "-I" + str(ROOT / "include"), "-I" + str(ROOT / "runtime/platform"),
++           "-I" + str(ROOT / "runtime/ppu")]
++    flags = ["-Wl,-dead_strip"] if sys.platform == "darwin" else ["-Wl,--gc-sections", "-pthread", "-ldl"]
++    obj = root / "ppu_sjlj.o"
++    subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-c", *inc,
++                    str(ROOT / "runtime/ppu/ppu_sjlj.c"), "-o", str(obj)], check=True)
++    binary = root / "prog"
++    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-w",
++                    "-ffunction-sections", "-fdata-sections", *inc,
++                    str(ROOT / "runtime/ppu/ppu_loader.cpp"), str(driver),
++                    *map(str, sorted(out.glob("ppu_recomp*.cpp"))), str(obj),
++                    *flags, "-o", str(binary)], check=True)
++    env = {k: v for k, v in os.environ.items() if not k.startswith(("PPU_", "PS3_", "PS3RECOMP_", "SPU_"))}
++    return subprocess.run([str(binary)], env=env, capture_output=True, text=True, timeout=60)
++
++
++DRIVER = r"""
++#include "ppu_recomp.h"
++#include "ppu_sjlj.h"
++#include <cstdio>
++#include <cstdlib>
++#include "win32_compat.h"
++extern "C" {
++uint8_t* vm_base;
++uint32_t ppu_hle_inject_base = 0x20000000;
++int spu_coh_is_reserved(uint32_t) { return 0; }
++void spu_coh_notify_write(uint32_t) { std::abort(); }
++void spu_lockline_lock(void) { std::abort(); }
++void spu_lockline_unlock(void) { std::abort(); }
++int spu_raw_reg_load(uint32_t, uint32_t*) { std::abort(); }
++void spu_raw_reg_store(uint32_t, uint32_t, unsigned) { std::abort(); }
++void cellGcm_ref_on_poll(void) { std::abort(); }
++HANDLE CreateThread(void*, SIZE_T, PS3_THREAD_FN, LPVOID, DWORD, DWORD*) { std::abort(); }
++BOOL CloseHandle(HANDLE) { std::abort(); }
++DWORD GetFileAttributesA(const char*) { return INVALID_FILE_ATTRIBUTES; }
++uint64_t ppu_thread_register_main(void) { return 1; }
++void (*g_ppu_thread_entry_trampoline)(uint32_t, uint64_t, uint32_t, uint64_t);
++uint32_t ps3_hle_count(void) { return 0; }
++void ps3_hle_call(unsigned int, ppu_context*) { std::abort(); }
++void lv2_syscall(ppu_context*) { std::abort(); }
++uint64_t ppu_timebase_now(void) { return 0; }
++void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
++int* ps3_ppu_dispatch_depth_slot(void);
++static int s_hle_depth;
++int* ps3_hle_depth_slot(void) { return &s_hle_depth; }   /* ppu_hle.cpp's, not linked here */
++extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++extern PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
++}
++static void call(ppu_context* c, uint32_t addr)
++{
++    for (uint64_t i = 0; i < function_table_count; i++)
++        if (function_table[i].addr == addr) {
++            c->lr = 0x10;   /* any return address */
++            function_table[i].func(c);
++            while (g_trampoline_fn) { void (*f)(void*) = g_trampoline_fn; g_trampoline_fn = 0; f(c); }
++            return;
++        }
++    std::abort();
++}
++int main()
++{
++    vm_base = (uint8_t*)std::calloc(1, 0x100000);
++    for (uint64_t i = 0; i < function_table_count; i++)
++        ppu_register_function(function_table[i].addr, function_table[i].func);
++    static ppu_context ctx;
++    ctx.gpr[1] = 0xF0000; ctx.gpr[2] = 0x2222; ctx.gpr[31] = 0x3131;
++    g_active_ctx = &ctx;
++    const uint32_t Lst = 0x40000;
++    unsigned fails = 0;
++
++    vm_write32(Lst + 4, 6);
++    ctx.gpr[3] = Lst; ctx.gpr[4] = @DEEP@;
++    call(&ctx, @PROTECT@);
++    ppu_sjlj_stats st; ppu_sjlj_get_stats(&st);
++    bool ok = ctx.gpr[3] == 7 && ctx.gpr[1] == 0xF0000 && ctx.gpr[31] == 0x3131 && st.jumps == 1 &&
++              *ps3_ppu_dispatch_depth_slot() == 0 && st.live == 0;
++    std::printf("[%s] throw from 6 calls deep: protect returned %lld (want 7), r1 %llX, r31 %llX, "
++                "jumps %llu, live slots %u\n", ok ? "PASS" : "FAIL", (long long)ctx.gpr[3],
++                (unsigned long long)ctx.gpr[1], (unsigned long long)ctx.gpr[31],
++                (unsigned long long)st.jumps, st.live);
++    fails += !ok;
++
++    vm_write32(Lst, 0xF0000 - 0x100 + 0x70);   /* a jmp_buf whose protect has returned */
++    ctx.gpr[3] = Lst; ctx.gpr[4] = 9;
++    call(&ctx, @THROW@);
++    ppu_sjlj_get_stats(&st);
++    ok = (int64_t)ctx.gpr[3] == -1 && st.fallbacks == 1 && st.jumps == 1;
++    std::printf("[%s] throw through a stale jmp_buf comes back (panic path): r3 %lld, fallbacks %llu\n",
++                ok ? "PASS" : "FAIL", (long long)ctx.gpr[3], (unsigned long long)st.fallbacks);
++    fails += !ok;
++    return fails ? 1 : 0;
++}
++"""
++
++
++def main():
++    # The encodings above are checked against the disassembler the lifter uses.
++    insns = disassemble_bytes(CODE, BASE, True)
++    by = {i.addr: i for i in insns}
++    assert by[L["setjmp"] + 8].mnemonic == "std" and by[L["longjmp"] + 8].mnemonic == "ld"
++    assert by[L["protect"] + 0x20].mnemonic == "bl", by[L["protect"] + 0x20]
++
++    with tempfile.TemporaryDirectory() as tmp:
++        root = Path(tmp)
++        (root / "code.bin").write_bytes(CODE)
++        bounds = [L[n] for n in FUNCS] + [L["end"]]
++        (root / "functions.json").write_text(json.dumps(
++            [{"start": hex(s), "end": hex(e)} for s, e in zip(bounds, bounds[1:])]))
++        spec = {"setjmp": [a("setjmp")], "longjmp": [a("longjmp")]}
++
++        # 1
++        r, plain, _ = lift(root, None, tag="plain")
++        assert r.returncode == 0, r.stderr[-2000:]
++        assert "sjlj" not in plain.lower(), "sjlj text without --sjlj"
++
++        # 2
++        r, text, out = lift(root, spec)
++        serial = r
++        assert r.returncode == 0, r.stderr[-2000:]
++        assert "sjlj: 1 setjmp call site(s), 1 longjmp body(ies) hooked" in r.stdout, r.stdout
++        site = L["protect"] + 0x24
++        prot = func_text(text, "protect")
++        assert (f"ctx->lr = 0x{site:08X}; if (PPU_SJLJ_ENTER(ctx, 0x{site:08X}u) == 0) "
++                f"func_{L['setjmp']:08X}(ctx); DRAIN_TRAMPOLINE(ctx);") in prot, prot
++        assert "{ ppu_sjlj_leave(PPU_SJLJ_FRAME()); return; }" in prot, prot
++        assert "return;" not in prot.replace("{ ppu_sjlj_leave(PPU_SJLJ_FRAME()); return; }", ""), prot
++        lj = func_text(text, "longjmp")
++        assert "const uint64_t _sjlj_buf = ctx->gpr[3];" in lj, lj
++        assert lj.rstrip().endswith("ppu_sjlj_longjmp(ctx, _sjlj_buf); return;  /* sjlj longjmp */"), lj
++        for n in ("protect", "longjmp"):
++            i = text.index(f"void func_{L[n]:08X}(")
++            assert text[:i].rstrip().endswith('#include "ppu_sjlj.h"  /* --sjlj; runtime/ppu */'), n
++        # the other functions are lifted exactly as without --sjlj
++        for n in ("setjmp", "throw", "deep", "other"):
++            assert func_text(text, n) == func_text(plain, n), n
++        r2, text2, _ = lift(root, spec, jobs="2")
++        assert r2.returncode == 0 and text2 == text, "parallel lift differs from serial"
++
++        # 3
++        bad = {"setjmp": [a("protect")], "longjmp": [a("longjmp")]}
++        r, _, _ = lift(root, bad, tag="bad")
++        assert r.returncode != 0 and "expected 3863000F 786306E4 F8230000" in r.stderr, r.stderr[-600:]
++        r, _, _ = lift(root, {"setjmp": [a("setjmp")], "longjmp": ["0x20000"]}, tag="nofunc")
++        assert r.returncode != 0 and "not a function start" in r.stderr, r.stderr[-600:]
++        assert f"WARNING: sjlj: func_{L['split']:08X} keeps its setjmp call(s) plain" in serial.stdout, \
++            serial.stdout
++        split = func_text(text, "split")
++        assert (f"ctx->lr = 0x{L['split'] + 4:08X}; func_{L['setjmp']:08X}(ctx); DRAIN_TRAMPOLINE(ctx);"
++                in split and "SJLJ" not in split), split
++        # a second newlib setjmp the spec does not name
++        code2 = CODE + CODE[L["setjmp"] - BASE:L["longjmp"] - BASE]
++        (root / "code.bin").write_bytes(code2)
++        extra = BASE + len(CODE)
++        (root / "functions.json").write_text(json.dumps(
++            [{"start": hex(s), "end": hex(e)} for s, e in zip(bounds, bounds[1:])] +
++            [{"start": hex(extra), "end": hex(extra + L["longjmp"] - L["setjmp"])}]))
++        r, _, _ = lift(root, spec, tag="extra")
++        assert r.returncode == 0 and f"WARNING: sjlj: 0x{extra:08X} starts like newlib's setjmp" \
++            in r.stdout, r.stdout[-800:]
++        (root / "code.bin").write_bytes(CODE)
++
++        # 4
++        if os.name == "nt":
++            print("SKIP: running the lifted program (POSIX scaffold stubs)")
++        else:
++            rr = run_program(root, out)
++            print(rr.stdout, end="")
++            assert rr.returncode == 0, rr.stderr[-2000:]
++    print("PASS: --sjlj lifts setjmp sites and the longjmp hook, refuses a wrong spec, "
++          "and the lifted program unwinds")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tools/test_ppu_sjlj.py b/tools/test_ppu_sjlj.py
+new file mode 100644
+index 00000000..ff0d5ec6
+--- /dev/null
++++ b/tools/test_ppu_sjlj.py
+@@ -0,0 +1,53 @@
++#!/usr/bin/env python3
++"""Guest setjmp/longjmp carried out on the host stack (runtime/ppu/ppu_sjlj.c).
++
++Builds the real runtime/ppu/ppu_loader.cpp and ppu_sjlj.c with
++runtime/ppu/tests/test_ppu_sjlj.cpp, a guest program written the way
++ppu_lifter.py --sjlj lifts one: a protected call whose setjmp is a host setjmp
++site and a throw whose longjmp jumps to it -- from deep inside indirect calls,
++from nested protected calls, through one reused jmp_buf, and (refused, the
++longjmp returns as before) through a stale jmp_buf and from another guest
++context.
++"""
++import os
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from check_ppu_scaffold import stub_header  # noqa: E402
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def main():
++    if os.name == 'nt':
++        print('SKIP: fixture uses the POSIX scaffold stubs')
++        return
++    with tempfile.TemporaryDirectory(prefix='ppu-sjlj-') as tmp:
++        tmp = Path(tmp)
++        (tmp / 'ppu_recomp.h').write_text(stub_header())
++        binary = tmp / 'test'
++        flags = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections', '-pthread', '-ldl']
++        inc = ['-I' + str(tmp), '-I' + str(ROOT / 'include'), '-I' + str(ROOT / 'runtime/platform'),
++               '-I' + str(ROOT / 'runtime/ppu')]
++        obj = tmp / 'ppu_sjlj.o'
++        subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-O2', '-c', *inc,
++                        str(ROOT / 'runtime/ppu/ppu_sjlj.c'), '-o', str(obj)], check=True)
++        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O2', '-w',
++                        '-ffunction-sections', '-fdata-sections', *inc,
++                        str(ROOT / 'runtime/ppu/ppu_loader.cpp'),
++                        str(ROOT / 'runtime/ppu/tests/test_ppu_sjlj.cpp'), str(obj),
++                        *flags, '-o', str(binary)], check=True)
++        env = {k: v for k, v in os.environ.items() if not k.startswith(('PPU_', 'PS3_', 'PS3RECOMP_', 'SPU_'))}
++        r = subprocess.run([str(binary)], env=env, capture_output=True, text=True, timeout=60)
++        print(r.stdout, end='')
++        if r.returncode:
++            sys.stderr.write(r.stderr[-2000:])
++            raise SystemExit('FAIL: guest setjmp/longjmp on the host stack')
++        print('PASS: guest longjmp lands in its setjmp site; stale and cross-context ones return')
++
++
++if __name__ == '__main__':
++    main()
 diff --git a/tools/test_spu_decrementer.py b/tools/test_spu_decrementer.py
 new file mode 100644
-index 0000000..354edf1
+index 00000000..354edf12
 --- /dev/null
 +++ b/tools/test_spu_decrementer.py
 @@ -0,0 +1,31 @@
@@ -42755,7 +44507,7 @@ index 0000000..354edf1
 +    subprocess.run([str(binary)], check=True, timeout=60)
 diff --git a/tools/test_spu_dma_repeat.py b/tools/test_spu_dma_repeat.py
 new file mode 100644
-index 0000000..183e6e9
+index 00000000..183e6e99
 --- /dev/null
 +++ b/tools/test_spu_dma_repeat.py
 @@ -0,0 +1,58 @@
@@ -42819,7 +44571,7 @@ index 0000000..183e6e9
 +    print("PASS: SPU_DMA_REPEAT_LOG names the repeated transfer and its size")
 diff --git a/tools/test_spu_poison_scan.py b/tools/test_spu_poison_scan.py
 new file mode 100644
-index 0000000..c65aa16
+index 00000000..c65aa164
 --- /dev/null
 +++ b/tools/test_spu_poison_scan.py
 @@ -0,0 +1,54 @@
