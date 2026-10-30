@@ -298,7 +298,45 @@ comandos de analógico no `PAD_FILE`, uma linha de log mais completa no
 
 ## Compilando a partir do código
 
-### O que você precisa
+### O jeito de um clique: o launcher
+
+1. Baixe o launcher na
+   [página de releases](https://github.com/erikomis/resistance-recomp/releases)
+   (`.dmg`), arraste para Aplicativos e abra (botão direito > Abrir na
+   primeira vez: os builds não são assinados).
+2. No **Início**, em **Instalar o jogo**, escolha a imagem do seu disco
+   (`.iso`) e aperte **Instalar o jogo**.
+
+É só isso; todo o resto acontece sozinho até o **Jogar** funcionar:
+
+- **As Command Line Tools da Apple** (o compilador e o `git`): quando faltam,
+  o launcher abre o instalador da própria Apple (`xcode-select --install`) e
+  espera por ele. É a única janela em que você precisa clicar.
+- **O código do port**: quando o Mac não tem um checkout, ele é clonado em
+  `~/Library/Application Support/resistance-recomp/src` (na tag da versão do
+  launcher, quando existe).
+- **As ferramentas e bibliotecas de compilação**, sem Homebrew:
+  o [`tools/bootstrap_deps.sh`](tools/bootstrap_deps.sh) baixa versões
+  fixadas, conferidas por SHA-256, para
+  `~/Library/Application Support/resistance-recomp/deps` (abaixo).
+- Depois o [`tools/install.sh`](tools/install.sh): o toolkit, um ambiente
+  Python, descriptografar, analisar, traduzir, programas das SPUs, compilar,
+  com uma barra de progresso só e o nome da etapa.
+
+Medido num Mac Apple silicon de 12 núcleos com internet rápida: cerca de
+7 minutos no total (as ferramentas 2, a tradução e os programas das SPUs 1,
+os dois builds 3), e cerca de 1,5 GB de disco (as ferramentas 0,5 GB com os
+downloads, a tradução 0,25 GB, os builds 0,45 GB); o launcher pede 4 GB
+livres. Conte com 10 a 30 minutos num Mac menor ou com internet mais lenta.
+Dá para usar o Mac enquanto isso. Se você fechar o app, ou algo der errado,
+apertar o botão de novo continua de onde parou (o que terminou é pulado). Uma
+falha diz o que deu errado em palavras simples, com **Copiar log**, **Mostrar
+o arquivo de log**
+(`~/Library/Application Support/resistance-recomp/install.log`) e **Relatar
+um problema**. O **Avançado > Instalar / recompilar** continua com a página
+passo a passo para quem quer controlar cada etapa.
+
+### O que você precisa (o jeito pelo terminal)
 
 - Um Mac com Apple silicon (macOS com Metal).
 - O seu próprio **disco do Resistance: Fall of Man, `BCUS98107` v01.00**,
@@ -307,22 +345,61 @@ comandos de analógico no `PAD_FILE`, uma linha de log mais completa no
   descriptografia falhar, instale antes o firmware do PS3 no RPCS3). ELFs
   descriptografados de outro jeito também servem: é só colocá-los onde está
   indicado abaixo.
-- Xcode Command Line Tools e Homebrew:
+- Xcode Command Line Tools (`xcode-select --install`). Todo o resto vem do
+  `tools/bootstrap_deps.sh` (sem Homebrew) ou, se preferir, do Homebrew:
 
 ```sh
 brew install cmake ninja sdl2 glslang spirv-cross spirv-tools ffmpeg python@3.12
 ```
+
+Os scripts (`tools/env.sh`) usam a pasta do `bootstrap_deps.sh` sempre que ela
+existe (o `bin/` dela primeiro no `PATH`; o CMake procura o SDL2, o glslang e
+o SPIRV-Cross lá e só lá; os cabeçalhos e as bibliotecas do FFmpeg vêm dela) e
+voltam para os do Homebrew quando não.
 
 ### Compilando
 
 ```sh
 git clone https://github.com/erikomis/resistance-recomp.git
 cd resistance-recomp
-tools/setup_toolkit.sh                        # ps3recomp v0.17.0 + patch em ./ps3recomp
-python3.12 -m venv .venv
-.venv/bin/pip install -r ps3recomp/requirements.txt
-PY=.venv/bin/python PS3_VFS_ROOT=/Volumes/<seu disco> tools/rebuild.sh
+PS3_VFS_ROOT=/Volumes/<seu disco> tools/install.sh   # tudo, retomável
 ```
+
+O `tools/install.sh` é o que o botão do launcher roda: o
+`tools/bootstrap_deps.sh` (`RES_NO_DEPS=1` o pula e usa os do Homebrew), o
+toolkit, o `.venv` e as etapas do `tools/rebuild.sh`; rodando de novo depois
+de uma falha, as etapas que terminaram são puladas (marcas em
+`out/install/`). O mesmo à mão:
+
+```sh
+tools/bootstrap_deps.sh                       # ou o brew install acima
+tools/setup_toolkit.sh                        # ps3recomp v0.17.0 + patch em ./ps3recomp
+"$HOME/Library/Application Support/resistance-recomp/deps/bin/python3.12" -m venv .venv
+.venv/bin/pip install -r ps3recomp/requirements.txt
+PS3_VFS_ROOT=/Volumes/<seu disco> tools/rebuild.sh
+```
+
+O `tools/bootstrap_deps.sh` (`--list` mostra o que está instalado) coloca isto
+em `RES_DEPS` (padrão `~/Library/Application Support/resistance-recomp/deps`),
+cada um pulado quando já está lá, então dá para rodar de novo depois de uma
+falha:
+
+| Componente | Versão | Como |
+| --- | --- | --- |
+| CMake | 4.4.4 | o build universal da Kitware para macOS |
+| Ninja | 1.13.2 | release do ninja-build |
+| Python | 3.12.15 (python-build-standalone 20261009) | build `install_only` arm64 |
+| SDL2 | 2.32.10 | do código, compartilhada (o jogo a liga pelo caminho absoluto) |
+| SPIRV-Headers + SPIRV-Tools | vulkan-sdk-1.4.363.0 | do código, estático |
+| glslang | vulkan-sdk-1.4.363.0 | do código, estático, HLSL + otimizador |
+| SPIRV-Cross | vulkan-sdk-1.4.363.0 | do código, estático, com a API C |
+| FFmpeg | 9.0.2 | do código: LGPL, só `libavcodec` + `libavutil` compartilhadas, os decodificadores H.264, MPEG-2 e AC3 |
+
+Sem o glslang e o SPIRV-Cross o backend Metal não consegue traduzir os
+shaders do jogo, então eles são obrigatórios; o FFmpeg é carregado na hora
+para os vídeos e o som AC3 deles (`PS3RECOMP_FFMPEG_AVCODEC` / `_AVUTIL`,
+definidos pelo `tools/env.sh` e pelo launcher). Leva cerca de 2 minutos num
+Mac de 12 núcleos e ocupa 0,5 GB.
 
 O `tools/rebuild.sh` roda estas etapas (ou só as que você indicar, por
 exemplo `tools/rebuild.sh lift build`):
@@ -523,6 +600,11 @@ o `play.sh`. O **Parar** encerra o jogo e a janela dele (a janela agora sai
 quando o jogo sai). Ele não leva nada do jogo: a capa da tela inicial é lida do seu
 disco montado.
 
+- **Instalar o jogo** (no Início, até o jogo estar compilado): escolha a
+  imagem do disco e aperte um botão; o launcher pega as Command Line Tools da
+  Apple (o instalador da Apple), o código, as ferramentas de compilação (sem
+  Homebrew, sem RPCS3) e compila o jogo com uma barra de progresso só,
+  retomável ([Compilando a partir do código](#compilando-a-partir-do-código)).
 - **Início**: Jogar/Parar, o que ainda impede o Jogar (sem build, sem disco,
   os `patch_*.bin` da atualização v1.7 na pasta de jogo, com os quais o EBOOT
   01.00 não roda; um clique os tira de lá), o aviso do primeiro boot (dois
@@ -552,9 +634,9 @@ disco montado.
   controla o jogo (os dois, só o controle, só teclado e mouse), sensibilidade,
   inversão, zona morta e captura do mouse, vibração e a intensidade dela.
   Cada ajuste só chega ao jogo quando é diferente do padrão.
-- **Avançado**: Instalar / recompilar (requisitos com instalação pelo
-  Homebrew, a pasta do port, o `tools/rebuild.sh` com as etapas escolhidas e
-  barra de progresso), Atualizações (`git fetch` do checkout, "builds mais
+- **Avançado**: Instalar / recompilar (os requisitos, com "Instalar as
+  ferramentas de compilação" = `tools/bootstrap_deps.sh`, a pasta do port, o
+  `tools/rebuild.sh` com as etapas escolhidas e barra de progresso), Atualizações (`git fetch` do checkout, "builds mais
   velhos que as fontes", o release mais novo do launcher), o visualizador do
   log, o modo de depuração (uma pasta por sessão com capturas, um resumo do
   log e um .zip para anexar numa issue) e o ambiente com a linha de comando

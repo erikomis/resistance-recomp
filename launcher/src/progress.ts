@@ -1,17 +1,23 @@
-// The rebuild's progress, read from tools/rebuild.sh's output: each step
-// starts with a "==> <step>" line (zsh's bold escapes stripped), the next one
-// ends it, "==> done" ends the run. The weights are a step's rough share of a
-// full rebuild on an Apple-silicon Mac (the lift and the compile dominate).
+// The rebuild's and the install's progress, read from the scripts' output:
+// each step starts with a "==> <step>" line (zsh's bold escapes stripped), the
+// next one ends it, "==> done" ends the run; tools/bootstrap_deps.sh's
+// "==> [k/n] <component>" lines move the deps step along. The weights are a
+// step's rough share of a full install on an Apple-silicon Mac (the lift and
+// the compile dominate).
 
-export const STEP_IDS = ["toolkit", "venv", "decrypt", "analyse", "lift", "spu", "build"] as const;
+export const STEP_IDS = ["sources", "deps", "toolkit", "venv", "decrypt", "analyse", "lift", "spu", "build"] as const;
 export type StepId = (typeof STEP_IDS)[number];
-const WEIGHT: Record<StepId, number> = { toolkit: 2, venv: 3, decrypt: 2, analyse: 8, lift: 38, spu: 7, build: 40 };
+/** The steps Advanced > Install / rebuild lets the player pick. */
+export const PICK_IDS: StepId[] = ["toolkit", "decrypt", "analyse", "lift", "spu", "build"];
+const WEIGHT: Record<StepId, number> = { sources: 1, deps: 8, toolkit: 2, venv: 3, decrypt: 2, analyse: 6, lift: 35, spu: 6, build: 37 };
 
 export interface Step {
   id: StepId;
   state: "pending" | "running" | "done" | "error" | "skipped";
   start: number;
   secs: number;
+  /** The share done, when the step reports it ("==> [k/n]"). */
+  sub?: number;
 }
 
 const ESC = /\x1b\[[0-9;]*[A-Za-z]/g;
@@ -21,16 +27,29 @@ export class RebuildProgress {
   log: string[] = [];
   cancelled = false;
   started = 0;
-  /** "rebuild", or "pull" for Updates > Get the new sources (no steps). */
-  kind: "rebuild" | "pull" = "rebuild";
+  /** "rebuild", "install" (Home's Install the game: every step), or "pull"
+   * for Updates > Get the new sources (no steps). */
+  kind: "rebuild" | "install" | "pull" = "rebuild";
+  /** The "ERROR: ..." lines the scripts printed. */
+  errors: string[] = [];
 
-  reset(only: string[] = [], kind: "rebuild" | "pull" = "rebuild") {
+  reset(only: string[] = [], kind: "rebuild" | "install" | "pull" = "rebuild") {
     this.kind = kind;
     this.log = [];
+    this.errors = [];
     this.cancelled = false;
     this.started = Date.now();
-    const want = (id: StepId) => !only.length || only.includes(id) || id === "toolkit" || id === "venv";
+    // a rebuild shows the build tools' step only when it is asked for ("deps":
+    // they are missing, so the rebuild installs them first)
+    const want = (id: StepId) =>
+      kind === "install" ||
+      (id === "deps" ? only.includes("deps") : id !== "sources" && (!only.length || only.includes(id) || id === "toolkit" || id === "venv"));
     this.steps = kind === "pull" ? [] : STEP_IDS.filter(want).map((id) => ({ id, state: "pending", start: 0, secs: 0 }));
+  }
+
+  /** The step that is running, or the one that failed. */
+  stage(): Step | undefined {
+    return this.steps.find((s) => s.state === "running" || s.state === "error");
   }
 
   private current(): Step | undefined {
@@ -49,6 +68,13 @@ export class RebuildProgress {
     const line = raw.replace(ESC, "");
     this.log.push(line);
     if (this.log.length > 20000) this.log.splice(0, this.log.length - 20000);
+    if (line.startsWith("ERROR:")) this.errors.push(line.slice(6).trim());
+    const k = line.match(/^==>\s+\[(\d+)\/(\d+)\]/);
+    if (k) {
+      const c = this.current();
+      if (c) c.sub = (Number(k[1]) - 1) / Math.max(1, Number(k[2]));
+      return;
+    }
     const m = line.match(/^==>\s+([a-z]+)/);
     if (!m) return;
     const word = m[1];
@@ -80,9 +106,10 @@ export class RebuildProgress {
     for (const s of this.steps) {
       if (s.state === "done" || s.state === "skipped") done += WEIGHT[s.id];
       else if (s.state === "running") {
-        // a running step counts as half done after its usual share of time
+        // a running step counts as half done after its usual share of time,
+        // or as far as it says it is
         const el = (Date.now() - s.start) / 1000;
-        done += WEIGHT[s.id] * Math.min(0.9, el / (el + 120));
+        done += WEIGHT[s.id] * Math.max(s.sub ?? 0, Math.min(0.9, el / (el + 120)));
       }
     }
     return done / total;

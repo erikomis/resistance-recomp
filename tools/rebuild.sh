@@ -77,10 +77,10 @@ decrypt_one() {   # <disc file> <dest dir> <name.elf> <expected sha>
 }
 
 configure_build() {   # <build dir> <recompiled dir> [SPU dir]
-    local bp=${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null)}
+    res_build_args   # tools/env.sh: the libraries (tools/bootstrap_deps.sh's, else Homebrew's)
     cmake -S "$RES_ROOT/port" -B "$1" -G Ninja \
           -DPS3RECOMP_DIR="$TK" -DRECOMP_DIR="$2" -DSPU_DIR="${3:-$RES_ROOT/port/spu}" \
-          -DPS3RECOMP_FFMPEG_RUNTIME=ON -DPS3RECOMP_FFMPEG_INCLUDE_DIR="${bp:-/opt/homebrew}/include"
+          -DPS3RECOMP_FFMPEG_RUNTIME=ON "${BUILD_ARGS[@]}"
     cmake --build "$1" "${jobs[@]}"
 }
 

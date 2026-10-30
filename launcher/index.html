@@ -94,6 +94,36 @@
           <button id="home-blocker-act2" class="hidden"></button>
         </div>
 
+        <!-- Install the game (macOS): from the disc image to Play in one go -->
+        <div id="home-install" class="card install-card hidden">
+          <div class="row step-head">
+            <h2 data-i18n="inst.title">Instalar o jogo</h2>
+            <span id="inst-pill" class="pill hidden"></span>
+          </div>
+          <p id="inst-lead" class="hint"></p>
+          <p id="inst-disc" class="small"></p>
+          <div id="inst-live" class="hidden">
+            <div id="inst-stage" class="inst-stage"></div>
+            <div class="progress"><div id="inst-bar"></div></div>
+            <div id="inst-text" class="small muted"></div>
+          </div>
+          <div id="inst-error" class="banner hidden">
+            <strong id="inst-error-title" data-i18n="inst.err.title">A instalação parou</strong>
+            <p id="inst-error-text"></p>
+            <p id="inst-error-detail" class="small muted"></p>
+          </div>
+          <p id="inst-msg" class="small"></p>
+          <div class="row actions">
+            <button id="inst-start" class="primary big" data-i18n="inst.start">Instalar o jogo</button>
+            <button id="inst-pick" data-i18n="inst.pickDisc">Escolher a imagem do disco (.iso)…</button>
+            <button id="inst-cancel" class="danger hidden" data-i18n="install.cancel">Cancelar</button>
+            <button id="inst-copy" class="link hidden" data-i18n="install.copyLog">Copiar log</button>
+            <button id="inst-showlog" class="link hidden" data-i18n="inst.showLog">Mostrar o arquivo de log</button>
+            <button id="inst-report" class="link hidden" data-i18n="inst.report">Relatar um problema</button>
+            <button class="link" data-go="advanced:install" data-i18n="inst.advanced">Avançado</button>
+          </div>
+        </div>
+
         <div id="home-first" class="notice-bar hidden">
           <svg class="ico"><use href="#i-alert" /></svg>
           <div class="grow small" data-i18n="home.firstBoot"></div>
@@ -659,14 +689,6 @@
             </div>
             <p class="hint" data-i18n="prereq.lead"></p>
             <ul id="prereqs" class="list prereqs"></ul>
-            <div id="prereq-brew-missing" class="notice hidden">
-              <p data-i18n="prereq.noBrew"></p>
-              <code class="preview">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
-              <div class="row">
-                <button class="link" data-url="https://brew.sh/" data-i18n="prereq.openBrew"></button>
-                <button id="copy-brew" class="link" data-i18n="prereq.copyCmd"></button>
-              </div>
-            </div>
             <div class="row">
               <button id="prereq-fix" class="primary hidden" data-i18n="prereq.fix">Instalar o que falta</button>
               <button id="prereq-recheck" data-i18n="prereq.recheck">Verificar de novo</button>

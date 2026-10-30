@@ -279,6 +279,44 @@ fn settings_path() -> PathBuf {
     data_root().join("launcher.json")
 }
 
+/// The build tools and libraries tools/bootstrap_deps.sh installs (CMake,
+/// Ninja, Python, SDL2, glslang, SPIRV-Cross, FFmpeg): RES_DEPS, else
+/// <data>/deps. Preferred over Homebrew's whenever they are there.
+fn deps_dir() -> PathBuf {
+    std::env::var_os("RES_DEPS").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| data_root().join("deps"))
+}
+
+/// tools/bootstrap_deps.sh finished there (it writes manifest.txt last).
+fn deps_ready(d: &Path) -> bool {
+    d.join("manifest.txt").is_file() && d.join("include/libavcodec/avcodec.h").is_file()
+}
+
+/// Where "Install the game" puts the port's sources when this Mac has no
+/// checkout of them (a player who only downloaded the app).
+fn src_dir() -> PathBuf {
+    data_root().join("src")
+}
+
+/// The last install's output, as the window showed it.
+fn install_log_path() -> PathBuf {
+    data_root().join("install.log")
+}
+
+/// The port's repository ("Install the game" clones it; RES_SOURCES_URL
+/// overrides it, e.g. with a fork or a mirror).
+const SOURCES_URL: &str = "https://github.com/erikomis/resistance-recomp.git";
+
+fn sources_url() -> String {
+    std::env::var("RES_SOURCES_URL").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| SOURCES_URL.into())
+}
+
+/// The free space a full install asks for: it leaves about 1.5 GB (measured:
+/// the dependencies 0.5 GB with their downloads, the toolkit and the venv
+/// 0.07 GB, the disc's executables and ELFs 0.15 GB, the analysis and the lift
+/// 0.24 GB, the two builds 0.45 GB), with room for the build trees on the way
+/// and the play folder's caches; tools/install.sh asks for the same.
+const INSTALL_NEED_GB: u64 = 4;
+
 fn reports_dir() -> PathBuf {
     data_root().join("reports")
 }
@@ -743,6 +781,10 @@ fn find_port_dirs_now() -> Vec<Builds> {
         cands.push(PathBuf::from(r));
     }
     cands.extend(own_repo());
+    // "Install the game"'s own copy of the sources
+    if src_dir().join("tools/rebuild.sh").is_file() {
+        cands.push(src_dir());
+    }
     for base in ["Desktop", "Developer", "Documents", "Projects", "src", "code", "git", ""] {
         let dir = home().join(base);
         let Ok(it) = fs::read_dir(&dir) else { continue };
@@ -869,11 +911,16 @@ pub struct AppState {
     features: Mutex<FeatureCache>,
 }
 
-/// A GUI app on macOS starts with a bare PATH; Homebrew's tools and the
-/// usual install places are added in front. Windows: PATH as it is.
+/// A GUI app on macOS starts with a bare PATH; tools/bootstrap_deps.sh's
+/// tools, then Homebrew's and the usual install places are added in front.
+/// Windows: PATH as it is.
 fn tool_path() -> std::ffi::OsString {
     let mut parts: Vec<PathBuf> = Vec::new();
     if cfg!(target_os = "macos") {
+        let deps = deps_dir().join("bin");
+        if deps.is_dir() {
+            parts.push(deps);
+        }
         parts.extend(["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"].map(PathBuf::from));
     }
     if let Some(p) = std::env::var_os("PATH") {
@@ -942,32 +989,35 @@ fn brew_prefix() -> PathBuf {
     }
 }
 
-/// libavcodec / libavutil for the video decoder: the settings, else
-/// Homebrew's (the unversioned link, or the newest versioned one).
+/// libavcodec / libavutil for the video and AC3 decoders: the settings, else
+/// tools/bootstrap_deps.sh's, else Homebrew's (the unversioned link, or the
+/// newest versioned one).
 fn ffmpeg_libs(s: &Settings) -> (Option<PathBuf>, Option<PathBuf>) {
     if cfg!(windows) {
         // optional there: the paths set, else whatever the port finds itself
         let over = |v: &str| Some(PathBuf::from(v.trim())).filter(|_| !v.trim().is_empty());
         return (over(&s.ffmpeg_avcodec), over(&s.ffmpeg_avutil));
     }
-    let lib = brew_prefix().join("lib");
+    let libs = [deps_dir().join("lib"), brew_prefix().join("lib")];
     let pick = |over: &str, name: &str| -> Option<PathBuf> {
         if !over.trim().is_empty() {
             return Some(PathBuf::from(over.trim()));
         }
-        let plain = lib.join(format!("{name}.dylib"));
-        if plain.exists() {
-            return Some(plain);
-        }
-        let mut v: Vec<PathBuf> = fs::read_dir(&lib)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&format!("{name}.")) && n.to_string_lossy().ends_with(".dylib")))
-            .collect();
-        v.sort();
-        v.pop()
+        libs.iter().find_map(|lib| {
+            let plain = lib.join(format!("{name}.dylib"));
+            if plain.exists() {
+                return Some(plain);
+            }
+            let mut v: Vec<PathBuf> = fs::read_dir(lib)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&format!("{name}.")) && n.to_string_lossy().ends_with(".dylib")))
+                .collect();
+            v.sort();
+            v.pop()
+        })
     };
     (pick(&s.ffmpeg_avcodec, "libavcodec"), pick(&s.ffmpeg_avutil, "libavutil"))
 }
@@ -1964,14 +2014,26 @@ pub struct CheckItem {
 pub struct Prereqs {
     supported: bool,
     clt: bool,
-    homebrew: Option<String>,
     checks: Vec<CheckItem>,
-    brew_missing: Vec<String>,
     ok: bool,
+    /// tools/bootstrap_deps.sh's folder is complete, or Homebrew has everything.
+    deps: bool,
+    deps_dir: String,
+    /// The port's sources (a folder with tools/rebuild.sh), when there are any;
+    /// "Install the game" downloads them otherwise.
+    sources: Option<String>,
+    /// The game's executables are decrypted already (the disc is then only
+    /// needed to play).
+    elfs: bool,
+    disc: bool,
+    builds_ok: bool,
+    free_gb: Option<u64>,
+    need_gb: u64,
 }
 
 /// What the rebuild and the game need, by Homebrew formula: (formula, what
-/// shows it is installed).
+/// shows it is installed). Only the fallback when tools/bootstrap_deps.sh's
+/// folder is not there.
 const BREW_NEEDS: &[(&str, &[&str])] = &[
     ("cmake", &["bin/cmake"]),
     ("ninja", &["bin/ninja"]),
@@ -2002,16 +2064,32 @@ fn free_gb(p: &Path) -> Option<u64> {
     Some(kb / (1024 * 1024))
 }
 
+/// Homebrew has every formula the build needs.
+fn brew_complete() -> bool {
+    let prefix = brew_prefix();
+    find_brew().is_some() && BREW_NEEDS.iter().all(|(_, marks)| marks.iter().any(|m| prefix.join(m).exists()))
+}
+
+/// The disk space a full install still needs here: none once the builds are there.
+fn need_gb(b: Option<&Builds>) -> u64 {
+    if b.is_some_and(|b| b.ok) {
+        0
+    } else {
+        INSTALL_NEED_GB
+    }
+}
+
 #[tauri::command]
 async fn check_prereqs() -> Prereqs {
     tauri::async_runtime::spawn_blocking(|| {
         let st = load_settings_file();
-        let mut p = Prereqs { supported: host_supported(), clt: clt_installed(), homebrew: find_brew().map(|b| s(&b)), ..Default::default() };
+        let dd = deps_dir();
+        let mut p = Prereqs { supported: host_supported(), clt: clt_installed(), deps_dir: s(&dd), ..Default::default() };
         let mut add = |level: &str, name: &str, message: String| p.checks.push(CheckItem { level: level.into(), name: name.into(), message });
         if !p.supported {
             return p;
         }
-        let mut missing = Vec::new();
+        let mut deps = true;
         if cfg!(windows) {
             // the rebuild on Windows is untested: what tools/rebuild.sh calls,
             // found on PATH (a POSIX shell with zsh, e.g. MSYS2)
@@ -2022,51 +2100,56 @@ async fn check_prereqs() -> Prereqs {
                 }
             }
         } else {
-            add(if p.clt { "ok" } else { "fail" }, "xcode-clt", if p.clt { "installed".into() } else { "not installed".into() });
-            add(if p.homebrew.is_some() { "ok" } else { "fail" }, "homebrew", p.homebrew.clone().unwrap_or_else(|| "not installed".into()));
-        }
-        let prefix = brew_prefix();
-        for (formula, marks) in BREW_NEEDS.iter().filter(|_| !cfg!(windows)) {
-            let found = marks.iter().map(|m| prefix.join(m)).find(|p| p.exists());
-            match found {
-                Some(f) => add("ok", formula, s(&f)),
-                None => {
-                    add("fail", formula, "not installed".into());
-                    missing.push(formula.to_string());
-                }
+            add(if p.clt { "ok" } else { "fail" }, "xcode-clt", if p.clt { "installed".into() } else { "not installed (Apple's installer: the compiler and git)".into() });
+            // the build tools and libraries: tools/bootstrap_deps.sh's, else Homebrew's
+            if deps_ready(&dd) {
+                add("ok", "deps", s(&dd));
+            } else if brew_complete() {
+                add("ok", "deps", format!("Homebrew's ({})", s(&brew_prefix())));
+            } else {
+                deps = false;
+                add("warn", "deps", "not installed yet: the install downloads and builds them (CMake, Ninja, Python, SDL2, glslang, SPIRV-Cross, FFmpeg; a few minutes)".into());
             }
         }
-        let root = port_root(&st);
+        p.deps = deps;
+        let root = port_root(&st).filter(|r| r.join("tools/rebuild.sh").is_file() || resolve_builds(r).ok);
         let b = root.as_deref().map(resolve_builds);
         let elfs = b.as_ref().is_some_and(|b| b.eboot_elf.is_some() && b.game_elf.is_some());
+        p.elfs = elfs;
         match find_rpcs3() {
-            Some(r) => add("ok", "rpcs3", s(&r)),
-            None if elfs => add("ok", "rpcs3", "not needed: the decrypted ELFs are there".into()),
-            None => add("fail", "rpcs3", "not found (needed once, to decrypt EBOOT.BIN and game.self)".into()),
+            Some(r) => add("ok", "rpcs3", format!("{} (optional)", s(&r))),
+            None => add("ok", "rpcs3", "not needed (optional)".into()),
         }
-        match find_disc(&st) {
+        let disc = find_disc(&st);
+        p.disc = disc.is_some();
+        match disc {
             Some(d) => add("ok", "disc", s(&d)),
-            None if elfs => add("warn", "disc", "not mounted (needed to play, and to decrypt)".into()),
-            None => add("fail", "disc", "not mounted".into()),
+            None if elfs => add("warn", "disc", "not mounted (needed to play)".into()),
+            None => add("fail", "disc", "not mounted (needed to install and to play)".into()),
         }
         match &b {
             Some(b) if b.rebuild_sh.is_some() => {
                 let root = Path::new(&b.root);
+                p.sources = Some(b.root.clone());
                 let tk = root.join("ps3recomp/.git").exists();
                 add(if tk { "ok" } else { "warn" }, "toolkit", if tk { s(&root.join("ps3recomp")) } else { "not set up yet (the toolkit step does it)".into() });
                 let venv = root.join(".venv/bin/python").is_file();
                 add(if venv { "ok" } else { "warn" }, "venv", if venv { s(&root.join(".venv")) } else { "not made yet (the rebuild makes it)".into() });
-                if let Some(gb) = free_gb(root) {
-                    add(if gb >= 15 { "ok" } else { "warn" }, "disk", format!("{gb} GB free"));
-                }
             }
             Some(b) => add("warn", "rebuild", format!("{}: no tools/rebuild.sh here (the builds can be played; rebuild from the resistance-recomp repository)", b.root)),
-            None => add("fail", "rebuild", "no port folder yet".into()),
+            None => add("warn", "rebuild", format!("no port folder yet: Install the game downloads the sources into {}", s(&src_dir()))),
+        }
+        p.need_gb = need_gb(b.as_ref());
+        let measured = root.clone().unwrap_or_else(data_root);
+        let at = if measured.exists() { measured } else { home() };
+        p.free_gb = free_gb(&at);
+        if let Some(gb) = p.free_gb {
+            add(if gb >= p.need_gb { "ok" } else { "warn" }, "disk", format!("{gb} GB free, about {} GB needed", p.need_gb));
         }
         if let Some(b) = &b {
+            p.builds_ok = b.ok;
             add(if b.ok { "ok" } else { "warn" }, "builds", if b.ok { b.root.clone() } else { format!("missing: {}", b.missing.join(", ")) });
         }
-        p.brew_missing = missing;
         p.ok = !p.checks.iter().any(|c| c.level == "fail");
         p
     })
@@ -2088,17 +2171,30 @@ fn install_clt() -> Result<(), String> {
 
 /// Stream a child's stdout and stderr to the window as `<event>-line`, and
 /// its exit code as `<event>-exit`; `slot` holds its pid while it runs.
-fn stream_child(app: &AppHandle, mut child: std::process::Child, event: &'static str, which: fn(&AppState) -> &Mutex<Option<u32>>) {
+fn stream_child(app: &AppHandle, child: std::process::Child, event: &'static str, which: fn(&AppState) -> &Mutex<Option<u32>>) {
+    stream_child_logged(app, child, event, which, None)
+}
+
+/// stream_child, each line also written to `log` (the install's log file).
+fn stream_child_logged(app: &AppHandle, mut child: std::process::Child, event: &'static str, which: fn(&AppState) -> &Mutex<Option<u32>>, log: Option<fs::File>) {
+    use std::io::Write;
+    let log = std::sync::Arc::new(Mutex::new(log));
     let (stdout, stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let a1 = app.clone();
+    let (a1, l1) = (app.clone(), log.clone());
     thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Some(f) = l1.lock().unwrap().as_mut() {
+                let _ = writeln!(f, "{line}");
+            }
             let _ = a1.emit(&format!("{event}-line"), line);
         }
     });
-    let a2 = app.clone();
+    let (a2, l2) = (app.clone(), log);
     thread::spawn(move || {
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if let Some(f) = l2.lock().unwrap().as_mut() {
+                let _ = writeln!(f, "{line}");
+            }
             let _ = a2.emit(&format!("{event}-line"), line);
         }
     });
@@ -2110,36 +2206,41 @@ fn stream_child(app: &AppHandle, mut child: std::process::Child, event: &'static
     });
 }
 
-const BREW_ALLOWED: &[&str] = &["cmake", "ninja", "sdl2", "glslang", "spirv-cross", "spirv-tools", "ffmpeg", "python@3.12"];
-
+/// Advanced > Install / rebuild: "Install the build tools", i.e.
+/// tools/bootstrap_deps.sh of the port folder, streamed as setup-line /
+/// setup-exit.
 #[tauri::command]
-fn install_brew(app: AppHandle, state: State<'_, AppState>, packages: Vec<String>) -> Result<(), String> {
+fn install_deps(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     require_supported_host()?;
-    if packages.is_empty() {
-        return Err("nothing to install".into());
+    if !cfg!(target_os = "macos") {
+        return Err("tools/bootstrap_deps.sh is for macOS".into());
     }
-    if let Some(bad) = packages.iter().find(|p| !BREW_ALLOWED.contains(&p.as_str())) {
-        return Err(format!("{bad}: not a package this app installs"));
+    if !clt_installed() {
+        return Err("install the Xcode Command Line Tools first".into());
     }
-    let brew = find_brew().ok_or("Homebrew not found")?;
+    let root = port_root(&load_settings_file()).ok_or("no port folder (Install the game on Home downloads it)")?;
+    let script = root.join("tools/bootstrap_deps.sh");
+    if !script.is_file() {
+        return Err(format!("{}: no tools/bootstrap_deps.sh (get the new sources in Updates)", root.display()));
+    }
     let mut slot = state.setup.lock().unwrap();
     if slot.is_some() {
         return Err("an install is already running".into());
     }
-    let mut cmd = Command::new(&brew);
-    cmd.arg("install")
-        .args(&packages)
+    let mut cmd = Command::new("/bin/zsh");
+    cmd.arg(&script)
+        .current_dir(&root)
         .env("PATH", tool_path())
-        .env("NONINTERACTIVE", "1")
-        .env("HOMEBREW_NO_ENV_HINTS", "1")
+        .env("RES_DEPS", deps_dir())
+        .env("TERM", "dumb")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     own_process_group(&mut cmd);
-    let child = cmd.spawn().map_err(|e| format!("{}: {e}", brew.display()))?;
+    let child = cmd.spawn().map_err(|e| format!("zsh: {e}"))?;
     *slot = Some(child.id());
     drop(slot);
-    let _ = app.emit("setup-line", format!("$ brew install {}", packages.join(" ")));
+    let _ = app.emit("setup-line", format!("$ tools/bootstrap_deps.sh   # into {}", deps_dir().display()));
     stream_child(&app, child, "setup", |s| &s.setup);
     Ok(())
 }
@@ -2153,13 +2254,18 @@ fn cancel_setup(state: State<'_, AppState>) {
 
 const STEPS: &[&str] = &["toolkit", "decrypt", "analyse", "lift", "spu", "build"];
 
-/// The rebuild, as a zsh script run in the port folder: the toolkit, a
-/// Python venv with the toolkit's requirements when there is none, then
-/// tools/rebuild.sh with the chosen steps and that Python.
-fn rebuild_script(steps: &[String]) -> String {
+/// The rebuild, as a zsh script run in the port folder: the build tools
+/// first when `deps` (tools/bootstrap_deps.sh, when neither its folder nor
+/// Homebrew has them), the toolkit, a Python venv with the toolkit's
+/// requirements when there is none, then tools/rebuild.sh with the chosen
+/// steps and that Python.
+fn rebuild_script(steps: &[String], deps: bool) -> String {
     let want: Vec<&str> = STEPS.iter().copied().filter(|s| steps.is_empty() || steps.iter().any(|x| x == s)).collect();
     let rest: Vec<&str> = want.iter().copied().filter(|s| *s != "toolkit").collect();
     let mut sc = String::from("set -e\n");
+    if deps {
+        sc.push_str("echo '==> deps'\ntools/bootstrap_deps.sh\n");
+    }
     if want.contains(&"toolkit") || !rest.is_empty() {
         sc.push_str("tools/rebuild.sh toolkit\n");
     }
@@ -2203,15 +2309,18 @@ fn start_rebuild(app: AppHandle, state: State<'_, AppState>, req: RebuildRequest
         // untested: tools/rebuild.sh is a zsh script (MSYS2's zsh on PATH)
         let zsh = find_in_path("zsh").ok_or("the rebuild needs zsh on PATH on Windows (e.g. MSYS2); the Windows rebuild is untested")?;
         let mut c = Command::new(zsh);
-        c.args(["-c", &rebuild_script(&req.steps)]);
+        c.args(["-c", &rebuild_script(&req.steps, false)]);
         c
     } else {
+        // the build tools, when neither tools/bootstrap_deps.sh nor Homebrew has them
+        let deps = !deps_ready(&deps_dir()) && !brew_complete() && root.join("tools/bootstrap_deps.sh").is_file();
         let mut c = Command::new("/usr/bin/nice");
-        c.args(["-n", "10", "/bin/zsh", "-c", &rebuild_script(&req.steps)]);
+        c.args(["-n", "10", "/bin/zsh", "-c", &rebuild_script(&req.steps, deps)]);
         c
     };
     cmd.current_dir(&root)
         .env("PATH", tool_path())
+        .env("RES_DEPS", deps_dir())
         .env("TERM", "dumb")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -2236,6 +2345,122 @@ fn cancel_rebuild(state: State<'_, AppState>) {
     if let Some(pid) = *state.rebuild.lock().unwrap() {
         kill_tree(pid, cfg!(windows));
     }
+}
+
+/// "Install the game" (Home), as one zsh script whose stages are announced as
+/// "==> <stage>" lines (src/progress.ts): the sources when there is no
+/// checkout (`root` None: cloned into `src`, at the tag of this launcher's
+/// version when there is one, on the default branch so Updates can pull),
+/// then tools/install.sh (deps, toolkit, venv, decrypt, analyse, lift, spu,
+/// build), which skips what an earlier run finished. A checkout from before
+/// tools/install.sh gets tools/bootstrap_deps.sh (when it has it) and the
+/// full rebuild.
+fn install_script(root: Option<&Path>, src: &Path, url: &str, tag: &str) -> String {
+    let mut sc = String::from("set -e\n");
+    let dir = match root {
+        Some(r) => s(r),
+        None => {
+            let q = shell_quote(&s(src));
+            sc.push_str("echo '==> sources (the port, from GitHub)'\n");
+            sc.push_str(&format!("SRC={q}\n"));
+            sc.push_str("if [ ! -f \"$SRC/tools/install.sh\" ]; then\n");
+            sc.push_str("  rm -rf \"$SRC.partial\"\n  mkdir -p \"${SRC:h}\"\n");
+            sc.push_str(&format!(
+                "  git clone --quiet {} \"$SRC.partial\" || {{ echo 'ERROR: could not download the port'\"'\"'s sources. Check the internet connection and try again.' >&2; exit 1; }}\n",
+                shell_quote(url)
+            ));
+            sc.push_str(&format!(
+                "  br=$(git -C \"$SRC.partial\" rev-parse --abbrev-ref HEAD)\n  git -C \"$SRC.partial\" checkout --quiet -B \"$br\" {t} 2>/dev/null && echo \"  at {t}\" || echo '  (no tag {t}: the newest sources)'\n",
+                t = shell_quote(tag)
+            ));
+            sc.push_str("  rm -rf \"$SRC\"\n  mv \"$SRC.partial\" \"$SRC\"\nfi\n");
+            sc.push_str("cd \"$SRC\"\nexec tools/install.sh\n");
+            return sc;
+        }
+    };
+    sc.push_str(&format!("cd {}\n", shell_quote(&dir)));
+    let r = Path::new(&dir);
+    if r.join("tools/install.sh").is_file() {
+        sc.push_str("exec tools/install.sh\n");
+    } else {
+        sc.push_str(rebuild_script(&[], r.join("tools/bootstrap_deps.sh").is_file()).trim_start_matches("set -e\n"));
+    }
+    sc
+}
+
+/// "Install the game": everything from the disc to Play, in one go (see
+/// install_script). Errors the window explains itself: "clt" (the Command
+/// Line Tools are missing), "no-disc". Returns the port folder it works in.
+#[tauri::command]
+fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    require_supported_host()?;
+    if !cfg!(target_os = "macos") {
+        return Err("the one-click install is for macOS; use Advanced > Install / rebuild".into());
+    }
+    if state.game.lock().unwrap().is_some() {
+        return Err("the game is running: close it first".into());
+    }
+    let mut slot = state.rebuild.lock().unwrap();
+    if slot.is_some() {
+        return Err("an install or a rebuild is already running".into());
+    }
+    if !clt_installed() {
+        return Err("clt".into());
+    }
+    let mut st = load_settings_file();
+    let root = port_root(&st).filter(|r| r.join("tools/rebuild.sh").is_file());
+    if root.is_none() && !st.port_dir.trim().is_empty() {
+        // a port folder set by hand that cannot be rebuilt: the install's own
+        // sources take over (found on their own once the setting is empty)
+        st.port_dir.clear();
+        write_settings(&st)?;
+    }
+    let b = root.as_deref().map(resolve_builds);
+    let elfs = b.as_ref().is_some_and(|b| b.eboot_elf.is_some() && b.game_elf.is_some());
+    let disc = match find_disc(&st) {
+        Some(d) => Some(d),
+        None if !st.disc_image.trim().is_empty() => attach_image(Path::new(st.disc_image.trim())).ok(),
+        None => None,
+    };
+    if disc.is_none() && !elfs {
+        return Err("no-disc".into());
+    }
+    let data = data_root();
+    fs::create_dir_all(&data).map_err(|e| format!("{}: {e}", data.display()))?;
+    let script = install_script(root.as_deref(), &src_dir(), &sources_url(), &format!("v{}", env!("CARGO_PKG_VERSION")));
+    let mut cmd = Command::new("/usr/bin/nice");
+    cmd.args(["-n", "10", "/bin/zsh", "-c", &script])
+        .current_dir(&data)
+        .env("PATH", tool_path())
+        .env("RES_DEPS", deps_dir())
+        .env("TERM", "dumb")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        // the scripts find their checkout from where they are
+        .env_remove("RES_ROOT")
+        .env_remove("PS3RECOMP_DIR")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(d) = &disc {
+        cmd.env("PS3_VFS_ROOT", d);
+    }
+    if st.jobs > 0 {
+        cmd.env("JOBS", st.jobs.to_string());
+    }
+    own_process_group(&mut cmd);
+    let log = fs::File::create(install_log_path()).ok();
+    let child = cmd.spawn().map_err(|e| format!("zsh: {e}"))?;
+    *slot = Some(child.id());
+    drop(slot);
+    let at = root.unwrap_or_else(src_dir);
+    let first = format!("$ tools/install.sh   # in {}", at.display());
+    if let Some(mut f) = log.as_ref().and_then(|f| f.try_clone().ok()) {
+        use std::io::Write;
+        let _ = writeln!(f, "{first}");
+    }
+    let _ = app.emit("rebuild-line", first);
+    stream_child_logged(&app, child, "rebuild", |s| &s.rebuild, log);
+    Ok(s(&at))
 }
 
 // ---------------------------------------------------------------------------
@@ -2410,6 +2635,7 @@ fn log_paths(state: State<'_, AppState>) -> BTreeMap<String, String> {
     m.insert("play".into(), s(&play_dir(&st)));
     m.insert("saves".into(), s(&save_locations(&st).port_savedata));
     m.insert("data".into(), s(&data_root()));
+    m.insert("install".into(), s(&install_log_path()));
     m
 }
 
@@ -2811,7 +3037,8 @@ pub fn run() {
             pull_sources,
             check_prereqs,
             install_clt,
-            install_brew,
+            install_deps,
+            start_install,
             cancel_setup,
             open_url,
             start_rebuild,
@@ -2847,8 +3074,20 @@ pub fn run() {
             steam_remove,
             steam_quit
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running the launcher");
+        .build(tauri::generate_context!())
+        .expect("error while running the launcher")
+        .run(|app, ev| {
+            // Quitting stops an install or a rebuild (its own process group,
+            // by pid); "Install the game" continues where it stopped next time.
+            if let tauri::RunEvent::Exit = ev {
+                let st = app.state::<AppState>();
+                for slot in [&st.rebuild, &st.setup] {
+                    if let Some(pid) = *slot.lock().unwrap() {
+                        kill_tree(pid, false);
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -3224,13 +3463,53 @@ mod tests {
 
     #[test]
     fn rebuild_script_steps() {
-        let all = rebuild_script(&[]);
+        let all = rebuild_script(&[], false);
         assert!(all.starts_with("set -e\ntools/rebuild.sh toolkit\n"));
         assert!(all.contains("exec tools/rebuild.sh decrypt analyse lift spu build\n"));
         assert!(all.contains("-m venv .venv"));
-        let some = rebuild_script(&["build".into()]);
+        let some = rebuild_script(&["build".into()], false);
         assert!(some.contains("exec tools/rebuild.sh build\n"));
-        let tk = rebuild_script(&["toolkit".into()]);
+        let tk = rebuild_script(&["toolkit".into()], false);
         assert!(tk.contains("tools/rebuild.sh toolkit\n") && tk.contains("==> done"));
+        let deps = rebuild_script(&["build".into()], true);
+        assert!(deps.starts_with("set -e\necho '==> deps'\ntools/bootstrap_deps.sh\ntools/rebuild.sh toolkit\n"));
+    }
+
+    #[test]
+    fn install_script_clones_or_reuses() {
+        let t = tmp("install-script");
+        // no checkout: clone into src at the tag, then tools/install.sh
+        let src = t.join("Application Support/src");
+        let sc = install_script(None, &src, "https://example.org/r.git", "v1.2.3");
+        assert!(sc.contains("==> sources"));
+        assert!(sc.contains(&format!("SRC='{}'\n", src.display())));
+        assert!(sc.contains("git clone --quiet https://example.org/r.git \"$SRC.partial\""));
+        assert!(sc.contains("checkout --quiet -B \"$br\" v1.2.3"));
+        assert!(sc.ends_with("cd \"$SRC\"\nexec tools/install.sh\n"));
+        // a checkout with tools/install.sh
+        let repo = t.join("repo");
+        fs::create_dir_all(repo.join("tools")).unwrap();
+        fs::write(repo.join("tools/rebuild.sh"), "").unwrap();
+        let old = install_script(Some(&repo), &src, "u", "v1");
+        assert!(!old.contains("==> sources") && old.contains("exec tools/rebuild.sh decrypt analyse lift spu build"));
+        assert!(!old.contains("bootstrap_deps"));
+        fs::write(repo.join("tools/bootstrap_deps.sh"), "").unwrap();
+        assert!(install_script(Some(&repo), &src, "u", "v1").contains("tools/bootstrap_deps.sh\n"));
+        fs::write(repo.join("tools/install.sh"), "").unwrap();
+        let new = install_script(Some(&repo), &src, "u", "v1");
+        assert_eq!(new, format!("set -e\ncd {}\nexec tools/install.sh\n", shell_quote(&s(&repo))));
+        let _ = fs::remove_dir_all(&t);
+    }
+
+    #[test]
+    fn deps_ready_needs_the_manifest_and_ffmpeg() {
+        let t = tmp("deps-ready");
+        assert!(!deps_ready(&t));
+        fs::create_dir_all(t.join("include/libavcodec")).unwrap();
+        fs::write(t.join("include/libavcodec/avcodec.h"), "").unwrap();
+        assert!(!deps_ready(&t));
+        fs::write(t.join("manifest.txt"), "cmake 4.4.4\n").unwrap();
+        assert!(deps_ready(&t));
+        let _ = fs::remove_dir_all(&t);
     }
 }
