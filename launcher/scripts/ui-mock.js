@@ -86,9 +86,10 @@
           ] } },
     ],
     check_prereqs: () => ({
-      supported: true, clt: true, homebrew: "/opt/homebrew/bin/brew",
-      checks: ["xcode-clt", "homebrew", "cmake", "ninja", "sdl2", "glslang", "spirv-cross", "spirv-tools", "ffmpeg", "python@3.12", "rpcs3", "disc", "toolkit", "venv", "disk", "builds"].map((n) => ({ level: "ok", name: n, message: n === "disk" ? "42 GB free" : "ok" })),
-      brewMissing: [], ok: true,
+      supported: true, clt: true,
+      checks: ["xcode-clt", "deps", "rpcs3", "disc", "toolkit", "venv", "disk", "builds"].map((n) => ({ level: "ok", name: n, message: n === "disk" ? "42 GB free, about 0 GB needed" : n === "rpcs3" ? "not needed (optional)" : "ok" })),
+      ok: true, deps: true, depsDir: `${data}/deps`, sources: root, elfs: !flags.noBuilds, disc: !flags.noDisc,
+      buildsOk: !flags.noBuilds, freeGb: 42, needGb: flags.noBuilds ? 4 : 0,
     }),
     saves_overview: () => ({
       port: [slot("BCUS98107_PROFILE", "profile", "Profile", now - 3600 * 5, "a1"), slot("quick.sav", "checkpoint", "", now - 3600 * 5, "c1")],

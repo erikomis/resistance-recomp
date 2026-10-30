@@ -16,12 +16,32 @@ the game; a Windows x64 build is published as an untested preview (below).
 
 ## What the player does
 
-1. Build the port once (main README, "Building from source"), or let the app
-   do it: **Advanced > Install / rebuild** lists what the Mac still needs
-   (Xcode Command Line Tools; `brew install` of cmake, ninja, sdl2, glslang,
-   spirv-cross, spirv-tools, ffmpeg, python@3.12 with the player's OK; RPCS3
-   is optional: the rebuild decrypts the disc itself) and runs
-   `tools/rebuild.sh` with the chosen steps.
+1. **Home > Install the game** (shown until the game is built): choose the
+   disc image (`.iso`) and press the button. The app checks the free disk
+   space (4 GB asked; a full install leaves about 1.5 GB) and says how long it
+   takes (about 7 minutes measured on a 12-core Mac, 10 to 30 elsewhere), opens
+   Apple's Command Line Tools installer when they are missing
+   (`xcode-select --install`) and waits for it (polling every 5 s), clones the
+   sources into `~/Library/Application Support/resistance-recomp/src` when
+   there is no checkout (at the tag `v<launcher version>` when it exists, on
+   the default branch so Updates can pull; `RES_SOURCES_URL` overrides the
+   repository), then runs `tools/install.sh`: `tools/bootstrap_deps.sh` (CMake,
+   Ninja, Python 3.12, SDL2, SPIRV-Tools, glslang, SPIRV-Cross, FFmpeg into
+   `<data>/deps`, no Homebrew), the toolkit, the venv, decrypt, analyse, lift,
+   SPU, build. One progress bar with the stage's name and a time estimate;
+   **Cancel**; on a failure a plain-language reason by stage (no internet, a
+   full disk, the disc, the compile...) with **Copy log**, **Show the log
+   file** (`<data>/install.log`) and **Report a problem** (the log's end
+   copied, a new GitHub issue opened). Pressing it again after a quit or a
+   failure continues where it stopped: what is installed is skipped, analyse,
+   lift and SPU run only when their inputs changed, the build is incremental.
+   Quitting the app stops the install (its own process group, by pid).
+   Power users: **Advanced > Install / rebuild** lists what the Mac needs
+   (Xcode Command Line Tools; the build tools, from `tools/bootstrap_deps.sh`
+   with **Install the build tools**, or Homebrew's when it has them all; RPCS3
+   only as an optional fallback) and runs `tools/rebuild.sh` with the chosen
+   steps (installing the build tools first when they are missing). Or build
+   from a terminal (main README, "Building from source").
 2. **Game > Disc**: **Mount the disc image…** picks the `.iso` and attaches
    it read-only (`hdiutil attach -readonly`); the image is remembered and
    mounted again on Play when it is not (setting "Mount the image on Play").
@@ -89,7 +109,7 @@ next time the game starts.
   `tools/rebuild.sh v17`; the menus stay the disc's 01.00 EBOOT) or "01.00"
   (`RES_GAME_VERSION=100`), with whether the v1.7 build is there; the console language (`PS3_LANG`, empty = the Mac's);
   movies (`PS3RECOMP_FFMPEG=0` when off, and the `PS3RECOMP_FFMPEG_AVCODEC` /
-  `_AVUTIL` paths, Homebrew's by default); the play folder (empty =
+  `_AVUTIL` paths, the install's `<data>/deps/lib` by default, else Homebrew's); the play folder (empty =
   `~/Library/Application Support/resistance-recomp`, `play.sh`'s
   `RES_DATA`); **audio**: volume (`PS3_AUDIO_VOLUME` 0-100, passed below
   100), mute (`PS3_AUDIO_MUTE=1`) and the output device (`PS3_AUDIO_DEVICE`,
@@ -118,8 +138,9 @@ next time the game starts.
   existed. A section whose feature the build lacks (the builds' executables
   are searched for the variable's name) says to rebuild instead.
 - **Advanced / Avançado**, five tabs:
-  - **Install / rebuild**: 1. the requirements (Homebrew installs streamed
-    to the window, Apple's CLT installer); 2. the port folder (below); 3. the
+  - **Install / rebuild**: 1. the requirements (**Install the build tools**:
+    `tools/bootstrap_deps.sh` streamed to the window; Apple's CLT installer;
+    Homebrew and RPCS3 are not needed); 2. the port folder (below); 3. the
     rebuild: the steps (decrypt, analyse, lift, SPU, build; the toolkit and a
     Python venv always come first), JOBS, a progress bar with a time
     estimate, the step list and the log; **Cancel** stops it and everything
@@ -146,7 +167,10 @@ next time the game starts.
 
 ```
 launcher (Rust, src-tauri/src/lib.rs)
- ├─ Rebuild → zsh in the port folder: tools/rebuild.sh toolkit,
+ ├─ Install → zsh in <data>: [git clone → <data>/src,] tools/install.sh
+ │            (bootstrap_deps.sh → <data>/deps, toolkit, venv, decrypt … build;
+ │            resumable; its output also in <data>/install.log)
+ ├─ Rebuild → zsh in the port folder: [tools/bootstrap_deps.sh,] tools/rebuild.sh toolkit,
  │            python3.12 -m venv .venv + pip install -r ps3recomp/requirements.txt (once),
  │            PY=.venv/bin/python tools/rebuild.sh <steps>   ("==> step" lines: src/progress.ts)
  └─ Play    → cd <play folder> &&
@@ -165,15 +189,18 @@ launcher (Rust, src-tauri/src/lib.rs)
   the repository the launcher was built from, then any folder one level under
   `~/Desktop`, `~/Developer`, `~/Documents`, `~/Projects`, `~/src`, `~/code`,
   `~/git` or `~` that has `build/BCUS98107`, complete builds and the newest
-  first. A build from before the rename (`MyGameRecomp`) is used when it is
+  first; `<data>/src`, where Install the game clones the sources, is one of
+  them. A build from before the rename (`MyGameRecomp`) is used when it is
   the only one. Rebuilding needs the folder to have `tools/rebuild.sh`.
 - **Play's environment**: `PS3_VFS_ROOT` (the disc), `PS3_HDD0_ROOT` /
   `PS3_HDD1_ROOT` (`<play>/dev_hdd0`, `dev_hdd1`), the FFmpeg paths, then
   only the settings that differ from the port's defaults, then the extra
   variables. It drops an inherited `PS3RECOMP_METAL_HEADLESS`,
   `PS3RECOMP_HOST_SURFACES`, `PS3RECOMP_WINDOW_STATE` and
-  `RES_GAME_VERSION`. A GUI app starts with a bare `PATH`; Homebrew's
-  folders go in front.
+  `RES_GAME_VERSION`. A GUI app starts with a bare `PATH`; the build tools'
+  `<data>/deps/bin` (`RES_DEPS`), then Homebrew's folders go in front. FFmpeg
+  is `<data>/deps/lib`'s when it is there, else Homebrew's; SDL2 is found by
+  the absolute install name the build linked.
 - **Stop** sends SIGTERM to the process group Play started (the window host
   closes the game, then itself), and SIGKILL to that group 8 s later if it
   is still there. Processes are never looked up by name to be signalled; a
@@ -334,7 +361,7 @@ before them says to rebuild):
 - **Button-icon settings, the built-in LUT presets, the tone curve and
   clarity, voice/subtitle languages, trophies**:
   this port's runtime has no such options (and the game has no trophies).
-- **A bundled port and an in-app first install from a game folder**: the
-  port is built from a git checkout with `tools/rebuild.sh`; the app runs
-  that script rather than carrying the sources.
+- **A bundled port**: the app carries no sources; Install the game clones
+  them (the repository must be reachable: `RES_SOURCES_URL` points elsewhere)
+  and builds from that checkout.
 - A Linux bundle, and a tested Windows one: the game is macOS-only so far.

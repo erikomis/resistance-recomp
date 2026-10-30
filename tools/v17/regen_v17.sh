@@ -129,10 +129,10 @@ for s in $steps; do
         say "build"
         [ -f "$RC/ppu_recomp.h" ] || { echo "no lifted v1.7 code in $RC (steps analyse lift)" >&2; exit 1; }
         [ -f "$S/spu_workloads.c" ] || { echo "no $S/spu_workloads.c (step spu)" >&2; exit 1; }
-        bp=${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null)}
+        res_build_args   # tools/env.sh: the libraries (tools/bootstrap_deps.sh's, else Homebrew's)
         cmake -S "$RES_ROOT/port" -B "$B" -G Ninja \
               -DPS3RECOMP_DIR="$TK" -DRECOMP_DIR="$RC" -DSPU_DIR="$S" \
-              -DPS3RECOMP_FFMPEG_RUNTIME=ON -DPS3RECOMP_FFMPEG_INCLUDE_DIR="${bp:-/opt/homebrew}/include"
+              -DPS3RECOMP_FFMPEG_RUNTIME=ON "${BUILD_ARGS[@]}"
         cmake --build "$B" -j $JOBS ;;
     *)
         echo "unknown step '$s' (extract decrypt analyse lift spu build)" >&2; exit 2 ;;

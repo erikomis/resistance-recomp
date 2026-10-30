@@ -17,9 +17,17 @@
 #   RES_OUT       logs, frames, run directories (default: $RES_ROOT/out)
 #   PS3_VFS_ROOT  your mounted disc (the folder holding PS3_GAME/); found
 #                 under /Volumes by its title ID when unset
+#   RES_DEPS      the build tools and libraries tools/bootstrap_deps.sh installs
+#                 (default: ~/Library/Application Support/resistance-recomp/deps).
+#                 When that folder is there its bin/ comes first on PATH, the
+#                 build looks for SDL2, glslang and SPIRV-Cross there and only
+#                 there (tools/rebuild.sh), and FFmpeg is taken from it; without
+#                 it, Homebrew's are used.
 #   PS3RECOMP_FFMPEG_AVCODEC / PS3RECOMP_FFMPEG_AVUTIL
-#                 FFmpeg libraries for the video decoder (default: Homebrew's)
-#   PY            Python 3 (default: python3)
+#                 FFmpeg libraries for the video decoder (default: RES_DEPS's,
+#                 else Homebrew's)
+#   PY            Python 3 (default: the repository's .venv when it is there,
+#                 else python3)
 #   RES_SELF_KEYS the key file tools/fetch_keys.py writes and res_decrypt reads
 #                 (default, macOS: ~/Library/Application Support/
 #                 resistance-recomp/keys/self_keys.txt); PS3_KEYS uses your own
@@ -37,8 +45,48 @@ RES_ROOT=${RES_ROOT:-${here:h}}
 RES_BUILD=${RES_BUILD:-$RES_ROOT/build}
 RES_GAME=${RES_GAME:-$RES_ROOT/game/BCUS98107}
 RES_OUT=${RES_OUT:-$RES_ROOT/out}
-PY=${PY:-python3}; export PY
+RES_DEPS=${RES_DEPS:-$HOME/Library/Application Support/resistance-recomp/deps}
+[ -d "$RES_DEPS/bin" ] && path=("$RES_DEPS/bin" ${path:#$RES_DEPS/bin})
+export RES_DEPS
+if [ -z "$PY" ]; then
+    if [ -x "$RES_ROOT/.venv/bin/python" ]; then PY=$RES_ROOT/.venv/bin/python; else PY=python3; fi
+fi
+export PY
 export RES_OUT; mkdir -p "$RES_OUT"
+
+# res_brew_prefix -> Homebrew's prefix (/opt/homebrew when there is no brew).
+# Never fails: nothing here needs Homebrew.
+res_brew_prefix() {
+    local p=$HOMEBREW_PREFIX
+    if [ -z "$p" ] && command -v brew >/dev/null 2>&1; then
+        p=$(brew --prefix 2>/dev/null) || p=
+    fi
+    print -r -- "${p:-/opt/homebrew}"
+}
+
+# res_deps_ready -> 0 when tools/bootstrap_deps.sh has installed everything
+# (it writes manifest.txt last).
+res_deps_ready() {
+    [ -f "$RES_DEPS/manifest.txt" ] && [ -f "$RES_DEPS/include/libavcodec/avcodec.h" ]
+}
+
+# res_build_args -> $BUILD_ARGS, the CMake arguments for the libraries and the
+# FFmpeg headers: tools/bootstrap_deps.sh's folder when it is complete, and
+# nothing else (Homebrew's are kept out of the search, and pkg-config looks
+# only there); without it, Homebrew's. SDL2 is linked by its absolute install
+# name and FFmpeg is loaded at run time (the paths above, the launcher), so
+# the game needs no DYLD_* variables either way.
+res_build_args() {
+    if res_deps_ready; then
+        BUILD_ARGS=(-DPS3RECOMP_FFMPEG_INCLUDE_DIR="$RES_DEPS/include"
+                    -DCMAKE_PREFIX_PATH="$RES_DEPS"
+                    -DCMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local;/opt/local"
+                    -DCMAKE_MAKE_PROGRAM="$RES_DEPS/bin/ninja")
+        export PKG_CONFIG_LIBDIR=$RES_DEPS/lib/pkgconfig
+    else
+        BUILD_ARGS=(-DPS3RECOMP_FFMPEG_INCLUDE_DIR="$(res_brew_prefix)/include")
+    fi
+}
 
 # res_target eboot|game -> $B (binary) and $E (ELF)
 res_target() {
@@ -157,11 +205,15 @@ res_decrypt() {
     [ -f "$elf" ] || { echo "RPCS3 could not decrypt ${src:t} either (install the PS3 firmware in RPCS3 and try again)" >&2; return 1; }
 }
 
-# FFmpeg for cellVdec (built with -DPS3RECOMP_FFMPEG_RUNTIME=ON).
+# FFmpeg for cellVdec and cellAdec (built with -DPS3RECOMP_FFMPEG_RUNTIME=ON):
+# RES_DEPS's when it has it, else Homebrew's.
 if [ -z "$PS3RECOMP_FFMPEG_AVCODEC" ] || [ -z "$PS3RECOMP_FFMPEG_AVUTIL" ]; then
-    brew_prefix=${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null)}
-    brew_prefix=${brew_prefix:-/opt/homebrew}
-    PS3RECOMP_FFMPEG_AVCODEC=${PS3RECOMP_FFMPEG_AVCODEC:-$brew_prefix/lib/libavcodec.dylib}
-    PS3RECOMP_FFMPEG_AVUTIL=${PS3RECOMP_FFMPEG_AVUTIL:-$brew_prefix/lib/libavutil.dylib}
+    if [ -e "$RES_DEPS/lib/libavcodec.dylib" ] && [ -e "$RES_DEPS/lib/libavutil.dylib" ]; then
+        ff_lib=$RES_DEPS/lib
+    else
+        ff_lib=$(res_brew_prefix)/lib
+    fi
+    PS3RECOMP_FFMPEG_AVCODEC=${PS3RECOMP_FFMPEG_AVCODEC:-$ff_lib/libavcodec.dylib}
+    PS3RECOMP_FFMPEG_AVUTIL=${PS3RECOMP_FFMPEG_AVUTIL:-$ff_lib/libavutil.dylib}
 fi
 export PS3RECOMP_FFMPEG_AVCODEC PS3RECOMP_FFMPEG_AVUTIL

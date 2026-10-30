@@ -19,7 +19,7 @@ Same layout as the inFAMOUS 2 roadmap.
 - **v1.7 campaign:** the campaign is the game's last update. Its `game.self` (from `patch_06`) is re-lifted and runs from the 01.00 menus: New campaign → York intro, gameplay and respawn verified. The menus stay 01.00.
 - **Played:** chapter 1 in a window with a DualSense (SDL2), `tools/play.sh`: first person, HUD, enemies and allies, shooting, dying and respawning on the ground at the checkpoint (the respawn bug is fixed). The town renders with its proper colours (the blue world is fixed).
 - **One window:** the `Resistance` launcher owns the window and the game draws into it through shared IOSurfaces; the same window stays up from the menus through the campaign intro (~33 fps).
-- **Launcher app:** `launcher/` (Tauri) finds the builds and the disc, rebuilds, keeps the settings and the saves, and plays and stops the game.
+- **Launcher app:** `launcher/` (Tauri) finds the builds and the disc, rebuilds, keeps the settings and the saves, and plays and stops the game. **Install the game** (2026-10-29): pick the `.iso`, press one button, and it gets Apple's Command Line Tools, the sources, the build tools (`tools/bootstrap_deps.sh`, no Homebrew, no RPCS3) and builds the game, resumable; ~7 min measured on a 12-core Mac.
 - **Shadows and smoke:** the dark rectangles on the ground and the hard-edged smoke are gone in game.
 - **At the game's own cap:** the campaign reaches the game's ~30–33 fps cap (Resistance runs at 30 fps on the PS3); the PPU's remaining "busy" time is largely the game's frame limiter. The GPU depth-as-RGBA8 resolve took the RSX thread from 54% to 12% busy (2026-10-23).
 - **New, needs a play test:** keyboard and mouse on macOS with `input.toml` remapping, rumble, window modes/vsync/MetalFX, SMAA and filters, texture packs and the internal resolution (experimental), ported from the inFAMOUS 2 work; tests pass. The launcher has Controls and Graphics pages for them.
@@ -465,6 +465,7 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] Release v0.2.0 (2026-10-23, pre-release): the launcher with the Controls, Graphics and Audio settings, 60 fps and FOV.
 - [x] Release v0.2.1 (2026-10-24, pre-release): the 60 fps pacing, split-screen and shadow fixes; the launcher's "60 fps" switch gets the port's 120 Hz vblank.
 - [x] Audio settings (volume, mute, output device) and one "60 fps" switch (2026-10-23).
+- [x] One-click install (2026-10-29): Home > Install the game takes a player with only the `.dmg` and the disc image to Play: Apple's Command Line Tools (their installer, waited for), the sources cloned into `<data>/src`, `tools/bootstrap_deps.sh` (pinned CMake, Ninja, Python 3.12, SDL2, SPIRV-Tools, glslang, SPIRV-Cross and a minimal LGPL FFmpeg built into `<data>/deps`, no Homebrew), then `tools/install.sh` (toolkit, venv, decrypt, analyse, lift, SPU, build), one progress bar, plain-language errors with the log, resumable after a quit or a failure; RPCS3 only an optional fallback. Measured: ~7 min and ~1.5 GB on a 12-core Mac, the port built against that folder alone (no Homebrew). Not yet run end to end from the `.dmg` by a player (the repository must be public for the clone).
 - [ ] A physical controller with the launcher (see Controls).
 - [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
 
