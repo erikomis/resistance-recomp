@@ -2001,12 +2001,44 @@ async fn steam_quit() -> Result<(), String> {
 // Requirements and the rebuild
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Clone, Debug)]
+/// One line of Advanced > Install / rebuild > "What this computer needs".
+/// `level`: "ok", "warn", "fail", "info" (not a problem, only to know) or
+/// "optional" (absent, and not needed). The window shows `key` (an i18n key
+/// under `prereq.msg.`, with `vars`) and falls back to the English
+/// `message`; `path` is shown on a line of its own, shortened, with the whole
+/// path as a tooltip; `optional` marks a tool that is only a fallback.
+#[derive(Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckItem {
     level: String,
     name: String,
     message: String,
+    key: String,
+    vars: BTreeMap<String, String>,
+    path: Option<String>,
+    optional: bool,
+}
+
+impl CheckItem {
+    fn new(level: &str, name: &str, key: &str, message: impl Into<String>) -> Self {
+        CheckItem { level: level.into(), name: name.into(), key: key.into(), message: message.into(), ..Default::default() }
+    }
+    /// A check whose detail is only a path.
+    fn at(level: &str, name: &str, path: &Path) -> Self {
+        CheckItem::new(level, name, "", s(path)).path(path)
+    }
+    fn var(mut self, k: &str, v: impl ToString) -> Self {
+        self.vars.insert(k.into(), v.to_string());
+        self
+    }
+    fn path(mut self, p: &Path) -> Self {
+        self.path = Some(s(p));
+        self
+    }
+    fn optional(mut self) -> Self {
+        self.optional = true;
+        self
+    }
 }
 
 #[derive(Serialize, Default)]
@@ -2085,7 +2117,7 @@ async fn check_prereqs() -> Prereqs {
         let st = load_settings_file();
         let dd = deps_dir();
         let mut p = Prereqs { supported: host_supported(), clt: clt_installed(), deps_dir: s(&dd), ..Default::default() };
-        let mut add = |level: &str, name: &str, message: String| p.checks.push(CheckItem { level: level.into(), name: name.into(), message });
+        let mut add = |c: CheckItem| p.checks.push(c);
         if !p.supported {
             return p;
         }
@@ -2095,20 +2127,24 @@ async fn check_prereqs() -> Prereqs {
             // found on PATH (a POSIX shell with zsh, e.g. MSYS2)
             for tool in ["git", "zsh", "cmake", "ninja", "python"] {
                 match find_in_path(tool) {
-                    Some(f) => add("ok", tool, s(&f)),
-                    None => add("warn", tool, "not found on PATH (needed only to rebuild)".into()),
+                    Some(f) => add(CheckItem::at("ok", tool, &f)),
+                    None => add(CheckItem::new("warn", tool, "toolMissing", "not found on PATH (needed only to rebuild)")),
                 }
             }
         } else {
-            add(if p.clt { "ok" } else { "fail" }, "xcode-clt", if p.clt { "installed".into() } else { "not installed (Apple's installer: the compiler and git)".into() });
+            add(if p.clt {
+                CheckItem::new("ok", "xcode-clt", "cltOk", "installed")
+            } else {
+                CheckItem::new("fail", "xcode-clt", "cltMissing", "not installed (Apple's installer: the compiler and git)")
+            });
             // the build tools and libraries: tools/bootstrap_deps.sh's, else Homebrew's
             if deps_ready(&dd) {
-                add("ok", "deps", s(&dd));
+                add(CheckItem::new("ok", "deps", "depsOwn", "installed by tools/bootstrap_deps.sh").path(&dd));
             } else if brew_complete() {
-                add("ok", "deps", format!("Homebrew's ({})", s(&brew_prefix())));
+                add(CheckItem::new("ok", "deps", "depsBrew", "Homebrew's").path(&brew_prefix()));
             } else {
                 deps = false;
-                add("warn", "deps", "not installed yet: the install downloads and builds them (CMake, Ninja, Python, SDL2, glslang, SPIRV-Cross, FFmpeg; a few minutes)".into());
+                add(CheckItem::new("warn", "deps", "depsLater", "not installed yet: the install downloads and builds them (a few minutes)"));
             }
         }
         p.deps = deps;
@@ -2119,40 +2155,52 @@ async fn check_prereqs() -> Prereqs {
         // The rebuild decrypts with tools/decrypt_self.py (keys downloaded once
         // from RPCS3's public source by tools/fetch_keys.py); RPCS3 is only its
         // fallback, so a missing RPCS3 is not a problem.
-        match find_rpcs3() {
-            Some(r) => add("ok", "rpcs3", format!("{} (optional)", s(&r))),
-            None if elfs => add("ok", "rpcs3", "not needed: the decrypted ELFs are there".into()),
-            None => add("ok", "rpcs3", "not needed: the rebuild decrypts EBOOT.BIN and game.self itself (internet needed once)".into()),
-        }
+        add(match find_rpcs3() {
+            Some(r) => CheckItem::at("ok", "rpcs3", &r).optional(),
+            None if elfs => CheckItem::new("optional", "rpcs3", "rpcs3NotNeededElf", "not needed: the decrypted ELFs are there").optional(),
+            None => CheckItem::new("optional", "rpcs3", "rpcs3NotNeededOwn", "not needed: the rebuild decrypts EBOOT.BIN and game.self itself (internet needed once)").optional(),
+        });
         let disc = find_disc(&st);
         p.disc = disc.is_some();
-        match disc {
-            Some(d) => add("ok", "disc", s(&d)),
-            None if elfs => add("warn", "disc", "not mounted (needed to play)".into()),
-            None => add("fail", "disc", "not mounted (needed to install and to play)".into()),
-        }
+        add(match disc {
+            Some(d) => CheckItem::at("ok", "disc", &d),
+            None if elfs => CheckItem::new("warn", "disc", "discForPlay", "not mounted (needed to play)"),
+            None => CheckItem::new("fail", "disc", "discMissing", "not mounted (needed to install and to play)"),
+        });
         match &b {
             Some(b) if b.rebuild_sh.is_some() => {
                 let root = Path::new(&b.root);
                 p.sources = Some(b.root.clone());
-                let tk = root.join("ps3recomp/.git").exists();
-                add(if tk { "ok" } else { "warn" }, "toolkit", if tk { s(&root.join("ps3recomp")) } else { "not set up yet (the toolkit step does it)".into() });
-                let venv = root.join(".venv/bin/python").is_file();
-                add(if venv { "ok" } else { "warn" }, "venv", if venv { s(&root.join(".venv")) } else { "not made yet (the rebuild makes it)".into() });
+                let tk = root.join("ps3recomp");
+                add(if tk.join(".git").exists() { CheckItem::at("ok", "toolkit", &tk) } else { CheckItem::new("warn", "toolkit", "toolkitLater", "not set up yet (the toolkit step does it)") });
+                let venv = root.join(".venv");
+                add(if venv.join("bin/python").is_file() { CheckItem::at("ok", "venv", &venv) } else { CheckItem::new("warn", "venv", "venvLater", "not made yet (the rebuild makes it)") });
             }
-            Some(b) => add("warn", "rebuild", format!("{}: no tools/rebuild.sh here (the builds can be played; rebuild from the resistance-recomp repository)", b.root)),
-            None => add("warn", "rebuild", format!("no port folder yet: Install the game downloads the sources into {}", s(&src_dir()))),
+            // builds that can be played but not rebuilt from here (the
+            // toolkit checkout the port was developed in): nothing wrong
+            Some(_) => add(CheckItem::new("info", "rebuild", "rebuildElsewhere", "use the resistance-recomp checkout to rebuild")),
+            None => add(CheckItem::new("warn", "rebuild", "noSources", "no port folder yet: Install the game downloads the sources").path(&src_dir())),
         }
         p.need_gb = need_gb(b.as_ref());
         let measured = root.clone().unwrap_or_else(data_root);
         let at = if measured.exists() { measured } else { home() };
         p.free_gb = free_gb(&at);
         if let Some(gb) = p.free_gb {
-            add(if gb >= p.need_gb { "ok" } else { "warn" }, "disk", format!("{gb} GB free, about {} GB needed", p.need_gb));
+            add(if p.need_gb == 0 {
+                CheckItem::new("ok", "disk", "diskEnough", format!("{gb} GB free: enough")).var("free", gb)
+            } else if gb >= p.need_gb {
+                CheckItem::new("ok", "disk", "diskNeed", format!("{gb} GB free; the install needs about {} GB", p.need_gb)).var("free", gb).var("need", p.need_gb)
+            } else {
+                CheckItem::new("warn", "disk", "diskLow", format!("only {gb} GB free; the install needs about {} GB", p.need_gb)).var("free", gb).var("need", p.need_gb)
+            });
         }
         if let Some(b) = &b {
             p.builds_ok = b.ok;
-            add(if b.ok { "ok" } else { "warn" }, "builds", if b.ok { b.root.clone() } else { format!("missing: {}", b.missing.join(", ")) });
+            add(if b.ok {
+                CheckItem::at("ok", "builds", Path::new(&b.root))
+            } else {
+                CheckItem::new("warn", "builds", "buildsMissing", format!("missing: {}", b.missing.join(", "))).var("missing", b.missing.join(", "))
+            });
         }
         p.ok = !p.checks.iter().any(|c| c.level == "fail");
         p

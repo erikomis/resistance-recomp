@@ -126,9 +126,17 @@ interface Status {
   features: string[];
 }
 interface CheckItem {
-  level: "ok" | "warn" | "fail";
+  /** "info": only to know; "optional": absent and not needed. */
+  level: "ok" | "warn" | "fail" | "info" | "optional";
   name: string;
+  /** English fallback for `key`. */
   message: string;
+  /** i18n key under prereq.msg. ("" = the detail is only the path). */
+  key: string;
+  vars: Record<string, string>;
+  path: string | null;
+  /** A fallback tool, not a requirement. */
+  optional: boolean;
 }
 interface Prereqs {
   supported: boolean;
@@ -1328,8 +1336,8 @@ function renderInstall() {
   const f = installFacts;
   const discImg = settings.discImage || status?.disc.image || status?.disc.root || "";
   const pill = $("inst-pill");
-  show(pill, live || installOutcome === "done");
   pill.className = "pill " + (installOutcome === "done" ? "" : "warm");
+  show(pill, live || installOutcome === "done");
   pill.textContent = installOutcome === "done" ? t("inst.pillDone") : t("inst.pillRunning");
 
   $("inst-lead").textContent = live
@@ -1486,12 +1494,20 @@ $("inst-report").addEventListener("click", async () => {
 let prereqs: Prereqs | null = null;
 let setupRunning = false;
 let cltPoll = 0;
-const ICON: Record<string, string> = { ok: "✓", warn: "!", fail: "✕" };
+const ICON: Record<string, string> = { ok: "✓", warn: "!", fail: "✕", info: "i", optional: "–" };
 
 function checkLabel(name: string): string {
   const k = `prereq.name.${name}` as Key;
   const v = t(k);
   return v === k ? name : v;
+}
+
+/** A check's detail line, translated (the English text when there is no key). */
+function checkDetail(c: CheckItem): string {
+  if (!c.key) return c.path ? "" : c.message;
+  const k = `prereq.msg.${c.key}` as Key;
+  const v = t(k, c.vars);
+  return v === k ? c.message : v;
 }
 
 let prereqSeq = 0;
@@ -1510,7 +1526,7 @@ async function refreshPrereqs() {
 }
 
 function prereqActions(c: CheckItem): HTMLButtonElement[] {
-  if (c.level === "ok") return [];
+  if (c.level !== "warn" && c.level !== "fail") return [];
   const button = (label: Key, run: () => unknown) => {
     const b = document.createElement("button");
     b.textContent = t(label);
@@ -1544,19 +1560,39 @@ function renderPrereqs() {
     return;
   }
   const fails = p.checks.filter((c) => c.level === "fail");
-  for (const c of [...fails, ...p.checks.filter((c) => c.level !== "fail")]) {
-    const li = document.createElement("li");
-    li.className = `check-${c.level}`;
-    li.innerHTML = `<span class="ico"></span><span class="what"><b></b><span class="msg"></span></span>`;
-    li.querySelector(".ico")!.textContent = ICON[c.level] ?? "·";
-    li.querySelector("b")!.textContent = checkLabel(c.name);
-    li.querySelector(".msg")!.textContent = c.message.replace(/^\/Users\/[^/]+/, "~");
-    li.append(...prereqActions(c));
+  const warns = p.checks.filter((c) => c.level === "warn");
+  // what needs doing first, then the rest in their order
+  for (const c of [...fails, ...warns, ...p.checks.filter((c) => c.level !== "fail" && c.level !== "warn")]) {
+    const li = el("li", `check check-${c.level}`);
+    li.append(el("span", "check-ico", ICON[c.level] ?? "·"));
+    const body = el("div", "check-body");
+    const title = el("div", "check-title");
+    title.append(el("b", "", checkLabel(c.name)));
+    if (c.optional) title.append(el("span", "check-tag", t("prereq.optionalTag")));
+    body.append(title);
+    const detail = checkDetail(c);
+    if (detail) body.append(el("div", "check-detail", detail));
+    if (c.path) {
+      const path = el("div", "check-path", tilde(c.path));
+      path.title = c.path;
+      body.append(path);
+    }
+    const acts = prereqActions(c);
+    if (acts.length) {
+      const row = el("div", "check-actions");
+      row.append(...acts);
+      body.append(row);
+    }
+    li.append(body);
     list.appendChild(li);
   }
   const sum = $("prereq-summary");
-  sum.className = "pill " + (p.ok ? "" : "bad");
-  sum.textContent = p.ok ? t("prereq.allOk") : t("prereq.missingN", { n: fails.length || 1 });
+  sum.className = "pill " + (fails.length ? "bad" : warns.length ? "warn" : "");
+  sum.textContent = fails.length
+    ? t("prereq.missingN", { n: fails.length })
+    : warns.length
+      ? t(warns.length === 1 ? "prereq.readyWarning" : "prereq.readyWarnings", { n: warns.length })
+      : t("prereq.allOk");
   $("card-prereqs").classList.toggle("done", p.ok);
   const mac = status?.os === "macos";
   show($("prereq-fix"), mac && (!p.clt || (!p.deps && !!p.sources)));
