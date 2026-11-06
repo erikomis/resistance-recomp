@@ -55,6 +55,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | One window from the menus through the campaign | ✅ closing it ends the game at once |
 | Controller (DualSense, DualShock 4; Xbox One/Series through SDL), rumble | ✅ DualSense; 🧪 Xbox and rumble not yet tried with a physical pad |
 | Keyboard and mouse (remappable) | 🧪 mapped, not play-tested |
+| In-game menu (F1 / Cmd+, / L3+R3): image, audio, controls, performance HUD, Quit game | 🧪 new in v0.3.0, checked headless through the menus and into gameplay; waiting for a windowed session |
 | Offline split-screen (co-op and versus) | ✅ |
 | Saves, Continue from a checkpoint | ✅ |
 | Game update v1.7 for the campaign | ✅ when you have the update's files; the menus stay 01.00 |
@@ -114,6 +115,15 @@ save, status), Graphics, Performance, Game, Controls and Advanced.
   Plus a game log viewer.
 - **Play shortcut** on the Desktop and **Add to Steam** (Big Picture with
   the controller).
+
+**In the game,** F1 (fn+F1), Insert, Cmd+, or L3+R3 opens the **in-game
+menu** (from the inFAMOUS 2 port): image (gamma, sharpening, FXAA/SMAA,
+vibrance, contrast, vignette, film grain, MetalFX, vsync, display mode,
+internal resolution), audio volume, controls (live remapping of keyboard,
+mouse and controller, vibration, mouse), a performance HUD (fps, frame time,
+CPU and GPU) and **Quit game**, which never ends the game in the middle of a
+save. What you change is kept for the next start. Details in
+[docs/TECHNICAL.md](docs/TECHNICAL.md#in-game-menu).
 
 | | |
 | --- | --- |

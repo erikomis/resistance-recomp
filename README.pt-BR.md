@@ -56,6 +56,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Uma janela só dos menus até a campanha | ✅ fechá-la encerra o jogo na hora |
 | Controle (DualSense, DualShock 4; Xbox One/Series pelo SDL), vibração | ✅ DualSense; 🧪 Xbox e vibração ainda não testados com um controle físico |
 | Teclado e mouse (remapeáveis) | 🧪 mapeados, ainda não testados jogando |
+| Menu dentro do jogo (F1 / Cmd+, / L3+R3): imagem, áudio, controles, HUD de desempenho, Sair do jogo | 🧪 novo na v0.3.0, testado sem janela pelos menus e no gameplay; falta uma sessão com janela |
 | Tela dividida offline (cooperativo e versus) | ✅ |
 | Saves, Continuar a partir de um checkpoint | ✅ |
 | Atualização v1.7 do jogo na campanha | ✅ quando você tem os arquivos da atualização; os menus continuam na 01.00 |
@@ -119,6 +120,15 @@ isso sem terminal: Início (a arte do seu disco, JOGAR, ajustes rápidos,
   um relatório. Mais um visualizador do log do jogo.
 - **Atalho para jogar** na Mesa e **Adicionar à Steam** (Big Picture com o
   controle).
+
+**No jogo,** F1 (fn+F1), Insert, Cmd+, ou L3+R3 abre o **menu do jogo**
+(vindo do port do inFAMOUS 2): imagem (gama, nitidez, FXAA/SMAA, vibração das
+cores, contraste, vinheta, granulado, MetalFX, vsync, modo de janela,
+resolução interna), volume do áudio, controles (remapeamento ao vivo de
+teclado, mouse e controle, vibração, mouse), um HUD de desempenho (fps, tempo
+de quadro, CPU e GPU) e **Sair do jogo**, que nunca fecha o jogo no meio de
+um save. O que você muda fica guardado para a próxima vez. Detalhes em
+[docs/TECHNICAL.pt-BR.md](docs/TECHNICAL.pt-BR.md#menu-dentro-do-jogo).
 
 | | |
 | --- | --- |

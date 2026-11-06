@@ -596,6 +596,97 @@ Troque as teclas na página Controles do launcher, ou num `input.toml`
 passado como `PS3_INPUT_MAP` (o formato está no `libs/input/pad_input_map.h`
 do toolkit).
 
+## Menu dentro do jogo
+
+Aperte **F1** (fn+F1 no teclado do Mac, onde o F1 é a tecla de brilho),
+**Insert** (Help nos teclados de Mac mais antigos) ou **Cmd+,** para abrir e
+fechar o menu. No controle, aperte **L3 e R3** (os dois analógicos) juntos. Esc
+ou ○ também fecham. L1/R1 trocam de aba, o direcional ou o analógico esquerdo e
+o ✕ mexem nos controles, e o mouse clica. Com o menu aberto, o jogo não recebe
+comandos: o controle, as teclas e o mouse ficam neutros e o cursor é liberado.
+O jogo continua rodando, então pause antes com START se precisar. Uma tecla,
+clique ou botão que ainda está apertado quando o menu fecha (o Esc que fechou o
+menu, por exemplo) só chega ao jogo depois de solto. Um clique de analógico
+sozinho continua chegando ao jogo. Com os dois apertados juntos, nenhum chega.
+
+O menu funciona na janela única do jogo (`Resistance`, `tools/host_window`). A
+janela conta as teclas do menu e passa o ponteiro para o jogo. O jogo desenha o
+menu na imagem que entrega à janela. Também funciona quando o
+`ResistanceRecomp` roda com janela própria. Funciona ainda na troca do menu
+principal (EBOOT) para a campanha (game.self): os dois executáveis carregam os
+mesmos ajustes, e o que mudou no menu principal continua valendo na campanha.
+
+**Sair do jogo** fica embaixo, ao lado de Fechar. Ele pergunta antes ("O
+progresso desde o último checkpoint será perdido"). O foco começa em Cancelar,
+e Esc ou ○ desistem. Sair encerra o jogo como fechar a janela, mas nunca no meio
+de um salvamento. Assim que você sai, o jogo não começa mais nenhum salvamento,
+gravação de perfil ou de checkpoint (`quick.sav`). O que já estiver sendo
+gravado termina antes, por até 30 s. Depois o jogo sai com código 0, e a janela
+fecha junto.
+
+| Aba | O que muda |
+| --- | --- |
+| Imagem | Muda na hora: gama própria (ou o brilho do próprio jogo), nitidez, vibrance, contraste, vinheta, granulado, força da LUT (quando o `PS3_LUT` carregou uma), antisserrilhamento desligado/FXAA/SMAA, escala MetalFX, vsync e janela / tela cheia do macOS / tela cheia sem bordas. Muda ao abrir de novo: filtragem anisotrópica e resolução interna (720p, 1080p, 1440p, 4K). Uma mudança feita no menu principal também vale quando a campanha carrega. |
+| Áudio | Volume geral (o que o Mac toca; a mixagem do jogo não muda) |
+| Controles | Jogar com controle + teclado/mouse, só controle ou só teclado/mouse. Vibração ligada/desligada e força. Câmera no mouse ligada/desligada, sensibilidade e inversão vertical/horizontal. Uma tabela com cada botão do PS3 e sua tecla, botão do mouse e botão do controle: clique numa célula (ou escolha com o controle e aperte ✕) e aperte a nova entrada. A mudança vale na hora. Esc cancela, o botão direito limpa, e "Restaurar padrões" volta a tabela ao padrão. O aperto vai para o menu, nunca para o jogo. As teclas trocadas são gravadas na hora no arquivo de controles (`PS3_INPUT_MAP`, ou `input.toml` ao lado do `overlay.ini`). |
+| Desempenho | Um painel pequeno num canto, que fica na tela com o menu fechado. Ele mostra fps, tempo de quadro com gráfico, núcleos de CPU em uso, threads ocupadas (≥ 80% de um núcleo, quase sempre as das SPUs e a PPU), o tempo de codificação Metal do RSX e a espera por um quadro livre. Dá para escolher o canto, a opacidade e o gráfico. |
+
+MetalFX, vsync e modo de exibição são da janela. O menu pede a mudança à
+janela, então eles funcionam na janela do jogo (`Resistance`). Com janela
+própria, o `ResistanceRecomp` faz vsync e tela cheia do macOS, mas não MetalFX.
+
+**Onde os ajustes ficam.** O menu grava as mudanças ao fechar, no arquivo
+indicado por `PS3_OVERLAY_INI`. O `jogar.sh` aponta para
+`~/Library/Application Support/resistance-recomp/overlay.ini`. Com a variável
+vazia ou ausente, as mudanças valem só na sessão. O arquivo guarda só o que você
+mudou no menu, em linhas com os mesmos nomes e valores das variáveis
+(`PS3_SHARPEN=0.40`, `PS3_AUDIO_VOLUME=70`, `PS3_OVERLAY_HUD=1`, ...). A janela
+lê `PS3_VSYNC`, `PS3_WINDOW_MODE` e `PS3_UPSCALE` do mesmo arquivo. Ao abrir, o
+primeiro destes vence:
+
+1. uma variável definida quando o jogo abre (pelo terminal ou pelo launcher,
+   que deve passar só os ajustes fora do padrão);
+2. a linha do menu no `overlay.ini`;
+3. o padrão de fábrica (e, para o mouse, o `[mouse]` do arquivo de controles).
+
+O menu marca com um "env" laranja o ajuste cuja variável estava definida. A
+mudança nele vale na hora, mas a variável vence de novo na próxima vez. Um aviso
+pequeno no canto diz quando os ajustes foram gravados.
+
+| Variável | O que faz |
+| --- | --- |
+| `PS3_OVERLAY=0` | sem menu e sem painel (nada é carregado) |
+| `PS3_OVERLAY_INI=<arquivo>` | de onde os ajustes do menu são lidos e onde são gravados (vazia ou ausente = só na sessão) |
+| `PS3_OVERLAY_PAD=0` | L3+R3 não abre o menu |
+| `PS3_OVERLAY_HUD=1` | o painel de desempenho ligado desde o início; `PS3_OVERLAY_HUD_CORNER=0..3` (superior esquerdo, superior direito, inferior esquerdo, inferior direito), `PS3_OVERLAY_HUD_OPACITY=0.1..1`, `PS3_OVERLAY_HUD_GRAPH=0` |
+| `PS3_OVERLAY_LANG=en\|pt` | o idioma do menu (padrão: português quando o `PS3_LANG` começa com `pt`, senão inglês) |
+| `PS3_INPUT_MAP=<arquivo>` | o arquivo de controles onde vão as teclas trocadas no menu (ausente: `input.toml` ao lado do `PS3_OVERLAY_INI`, que então é lido na próxima vez) |
+
+**Testar sem janela** (`PS3RECOMP_METAL_HEADLESS=1`). Uma execução sem janela
+não lê o arquivo de ajustes nem desenha nada, a não ser que um teste peça:
+
+| Variável | O que faz |
+| --- | --- |
+| `PS3_OVERLAY_FORCE_OPEN=1` | o menu desenhado aberto (`=quit`: na pergunta "Sair do jogo?"); o despejo de quadros (`PS3RECOMP_METAL_FRAME_DUMP`) passa a ler a imagem composta |
+| `PS3_OVERLAY_TAB=0..3` | a aba em que ele abre: Imagem, Áudio, Controles, Desempenho |
+| `PS3_OVERLAY_TEST="<s>:<ação>,..."` | um roteiro com hora marcada, em segundos desde o início do backend: `open`, `close`, `tab=<n>`, `hud=<0\|1>`, `set=<VARIÁVEL>:<valor>` (como o menu muda), `shot=<arquivo.ppm>` (grava o próximo quadro composto), `quit` (abre a pergunta), `confirm` (aperta Sair: o caminho de saída de verdade), `cancel` |
+| `PS3_OVERLAY_TEST_NEXT=...` | o roteiro do executável que o exitspawn abre (cada um pega o seu) |
+
+Por exemplo, isto confere todas as abas e a saída, e a execução termina com
+código 0:
+
+```sh
+PS3RECOMP_METAL_HEADLESS=1 PS3_OVERLAY_TEST="25:tab=0,28:shot=/tmp/t0.ppm,31:tab=1,34:shot=/tmp/t1.ppm,\
+37:tab=2,40:shot=/tmp/t2.ppm,43:tab=3,46:shot=/tmp/t3.ppm,49:close,60:quit,66:confirm" \
+  build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf
+```
+
+Fora deste menu: a aba Jogo do port de inFAMOUS 2 (idiomas do jogo; o
+Resistance lê o `PS3_LANG` ao abrir), as texturas de ícones de botão, a
+proporção da tela (ultrawide), as curvas de cor, a claridade e as predefinições
+de cor. Este toolkit não tem nada disso. O menu vem do port de inFAMOUS 2 (Dear
+ImGui, `third_party/imgui`, MIT).
+
 ## Launcher
 
 [`launcher/`](../launcher/) é um app de desktop (Tauri) que faz o que o

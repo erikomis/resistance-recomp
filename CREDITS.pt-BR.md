@@ -59,6 +59,14 @@ v0.17.0 ou a este port), com os autores mantidos nos cabeçalhos do patch:
   thread principal do macOS. Ele, por sua vez, se apoia no fork do inFAMOUS 1
   do ps3recomp feito por [NoahBPeterson](https://github.com/NoahBPeterson/ps3recomp).
 
+## Menu do jogo
+
+- O menu dentro do jogo (`libs/video/ps3_overlay.mm`, no patch do toolkit)
+  vem do [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
+  do mesmo autor, adaptado a este port; ele é desenhado com o
+  **[Dear ImGui](https://github.com/ocornut/imgui)** v1.92.9b, de Omar Cornut
+  e colaboradores (MIT), incluído em `third_party/imgui/`.
+
 ## Outro port do mesmo jogo
 
 - **[Resistance: Fall of Man PC port](https://github.com/Psyykosis/Resistance-Fall-of-Man-Recomp)**

@@ -566,6 +566,98 @@ the mouse, Esc releases it):
 Rebind them on the launcher's Controls page, or in an `input.toml` passed as
 `PS3_INPUT_MAP` (the format is in the toolkit's `libs/input/pad_input_map.h`).
 
+## In-game menu
+
+Press **F1** (fn+F1 on a Mac keyboard, where F1 is the brightness key),
+**Insert** (Help on older Mac keyboards) or **Cmd+,** to open and close it. On a
+controller, press **L3 and R3** (both sticks) together. Esc or ○ also closes it.
+L1/R1 switch tabs, the D-pad or left stick and ✕ work the controls, and the
+mouse clicks. While the menu is open the game gets no input: its pad, keys and
+mouse are held neutral and the cursor is released. The game keeps running, so
+pause it first with START if you need to. A key, click or button that is still
+held when the menu closes (the Esc that closed it, for example) only reaches
+the game after you let go of it. One stick click alone still reaches the game.
+While both sticks are held down, neither click does.
+
+The menu works in the game's single window (`Resistance`, `tools/host_window`).
+The window counts the menu's keys and passes the pointer to the game. The game
+draws the menu into the picture it hands the window. It also works when
+`ResistanceRecomp` runs with its own window. It works across the switch from
+the front end (EBOOT) to the campaign (game.self) as well: both executables load
+the same settings, and anything changed in the front end carries over into the
+campaign.
+
+**Quit game** is at the bottom, next to Close. It asks first ("Progress since
+the last checkpoint will be lost"). Cancel has the focus, and Esc or ○ backs
+out. Quit ends the game the same way closing the window does, but it never
+stops the game in the middle of a save. As soon as you quit, the game starts no
+new save, profile write or checkpoint write (`quick.sav`). One that is already
+being written finishes first, for up to 30 s. Then the game exits with status 0,
+and the window closes with it.
+
+| Tab | What it changes |
+| --- | --- |
+| Image | Changes at once: gamma override (or the game's own brightness), sharpening, vibrance, contrast, vignette, film grain, LUT strength (when `PS3_LUT` loaded one), anti-aliasing off/FXAA/SMAA, MetalFX upscaling, vsync, and window / macOS fullscreen / borderless. Changes at the next start: anisotropic filtering and internal resolution (720p, 1080p, 1440p, 4K). A change made in the front end also applies when the campaign loads. |
+| Audio | Master volume (what the Mac plays; the game's own mix is untouched) |
+| Controls | Play with controller + keyboard/mouse, controller only, or keyboard/mouse only. Vibration on/off and strength. Mouse camera on/off, sensitivity, and vertical/horizontal inversion. A table of every PS3 button with its key, mouse button and controller button: click a cell (or pick it with the pad and press ✕), then press the new input. It applies at once. Esc cancels, right-click unbinds, and "Restore defaults" resets the table. The press goes to the menu, never to the game. Rebindings are saved straight away to the controls file (`PS3_INPUT_MAP`, or `input.toml` next to `overlay.ini`). |
+| Performance | A small HUD in a corner that stays up when the menu is closed. It shows fps, frame time with a graph, CPU cores in use, busy threads (≥ 80% of a core, mostly the SPU threads and the PPU), the RSX's Metal encode time and the wait for a frame slot. You can set its corner, opacity and graph. |
+
+MetalFX, vsync and the display mode belong to the window. The menu asks the
+window to change them, so they work in the game's window (`Resistance`). With
+its own window, `ResistanceRecomp` does vsync and macOS fullscreen but not
+MetalFX.
+
+**Where the settings go.** The menu saves its changes when it closes, to the
+file named by `PS3_OVERLAY_INI`. `jogar.sh` points it at
+`~/Library/Application Support/resistance-recomp/overlay.ini`. If you leave the
+variable unset or empty, changes last for the session only. The file holds only
+what you changed in the menu, as lines with the same names and values as the
+variables (`PS3_SHARPEN=0.40`, `PS3_AUDIO_VOLUME=70`, `PS3_OVERLAY_HUD=1`, ...).
+The window reads `PS3_VSYNC`, `PS3_WINDOW_MODE` and `PS3_UPSCALE` from the same
+file. At start, the first of these wins:
+
+1. a variable set when the game starts (from the shell, or from the launcher,
+   which should pass only the settings it has away from their defaults);
+2. the menu's line in `overlay.ini`;
+3. the built-in default (and, for the mouse, `[mouse]` in the controls file).
+
+The menu marks a setting whose variable was set with an orange "env". A change
+to it applies at once, but the variable wins again the next time. A small
+notice in the corner says when the settings were saved.
+
+| Variable | What it does |
+| --- | --- |
+| `PS3_OVERLAY=0` | no menu and no HUD (nothing is loaded) |
+| `PS3_OVERLAY_INI=<file>` | where the menu's settings are read from and saved to (unset or empty = only for the session) |
+| `PS3_OVERLAY_PAD=0` | L3+R3 does not open the menu |
+| `PS3_OVERLAY_HUD=1` | the performance HUD on from the start; `PS3_OVERLAY_HUD_CORNER=0..3` (top left, top right, bottom left, bottom right), `PS3_OVERLAY_HUD_OPACITY=0.1..1`, `PS3_OVERLAY_HUD_GRAPH=0` |
+| `PS3_OVERLAY_LANG=en\|pt` | the menu's language (default: Portuguese when `PS3_LANG` starts with `pt`, else English) |
+| `PS3_INPUT_MAP=<file>` | the controls file the menu's rebindings go to (unset: `input.toml` next to `PS3_OVERLAY_INI`, which is then read at the next start) |
+
+**Testing it headless** (`PS3RECOMP_METAL_HEADLESS=1`). A headless run reads no
+settings file and draws nothing unless a test asks:
+
+| Variable | What it does |
+| --- | --- |
+| `PS3_OVERLAY_FORCE_OPEN=1` | the menu drawn open (`=quit`: on the "Quit the game?" question); the frame dump (`PS3RECOMP_METAL_FRAME_DUMP`) then reads the composed picture |
+| `PS3_OVERLAY_TAB=0..3` | the tab it opens on: Image, Audio, Controls, Performance |
+| `PS3_OVERLAY_TEST="<s>:<action>,..."` | a timed script, in seconds from the backend's start: `open`, `close`, `tab=<n>`, `hud=<0\|1>`, `set=<VARIABLE>:<value>` (as the menu sets it), `shot=<file.ppm>` (writes the next composed frame), `quit` (opens the question), `confirm` (presses Quit: the real quit path), `cancel` |
+| `PS3_OVERLAY_TEST_NEXT=...` | the script for the executable the exitspawn brings up (each one takes its own) |
+
+For example, this checks every tab and the quit, and the run ends with status 0:
+
+```sh
+PS3RECOMP_METAL_HEADLESS=1 PS3_OVERLAY_TEST="25:tab=0,28:shot=/tmp/t0.ppm,31:tab=1,34:shot=/tmp/t1.ppm,\
+37:tab=2,40:shot=/tmp/t2.ppm,43:tab=3,46:shot=/tmp/t3.ppm,49:close,60:quit,66:confirm" \
+  build/BCUS98107/ResistanceRecomp game/BCUS98107/EBOOT.elf
+```
+
+Not in this menu: the inFAMOUS 2 port's Game tab (game languages; Resistance
+reads `PS3_LANG` at start), button-icon textures, the aspect ratio
+(ultrawide), colour curves, clarity and colour presets. This toolkit has none
+of these. The menu comes from the inFAMOUS 2 port (Dear ImGui,
+`third_party/imgui`, MIT).
+
 ## Launcher
 
 [`launcher/`](../launcher/) is a desktop app (Tauri) that does what
