@@ -168,7 +168,7 @@ jobs:
       updater: ${{ steps.manifest.outputs.updater }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Name the files
