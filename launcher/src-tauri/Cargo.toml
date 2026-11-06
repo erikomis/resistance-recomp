@@ -28,6 +28,9 @@ png = "0.18"
 # the build-feature scan (lib.rs build_features): substring search in the
 # ~90 MB executables, already in the tree through tauri
 memchr = "2"
+# the launcher's own update (update.rs): latest.json, the signed .app.tar.gz
+# checked against the public key in tauri.conf.json, swapped in place
+tauri-plugin-updater = "2.14"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # NSApplication/NSWorkspace for the Dock and Finder icons (the versions and

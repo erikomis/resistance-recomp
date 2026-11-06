@@ -131,8 +131,14 @@
 
         <div id="home-update" class="notice-bar hidden">
           <svg class="ico"><use href="#i-alert" /></svg>
-          <div class="grow" id="home-update-text"></div>
-          <button id="home-update-go" class="primary" data-i18n="update.title">Atualizações</button>
+          <div class="grow">
+            <div id="home-update-text"></div>
+            <div class="update-progress hidden"><div class="progress"><div class="update-bar"></div></div><div class="update-progress-text small muted"></div></div>
+          </div>
+          <button id="home-update-install" class="primary hidden" data-i18n="update.install">Baixar e instalar</button>
+          <button id="home-update-restart" class="primary hidden" data-i18n="update.restart">Reiniciar para concluir</button>
+          <button id="home-update-rebuild" class="primary hidden" data-i18n="update.rebuild">Recompilar o jogo</button>
+          <button id="home-update-go" data-i18n="update.title">Atualizações</button>
         </div>
 
         <div class="home-grid">
@@ -755,7 +761,13 @@
           <div class="card" style="margin-top: 16px">
             <h3 class="card-title" data-i18n="update.app">Este app</h3>
             <div id="app-info" class="update-info"></div>
-            <div class="row"><button id="app-open" class="primary hidden" data-i18n="update.open">Ver a versão nova</button></div>
+            <div class="update-progress hidden"><div class="progress"><div class="update-bar"></div></div><div class="update-progress-text small muted"></div></div>
+            <div class="row">
+              <button id="app-install" class="primary hidden" data-i18n="update.install">Baixar e instalar</button>
+              <button id="app-restart" class="primary hidden" data-i18n="update.restart">Reiniciar para concluir</button>
+              <button id="app-rebuild" class="primary hidden" data-i18n="update.rebuild">Recompilar o jogo</button>
+              <button id="app-open" class="hidden" data-i18n="update.open">Ver a versão nova</button>
+            </div>
             <label class="opt" style="margin-top: 10px">
               <span class="opt-text"><span class="opt-label" data-i18n="update.auto">Procurar atualizações ao abrir</span><span class="hint" data-i18n="update.autoHint"></span></span>
               <span class="switch"><input id="update-auto" type="checkbox" /><i></i></span>

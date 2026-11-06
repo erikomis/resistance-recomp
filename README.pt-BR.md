@@ -643,7 +643,8 @@ disco montado.
 - **Avançado**: Instalar / recompilar (os requisitos, com "Instalar as
   ferramentas de compilação" = `tools/bootstrap_deps.sh`, a pasta do port, o
   `tools/rebuild.sh` com as etapas escolhidas e barra de progresso), Atualizações (`git fetch` do checkout, "builds mais
-  velhos que as fontes", o release mais novo do launcher), o visualizador do
+  velhos que as fontes" e a atualização do próprio launcher: Baixar e
+  instalar, Reiniciar para concluir, depois Recompilar o jogo), o visualizador do
   log, o modo de depuração (uma pasta por sessão com capturas, um resumo do
   log e um .zip para anexar numa issue) e o ambiente com a linha de comando
   equivalente.

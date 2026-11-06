@@ -611,8 +611,9 @@ is read from your mounted disc.
 - **Advanced**: Install / rebuild (the requirements, with "Install the build
   tools" = `tools/bootstrap_deps.sh`, the port folder, `tools/rebuild.sh` with
   chosen steps and a progress bar),
-  Updates (`git fetch` of the checkout, "builds older than the sources", the
-  newest launcher release), the game log viewer, debug mode (a session folder
+  Updates (`git fetch` of the checkout, "builds older than the sources", and
+  the launcher's own update: Download and install, Restart to finish, then
+  Rebuild the game), the game log viewer, debug mode (a session folder
   with captures, a log summary and a .zip to attach to an issue), and the raw
   environment with the equivalent command line.
 

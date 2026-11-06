@@ -5,16 +5,26 @@
 # .exe, .msi) as artifacts. On a v* tag (or a manual run on one) it also
 # attaches them to that GitHub release. The launcher carries no part of the
 # port: it runs the builds the player made from their own disc
-# (tools/rebuild.sh). The bundles are unsigned.
+# (tools/rebuild.sh). The bundles are not code-signed.
+#
+# App updates (launcher/README.md "App updates"): with the repository secrets
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD the macOS
+# job also builds the signed updater bundle (.app.tar.gz + .sig, checked by
+# installed apps against the public key in src-tauri/tauri.conf.json), and on
+# a v* tag the release job adds latest.json (darwin-aarch64 only,
+# scripts/updater_json.py) to the release and points the fixed `updater`
+# release at it (.github/workflows/updater.yml), where installed apps look.
+# Without the secrets everything else still builds; the release then has no
+# updater bundle and installed apps are not offered it.
 name: launcher
 
 on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['launcher/**', '.github/workflows/launcher.yml']
+    paths: ['launcher/**', '.github/workflows/launcher.yml', '.github/workflows/updater.yml']
   pull_request:
-    paths: ['launcher/**', '.github/workflows/launcher.yml']
+    paths: ['launcher/**', '.github/workflows/launcher.yml', '.github/workflows/updater.yml']
   workflow_dispatch:
 
 permissions:
@@ -38,14 +48,56 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: launcher/src-tauri
+      - name: The version is the tag's
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 scripts/check_version.py "${GITHUB_REF_NAME}"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
       - run: cargo test
         working-directory: launcher/src-tauri
-      - run: npx tauri build --bundles app,dmg
+      - name: Updater manifest script
+        run: python3 scripts/test_updater_json.py
+      - name: Updater signature
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          # The key itself only reaches the build step (its env below); this
+          # only decides whether the updater bundle is made
+          # (src-tauri/tauri.updater.conf.json: bundle.createUpdaterArtifacts,
+          # which fails without the key).
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "TAURI_UPDATER_CONFIG=--config $GITHUB_WORKSPACE/launcher/src-tauri/tauri.updater.conf.json" >> "$GITHUB_ENV"
+            echo "signed updater bundle (.app.tar.gz + .sig)"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::warning::no TAURI_SIGNING_PRIVATE_KEY secret: this release has no updater bundle, so installed apps will not update to it by themselves"
+          else
+            echo "::notice::no TAURI_SIGNING_PRIVATE_KEY secret (e.g. a fork's pull request): no updater bundle"
+          fi
+      - name: Build the bundles
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # TAURI_UPDATER_CONFIG is "--config <file>" or empty
+          # shellcheck disable=SC2086
+          npx tauri build --bundles app,dmg $TAURI_UPDATER_CONFIG
       - name: Check the bundles
-        run: python3 scripts/check_bundle.py src-tauri/target/release/bundle/macos/*.app src-tauri/target/release/bundle/dmg/*.dmg
+        run: |
+          set -e
+          python3 scripts/check_bundle.py src-tauri/target/release/bundle/macos/*.app src-tauri/target/release/bundle/dmg/*.dmg
+          # the updater bundle is the same .app, packed
+          shopt -s nullglob
+          for tgz in src-tauri/target/release/bundle/macos/*.app.tar.gz; do
+            test -s "$tgz.sig"
+            d=$(mktemp -d)
+            tar -xzf "$tgz" -C "$d"
+            python3 scripts/check_bundle.py "$d"
+            rm -rf "$d"
+          done
+          if [ -n "${TAURI_UPDATER_CONFIG:-}" ]; then
+            ls src-tauri/target/release/bundle/macos/*.app.tar.gz src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+          fi
       - name: Zip the app
         run: |
           cd src-tauri/target/release/bundle/macos
@@ -53,9 +105,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: resistance-launcher-macos-arm64
+          # the updater bundle and its signature only with the updater key
           path: |
             launcher/src-tauri/target/release/bundle/resistance-launcher_aarch64.app.zip
             launcher/src-tauri/target/release/bundle/dmg/*.dmg
+            launcher/src-tauri/target/release/bundle/macos/*.app.tar.gz
+            launcher/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
           retention-days: 30
 
   # Preview: the launcher builds and starts on Windows, but the port's own
@@ -78,6 +133,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: launcher/src-tauri
+      - name: The version is the tag's
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/check_version.py "${GITHUB_REF_NAME}"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
@@ -106,7 +164,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
+    outputs:
+      updater: ${{ steps.manifest.outputs.updater }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -119,11 +180,44 @@ jobs:
           cp dist/resistance-launcher-macos-arm64/dmg/*.dmg "out/resistance-launcher_${v}_macos_aarch64.dmg"
           cp dist/resistance-launcher-windows-x64/nsis/*.exe "out/resistance-launcher_${v}_windows_x64-setup-PREVIEW.exe"
           cp dist/resistance-launcher-windows-x64/msi/*.msi "out/resistance-launcher_${v}_windows_x64-PREVIEW.msi"
+          # the updater bundle (only built with the updater key)
+          shopt -s nullglob
+          for tgz in dist/resistance-launcher-macos-arm64/macos/*.app.tar.gz; do
+            cp "$tgz" "out/resistance-launcher_${v}_macos_aarch64.app.tar.gz"
+            cp "$tgz.sig" "out/resistance-launcher_${v}_macos_aarch64.app.tar.gz.sig"
+          done
           ls -l out
+      - name: The updater manifest
+        id: manifest
+        run: |
+          set -e
+          v=${TAG#v}
+          tgz="out/resistance-launcher_${v}_macos_aarch64.app.tar.gz"
+          if [ -s "$tgz" ] && [ -s "$tgz.sig" ]; then
+            printf 'Launcher %s.\n' "$TAG" > notes.md
+            python3 launcher/scripts/updater_json.py make --tag "$TAG" --repo "$GH_REPO" \
+              --asset "$tgz" --sig "$tgz.sig" --notes-file notes.md --out out/latest.json
+            echo "updater=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::no signed updater bundle in the artifacts: no latest.json for $TAG"
+            echo "updater=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Attach them to the release
         run: |
           set -e
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --prerelease --title "Resistance Recomp $TAG" --notes "Launcher builds for $TAG (macOS Apple silicon; Windows x64 preview, untested)."
+            gh release create "$TAG" --verify-tag --prerelease --title "Resistance Recomp $TAG" --notes "Launcher builds for $TAG (macOS Apple silicon; Windows x64 preview, untested). Installed launchers (macOS) update themselves from here: Advanced > Updates > Download and install."
           fi
           gh release upload "$TAG" out/* --clobber
+
+  # Installed apps read latest.json from the fixed `updater` release: point it
+  # at this one (a release made here with the workflow's token does not start
+  # updater.yml's "release published" trigger by itself).
+  updater:
+    if: startsWith(github.ref, 'refs/tags/v') && needs.release.outputs.updater == 'true'
+    needs: [release]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/updater.yml
+    with:
+      tag: ${{ github.ref_name }}

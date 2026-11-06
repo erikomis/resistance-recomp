@@ -1862,7 +1862,7 @@ async function main() {
   });
   initUpdates({
     auto: () => settings.autoUpdateCheck ?? true,
-    busy: () => rebuildRunning || gameRunning,
+    busy: () => (gameRunning ? "game" : rebuildRunning ? "rebuild" : null),
     canRebuild: () => !rebuildRunning && !gameRunning && !!status?.builds?.rebuildSh,
     rebuild: () => {
       showView("advanced", "install");

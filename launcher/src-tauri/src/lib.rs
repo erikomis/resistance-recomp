@@ -909,6 +909,18 @@ pub struct AppState {
     start_view: Mutex<Option<String>>,
     /// build_features' cache.
     features: Mutex<FeatureCache>,
+    /// An app update is being downloaded and installed (update.rs).
+    updating: Mutex<bool>,
+    /// The version an update put on disk this session (restart to finish).
+    update_installed: Mutex<Option<String>>,
+}
+
+/// Play, the rebuild and the install wait while the app updates itself.
+fn refuse_while_updating(state: &AppState) -> Result<(), String> {
+    if *state.updating.lock().unwrap() {
+        return Err("the launcher is installing its update: wait for it to finish".into());
+    }
+    Ok(())
 }
 
 /// A GUI app on macOS starts with a bare PATH; tools/bootstrap_deps.sh's
@@ -1340,6 +1352,7 @@ pub struct PlayStarted {
 #[tauri::command]
 fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) -> Result<PlayStarted, String> {
     require_supported_host()?;
+    refuse_while_updating(&state)?;
     let mut slot = state.game.lock().unwrap();
     if slot.is_some() {
         return Err("the game is already running".into());
@@ -2342,6 +2355,7 @@ pub struct RebuildRequest {
 #[tauri::command]
 fn start_rebuild(app: AppHandle, state: State<'_, AppState>, req: RebuildRequest) -> Result<(), String> {
     require_supported_host()?;
+    refuse_while_updating(&state)?;
     if let Some(bad) = req.steps.iter().find(|s| !STEPS.contains(&s.as_str())) {
         return Err(format!("{bad}: not a step ({})", STEPS.join(" ")));
     }
@@ -2446,6 +2460,7 @@ fn install_script(root: Option<&Path>, src: &Path, url: &str, tag: &str) -> Stri
 #[tauri::command]
 fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     require_supported_host()?;
+    refuse_while_updating(&state)?;
     if !cfg!(target_os = "macos") {
         return Err("the one-click install is for macOS; use Advanced > Install / rebuild".into());
     }
@@ -2519,18 +2534,19 @@ fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, S
 // Updates (update.rs)
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     sources: update::Sources,
     /// The newest commit touching the port is newer than the EBOOT build.
     rebuild_needed: bool,
     built_at: u64,
+    /// The launcher (latest.json, the install, "updated from").
     app: update::AppUpdate,
 }
 
 #[tauri::command]
-async fn check_updates(online: bool) -> UpdateInfo {
+async fn check_updates(app: AppHandle, online: bool) -> UpdateInfo {
     tauri::async_runtime::spawn_blocking(move || {
         let st = load_settings_file();
         let root = port_root(&st);
@@ -2538,21 +2554,18 @@ async fn check_updates(online: bool) -> UpdateInfo {
         let sources = root.as_deref().map(|r| update::sources(r, online)).unwrap_or_default();
         let built_at = b.as_ref().map_or(0, |b| b.built_at);
         let rebuild_needed = built_at > 0 && sources.sources_time > built_at;
-        let app = if online {
-            update::check_app(env!("CARGO_PKG_VERSION"))
-        } else {
-            update::AppUpdate { current: env!("CARGO_PKG_VERSION").into(), ..Default::default() }
-        };
+        let app = update::check_app(&app, online, built_at);
         UpdateInfo { sources, rebuild_needed, built_at, app }
     })
     .await
-    .unwrap_or(UpdateInfo { sources: Default::default(), rebuild_needed: false, built_at: 0, app: Default::default() })
+    .unwrap_or_default()
 }
 
 /// "Get the new sources": git pull --ff-only in the port folder, streamed as
 /// rebuild-line / rebuild-exit (the Install tab's log).
 #[tauri::command]
 fn pull_sources(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    refuse_while_updating(&state)?;
     let mut slot = state.rebuild.lock().unwrap();
     if slot.is_some() {
         return Err("a rebuild is running".into());
@@ -2955,7 +2968,7 @@ fn report_delete(state: State<'_, AppState>, id: String) -> Result<(), String> {
 // Saves (saves.rs)
 // ---------------------------------------------------------------------------
 
-fn game_busy(state: &State<'_, AppState>) -> bool {
+fn game_busy(state: &AppState) -> bool {
     state.game.lock().unwrap().is_some() || process_running(GAME_EXE) || process_running(LEGACY_EXE)
 }
 
@@ -3060,6 +3073,7 @@ async fn saves_import_zip(state: State<'_, AppState>, path: String) -> Result<sa
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .setup(|app| {
             sync_app_icon(app.handle());
@@ -3087,6 +3101,8 @@ pub fn run() {
             move_update_files,
             check_updates,
             pull_sources,
+            update::install_update,
+            update::restart_app,
             check_prereqs,
             install_clt,
             install_deps,
