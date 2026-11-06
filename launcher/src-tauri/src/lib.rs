@@ -1133,6 +1133,10 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path, input: &InputEnv) -> Vec<(
     set("PS3_VFS_ROOT", s_(disc));
     set("PS3_HDD0_ROOT", s_(&play.join("dev_hdd0")));
     set("PS3_HDD1_ROOT", s_(&play.join("dev_hdd1")));
+    // The in-game menu's settings (F1): what the player changes there is saved
+    // to this file and read again at the next start and across the
+    // EBOOT -> game.self exec. The variables below still win over it.
+    set("PS3_OVERLAY_INI", s_(&play.join("overlay.ini")));
     if s.video {
         let (codec, util) = ffmpeg_libs(s);
         if let Some(c) = codec {
@@ -3244,6 +3248,7 @@ mod tests {
         assert_eq!(e["PS3_VFS_ROOT"], "/Volumes/RESISTANCE_1");
         assert_eq!(e["PS3_HDD0_ROOT"], "/p/dev_hdd0");
         assert_eq!(e["PS3_HDD1_ROOT"], "/p/dev_hdd1");
+        assert_eq!(e["PS3_OVERLAY_INI"], "/p/overlay.ini");
         assert_eq!(e["PS3RECOMP_METAL_FPS"], "1");
         assert_eq!(e["PS3_VERBOSE"], "0");
         assert!(e["PS3_SHADER_CACHE"].ends_with("resistance-recomp/shader-cache"));
@@ -3252,7 +3257,7 @@ mod tests {
         }
         // the launch is the same as before the new settings existed
         let keys: Vec<&str> = e.keys().map(String::as_str).filter(|k| !k.starts_with("PS3RECOMP_FFMPEG_")).collect();
-        assert_eq!(keys, ["PS3RECOMP_METAL_FPS", "PS3_HDD0_ROOT", "PS3_HDD1_ROOT", "PS3_SHADER_CACHE", "PS3_VERBOSE", "PS3_VFS_ROOT"]);
+        assert_eq!(keys, ["PS3RECOMP_METAL_FPS", "PS3_HDD0_ROOT", "PS3_HDD1_ROOT", "PS3_OVERLAY_INI", "PS3_SHADER_CACHE", "PS3_VERBOSE", "PS3_VFS_ROOT"]);
         st.campaign = "100".into();
         st.game_lang = "pt-br".into();
         st.aa = "fxaa".into();
@@ -3439,7 +3444,7 @@ mod tests {
         assert!(st.mods.is_empty() && !st.unlock_fps && st.fov.is_empty());
         let e: BTreeMap<String, String> = launch_env(&st, Path::new("/d"), Path::new("/p"), &InputEnv::default()).into_iter().collect();
         let keys: Vec<&str> = e.keys().map(String::as_str).filter(|k| !k.starts_with("PS3RECOMP_FFMPEG_")).collect();
-        assert_eq!(keys, ["PS3RECOMP_METAL_FPS", "PS3_AA", "PS3_HDD0_ROOT", "PS3_HDD1_ROOT", "PS3_SHADER_CACHE", "PS3_VERBOSE", "PS3_VFS_ROOT"]);
+        assert_eq!(keys, ["PS3RECOMP_METAL_FPS", "PS3_AA", "PS3_HDD0_ROOT", "PS3_HDD1_ROOT", "PS3_OVERLAY_INI", "PS3_SHADER_CACHE", "PS3_VERBOSE", "PS3_VFS_ROOT"]);
     }
 
     #[test]
