@@ -102,7 +102,7 @@ jobs:
         run: |
           cd src-tauri/target/release/bundle/macos
           ditto -c -k --keepParent "Resistance Launcher.app" "../resistance-launcher_aarch64.app.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: resistance-launcher-macos-arm64
           # the updater bundle and its signature only with the updater key
@@ -146,7 +146,7 @@ jobs:
       - run: npx tauri build --bundles nsis,msi
       - name: Check the bundles
         run: python scripts/check_bundle.py src-tauri/target/release/bundle/nsis src-tauri/target/release/bundle/msi src-tauri/target/release/resistance-launcher.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: resistance-launcher-windows-x64
           path: |
