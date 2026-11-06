@@ -217,12 +217,21 @@ static void present_guest_frame(void)
  * window or from a signal, ends the process at once: wait for a save in
  * progress (cellSaveData, at most 2 s), flush the logs, _exit(0). exit() would
  * run the C++ static destructors and the Metal and SDL teardown under guest
- * threads that are still running. From the Resistance 2 port. */
+ * threads that are still running. From the Resistance 2 port.
+ *
+ * The in-game menu's "Quit game" (libs/video/ps3_overlay.mm) comes here too,
+ * through ps3_host_quit. The wait is the quit gate (include/ps3emu/
+ * quit_gate.h): from the moment the quit starts no save and no write to
+ * /dev_hdd0 (quick.sav, the profile) begins, and the ones under way finish
+ * -- at most 2 s for a close or a signal (the launcher kills the game 3 s
+ * after its SIGTERM), 30 s from the menu, where nothing is waiting to kill
+ * the game. The exit status is 0 either way. */
 #ifndef _WIN32
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
+#include "ps3emu/quit_gate.h"
 extern "C" int cellSaveData_busy(void);
 static int g_clean_exit = -1;            /* resolved in quit_install() */
 static int g_quit_pipe[2] = { -1, -1 };
@@ -237,21 +246,13 @@ static bool clean_exit_on(void)
     return g_clean_exit != 0;
 }
 
-static void quit_sleep_ms(int ms)
-{
-    struct timespec ts = { ms / 1000, (long)(ms % 1000) * 1000000L };
-    nanosleep(&ts, nullptr);
-}
-
 /* Runs once, on the quit thread. Never returns. */
-static void quit_now(const char* why)
+static void quit_now(const char* why, int wait_ms)
 {
     fprintf(stderr, "[boot] quit (%s)\n", why);
-    int waited = 0;
-    while (cellSaveData_busy() && waited < 2000) { quit_sleep_ms(10); waited += 10; }
-    if (waited)
-        fprintf(stderr, "[boot] quit: waited %d ms for a save in progress%s\n", waited,
-                cellSaveData_busy() ? " (still busy)" : "");
+    const int left = ps3_quit_gate_wait(wait_ms);
+    if (left || cellSaveData_busy())
+        fprintf(stderr, "[boot] quit: a save or write was still open after %d ms\n", wait_ms);
     fflush(stdout);
     fflush(stderr);
     _exit(0);
@@ -264,8 +265,8 @@ static void* quit_thread(void*)
         const ssize_t n = read(g_quit_pipe[0], &c, 1);
         if (n == 1) {
             const char* why = c == SIGTERM ? "SIGTERM" : c == SIGINT ? "SIGINT"
-                            : c == SIGHUP ? "SIGHUP" : "window closed";
-            quit_now(why);
+                            : c == SIGHUP ? "SIGHUP" : c == 'm' ? "in-game menu" : "window closed";
+            quit_now(why, c == 'm' ? 30000 : 2000);
         }
         if (n == 0) return nullptr;
     }
@@ -286,6 +287,28 @@ static void quit_request_window_closed(void)
     const unsigned char c = 0;
     const ssize_t r = write(g_quit_pipe[1], &c, 1);
     (void)r;
+}
+
+/* The in-game menu's "Quit game" (ps3_overlay.mm): the same clean exit. With
+ * PS3_CLEAN_EXIT=0 there is no quit thread; this thread then waits at the
+ * gate and exits itself. */
+extern "C" void ps3_host_quit(const char* why)
+{
+    if (clean_exit_on() && g_quit_pipe[1] >= 0) {
+        if (g_quit_started) return;
+        g_quit_started = 1;
+        const unsigned char c = 'm';
+        if (write(g_quit_pipe[1], &c, 1) == 1) return;
+    }
+    /* Not on the caller's thread (the presenting one): the game goes on
+     * while a save finishes. */
+    pthread_t th;
+    if (pthread_create(&th, nullptr, [](void*) -> void* { quit_now("in-game menu", 30000); return nullptr; },
+                       nullptr) == 0) {
+        pthread_detach(th);
+        return;
+    }
+    quit_now(why ? why : "in-game menu", 30000);
 }
 
 /* Before anything initialises SDL. The pipe is close-on-exec: the EBOOT's
@@ -320,6 +343,7 @@ static void quit_install(void)
 static bool clean_exit_on(void) { return false; }
 static void quit_request_window_closed(void) {}
 static void quit_install(void) {}
+extern "C" void ps3_host_quit(const char* why) { (void)why; fflush(stdout); fflush(stderr); _exit(0); }
 #endif
 
 static DWORD WINAPI frame_clock(LPVOID)
