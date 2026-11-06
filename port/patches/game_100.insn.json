@@ -3,6 +3,8 @@
   "source": "RPCS3 patch.yml, \"Unlock FPS\" (Whatcookie, FlexBy, illusion, Score)",
   "patches": [
     {"addr": "0x001E5DB0", "orig": "0x419DFFDC", "new": "0x60000000", "guard": "g_res_unlock_fps",
-     "note": "bgt cr7 -> nop: leave the frame limiter's sleep loop after one pass"}
+     "note": "bgt cr7 -> nop: leave the frame limiter's sleep loop after one pass"},
+    {"addr": "0x000D317C", "orig": "0x80690000", "new": "0x38600006", "guard": "g_res_speakers",
+     "note": "speaker-count getter: lwz r3,0(r9) -> li r3,6. The global it reads starts at 2 and the audio-out setup sets it to 6 on another thread; a sound setup that read it first mixed the whole session in the 2ch layout (the menu music's varying centre/LFE). From the Resistance PC port by Psyykosis (MIT). RES_SPEAKERS=0 keeps the original read."}
   ]
 }

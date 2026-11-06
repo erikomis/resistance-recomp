@@ -190,13 +190,23 @@ add_executable(${PROJECT_NAME}
 # changes the compile command of every lifted PPU TU, and those are large enough
 # that the needless rebuild is measured in tens of minutes.
 #   SPU_USE_DISPATCH_MT -- route SPU_IB_DISPATCH through the musttail path.
+#   SPU_LS_NO_DBG       -- (RES_SPU_FAST, on by default) no debug probe or LS
+#                          watch on each local-store access (spu_context.h):
+#                          they kept every guest register in memory around every
+#                          load and store. Turn it off for SPU_LS_WATCH,
+#                          SPU_SMC_WATCH or SPU_LS_LOWREAD.
 #   -O2                 -- the target-wide -O1 exists for the huge PPU TUs; the
 #                          SPU sources are small and decode-hot, so they get
 #                          full optimization. The last -O on the line wins.
+option(RES_SPU_FAST "Lifted SPU code without the local-store debug probes" ON)
 if(SPU_SOURCES)
+    set(_spu_defs SPU_USE_DISPATCH_MT)
+    if(RES_SPU_FAST)
+        list(APPEND _spu_defs SPU_LS_NO_DBG)
+    endif()
     set_source_files_properties(${SPU_SOURCES} PROPERTIES
         INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu"
-        COMPILE_DEFINITIONS SPU_USE_DISPATCH_MT)
+        COMPILE_DEFINITIONS "${_spu_defs}")
     if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2")
     endif()

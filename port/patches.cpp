@@ -16,6 +16,13 @@
  *                      1.0; RPCS3's "Extended FOV" is 0.7).
  *   RES_MENU_60FPS=1   EBOOT (front end, multiplayer): one vblank per frame
  *                      instead of two, and its timesteps 1/30 -> 1/60 s.
+ *   RES_SPEAKERS=0     both: the game's speaker-count getter reads its global
+ *                      again. On by default: the getter answers 6 (the 5.1
+ *                      layout the runtime reports). The global starts at 2 and
+ *                      the audio-out setup sets it to 6 on another thread, so a
+ *                      sound setup that read it first mixed the whole session
+ *                      in the 2ch layout. From the Resistance PC port by
+ *                      Psyykosis (MIT).
  *
  * A patch is two halves. The data half (timesteps, FOV) is written into guest
  * memory here, after the ELF is loaded and before the guest starts. The code
@@ -38,6 +45,7 @@ extern uint8_t* vm_base;
 /* Read by the lifted code at the patched instructions. */
 int g_res_unlock_fps = 0;
 int g_res_menu_60fps = 0;
+int g_res_speakers = 1;
 /* The vblank rate this process's patches want (0 = the frame clock's own
  * default); PS3_VBLANK_HZ still wins. */
 double g_res_vblank_hz = 0.0;
@@ -122,6 +130,10 @@ extern "C" void res_apply_patches(void)
     const bool unlock = env_on("RES_UNLOCK_FPS");
     const char* fov_s = getenv("RES_FOV");
     const bool menu60 = env_on("RES_MENU_60FPS");
+    if (const char* e = getenv("RES_SPEAKERS"); e && strcmp(e, "0") == 0) {
+        g_res_speakers = 0;
+        fprintf(stderr, "[patch] RES_SPEAKERS=0: the speaker-count getter reads its global\n");
+    }
     if (!vm_base || (!unlock && !(fov_s && *fov_s) && !menu60)) return;
 
     for (const PatchSet& ps : kCampaign) {
