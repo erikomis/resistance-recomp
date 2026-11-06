@@ -99,6 +99,10 @@ this without a terminal: Home (your disc's art, PLAY, quick settings, last
 save, status), Graphics, Performance, Game, Controls and Advanced.
 
 - **Install the game** with one button, and **rebuild** after an update.
+- **Updates itself** (from v0.3.0): the Updates card on Home offers
+  **Download and install**, then **Restart to finish** (signed and checked),
+  and afterwards **Rebuild the game**. v0.2.2 and older have no updater:
+  install v0.3.0 by hand once.
 - **Graphics:** window, fullscreen or borderless, vsync, filters (FXAA,
   SMAA, sharpening), MetalFX, texture packs, the 60 fps and field-of-view
   options.

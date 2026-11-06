@@ -104,6 +104,10 @@ isso sem terminal: Início (a arte do seu disco, JOGAR, ajustes rápidos,
 
 - **Instalar o jogo** com um botão, e **recompilar** depois de uma
   atualização.
+- **Se atualiza sozinho** (a partir da v0.3.0): o card Atualizações no Início
+  oferece **Baixar e instalar**, depois **Reiniciar para concluir** (assinado
+  e conferido), e em seguida **Recompilar o jogo**. A v0.2.2 e as anteriores
+  não têm atualizador: instale a v0.3.0 na mão uma vez.
 - **Gráficos:** janela, tela cheia ou sem borda, vsync, filtros (FXAA, SMAA,
   nitidez), MetalFX, pacotes de texturas, as opções de 60 fps e de campo de
   visão.

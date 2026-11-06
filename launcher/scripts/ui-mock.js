@@ -11,7 +11,8 @@
 // { running: true } or { updateFiles: true }, set by an earlier init script,
 // shows those states instead; { oldBuild: true } is a build from before the
 // keyboard/mouse, filters and window modes, { patches: true } one that has the
-// 60 fps / FOV patches.
+// 60 fps / FOV patches, { appUpdate: true } a newer launcher on offer and
+// { updatedFrom: true } the start after an update (rebuild offered).
 (() => {
   const flags = window.__UI_MOCK__ || {};
   const home = "/Users/player";
@@ -72,8 +73,12 @@
     check_updates: (a) => ({
       sources: { git: true, branch: "main", commit: "1a2b3c4", subject: "Launcher", commitTime: now - 7200, upstream: "origin/main", behind: 0, ahead: 0, dirty: 0, sourcesTime: now - 7200, fetched: !!a.online, error: null },
       rebuildNeeded: false, builtAt: builds.builtAt,
-      app: { current: "0.1.0", latest: "v0.1.0", newer: false, url: null, notes: null, disabled: false, error: null },
+      app: flags.appUpdate
+        ? { current: "0.2.2", checked: !!a.online, latest: "0.3.0", newer: !!a.online, url: "https://github.com/erikomis/resistance-recomp/releases/tag/v0.3.0", notes: "Launcher v0.3.0.", pubDate: null, disabled: false, error: null, installBlocker: null, installedPending: null, updatedFrom: null }
+        : { current: "0.2.2", checked: !!a.online, latest: "0.2.2", newer: false, url: null, notes: null, pubDate: null, disabled: false, error: null, installBlocker: null, installedPending: null, updatedFrom: flags.updatedFrom ? "0.2.1" : null },
     }),
+    install_update: () => "0.3.0",
+    restart_app: () => null,
     steam_status: () => ({ available: true, installed: true, running: false, users: 1, added: 0 }),
     shader_cache_info: () => ({ path: `${data}/shader-cache`, bytes: 18400000, files: 1240 }),
     report_info: () => (flags.running ? { dir: "/r/x", id: "20261022-190000", live: true, debug: true, captures: 1, pending: false, passes: 64, bytes: 210000000, logBytes: 9000000, duration: 300, exit: null, stopped: false, crashReport: false, zip: null, zipBytes: 0, triage: null } : null),

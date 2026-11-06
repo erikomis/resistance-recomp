@@ -149,10 +149,12 @@ next time the game starts.
     behind its upstream, **Get the new sources** = `git pull --ff-only`,
     refused with local changes) and "the sources changed after the builds"
     (the newest commit touching `port/`, `patches/` or `tools/` against the
-    EBOOT build's time) with **Rebuild the game**; the newest launcher
-    release on GitHub. Once per session on start when **Check for updates
-    when the app opens** is on; `RES_NO_UPDATE_CHECK=1` turns the launcher
-    check off.
+    EBOOT build's time) with **Rebuild the game**; the launcher itself
+    (see [App updates](#app-updates)): a newer version is offered with
+    **Download and install**, then **Restart to finish**, and the new
+    version offers **Rebuild the game**. Once per session on start when
+    **Check for updates when the app opens** is on; `RES_NO_UPDATE_CHECK=1`
+    turns the launcher check and the install off.
   - **Game log**: the end of `last.log` (or the debug session's log), at
     most 512 KB, followed every 2 s, a filter, warnings and errors only,
     copy, show in Finder.
@@ -302,9 +304,74 @@ from the game (names, PS3 file headers, PowerPC/SPU ELFs, big files);
 `.github/workflows/launcher.yml` builds the app on `macos-14` and on
 `windows-latest`, runs the tests and the check, and uploads the zipped
 `.app` and the `.dmg`, and the Windows installers (NSIS `.exe`, `.msi`); on a
-`v*` tag it attaches them to that GitHub release. The builds are unsigned:
-on macOS right-click the app and choose Open the first time (Gatekeeper);
-on Windows SmartScreen may warn ("More info" > "Run anyway").
+`v*` tag it attaches them to that GitHub release. The builds are not
+code-signed: on macOS right-click the app and choose Open the first time
+(Gatekeeper); on Windows SmartScreen may warn ("More info" > "Run anyway").
+
+## App updates
+
+The launcher updates itself on macOS (Apple silicon) with
+[tauri-plugin-updater](https://v2.tauri.app/plugin/updater/)
+(`src-tauri/src/update.rs`, `src/update.ts`):
+
+1. **The check.** The app reads the update manifest `latest.json` from the
+   first of `plugins.updater.endpoints` in `src-tauri/tauri.conf.json` that
+   has one: the fixed `updater` release
+   (`https://github.com/erikomis/resistance-recomp/releases/download/updater/latest.json`),
+   then GitHub's "latest release" (which skips pre-releases, hence the fixed
+   one). Once per session at start when the setting is on, and on **Check
+   again**; with the system's `curl`, no token.
+2. **Download and install.** The plugin downloads the `.app.tar.gz` the
+   manifest names, checks its minisign signature against the public key
+   (`plugins.updater.pubkey`; the signature must also carry the announced
+   version, `requireSignedVersion`) and swaps the bundle in place. Refused
+   while the game, a rebuild or an install runs, from a development build,
+   from the disk image and from a translocated copy (macOS runs a downloaded
+   app from a read-only place until it is moved to Applications); Play and
+   the rebuild wait while it runs.
+3. **Restart to finish** relaunches into the new version. The install left
+   `app-updated.json` (from, to, when) in the launcher's folder; while the
+   app is that version and the EBOOT build is older than the update,
+   Updates and Home offer **Rebuild the game** (after **Get the new
+   sources** when the checkout is behind). Settings, saves and the builds
+   are never touched by the update.
+
+Windows (preview) is not in the manifest: a newer version there is a link
+to its release page.
+
+**Releasing.** Bump the version in `src-tauri/tauri.conf.json`,
+`src-tauri/Cargo.toml` and `package.json` (the tag's jobs fail when they
+differ from the tag: `scripts/check_version.py`), commit, and push a `vX.Y.Z`
+tag. `.github/workflows/launcher.yml` then:
+
+- on macOS, with the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, builds with
+  `--config src-tauri/tauri.updater.conf.json` (`createUpdaterArtifacts`),
+  which adds `Resistance Launcher.app.tar.gz` and its `.sig` (a local
+  `tauri build` without the key keeps working: the setting is only in that
+  file);
+- in the release job, names them `resistance-launcher_<v>_macos_aarch64.app.tar.gz`
+  (+ `.sig`), writes `latest.json` with `scripts/updater_json.py make`
+  (darwin-aarch64 only; it refuses a signature for another version) and
+  attaches everything to the release;
+- runs `.github/workflows/updater.yml`, which copies that `latest.json`
+  (with the release's notes and date) to the `updater` release, made on
+  first use. It never offers an older version than the current one, except
+  when run by hand (Actions > updater > Run workflow, with a tag): that is
+  the rollback. It also runs when a release is published by hand.
+
+Without the secrets the release still gets its `.dmg`, `.app.zip` and
+Windows installers, but no updater bundle: installed apps are not offered
+it. `python3 scripts/test_updater_json.py` tests the manifest script; the
+`update::tests` in `cargo test` check the manifest parsing and that the
+endpoints and the key in `tauri.conf.json` are well formed.
+
+**The signing key.** Made once with `npx tauri signer generate -w
+<file>` (a password is asked; keep it). The public key goes into
+`plugins.updater.pubkey`; the private key file's contents and its password
+are the two secrets above and are kept nowhere in the repository. Losing the
+private key means installed apps can no longer be updated (a new key needs a
+manual download of the version that carries it).
 
 ## Windows (preview)
 
@@ -355,12 +422,13 @@ before them says to rebuild):
 
 ## Not done (from the inFAMOUS 2 launcher)
 
-- **App self-update** (download, verify, install, restart): it needs a
-  release-signing key pair and published releases; the Updates card checks
-  the newest GitHub release and links to it instead.
 - **Button-icon settings, the built-in LUT presets, the tone curve and
   clarity, voice/subtitle languages, trophies**:
-  this port's runtime has no such options (and the game has no trophies).
+  this port's runtime has no such options. The game has no trophies:
+  Resistance: Fall of Man (2006) predates them, its disc has no
+  `PS3_GAME/TROPDIR`, its PARAM.SFO no trophy fields, and neither the 01.00
+  nor the v1.7 executables import `sceNpTrophy` (they import `sceNp` only;
+  the one NP ID they carry, `NPWR00011`, has no trophy set on the disc).
 - **A bundled port**: the app carries no sources; Install the game clones
   them (the repository must be reachable: `RES_SOURCES_URL` points elsewhere)
   and builds from that checkout.

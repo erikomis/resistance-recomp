@@ -39,5 +39,15 @@
     "macOS": {
       "minimumSystemVersion": "13.0"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5RTFFRkExNUJDMTAxQTQKUldTa0FjRmJvZS9oK1picXhpYTZZKy9wMGx2c0lXMVBzYjNWQ1ZldU9ldzFMQlcwM0IwZk5td2YK",
+      "endpoints": [
+        "https://github.com/erikomis/resistance-recomp/releases/download/updater/latest.json",
+        "https://github.com/erikomis/resistance-recomp/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true
+    }
   }
 }
