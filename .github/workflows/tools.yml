@@ -1,0 +1,83 @@
+# Quick checks on the port's own scripts, no game data needed: every Python
+# file compiles, every shell script parses (zsh for the zsh ones, which is
+# most of tools/), and the SELF decryptor passes its synthetic round trips
+# (made-up keys, nothing real):
+#   decrypt_self.py --selftest   SELF -> ELF (APP with a compressed segment, NPDRM)
+# Runs on changes to scripts, so a broken tools/ change shows before a player
+# runs it from the launcher's Install the game.
+name: tools
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.py'
+      - '**.sh'
+      - '.github/workflows/tools.yml'
+  pull_request:
+    paths:
+      - '**.py'
+      - '**.sh'
+      - '.github/workflows/tools.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tools-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # The toolkit's requirements pin it too; the self-test only needs AES.
+      - name: pycryptodome and zsh
+        run: |
+          python -m pip install --disable-pip-version-check pycryptodome
+          sudo apt-get install -y -qq zsh >/dev/null
+
+      - name: Python files compile
+        run: |
+          git ls-files -z '*.py' > "$RUNNER_TEMP/py.lst"
+          python - "$RUNNER_TEMP/py.lst" <<'PY'
+          import sys
+          files = [f for f in open(sys.argv[1], 'rb').read().decode().split('\0') if f]
+          bad = 0
+          for f in files:
+              try:
+                  compile(open(f, 'rb').read(), f, 'exec')
+              except SyntaxError as e:
+                  print(f'::error file={f},line={e.lineno}::{e.msg}')
+                  bad += 1
+          print(f'{len(files)} files, {bad} with syntax errors')
+          sys.exit(1 if bad else 0)
+          PY
+
+      # tools/env.sh has no shebang: it is sourced by the zsh scripts.
+      - name: Shell scripts parse
+        run: |
+          bad=0
+          while IFS= read -r -d '' f; do
+            case $(head -n1 "$f") in
+              *zsh*)  zsh -n "$f" ;;
+              *bash*) bash -n "$f" ;;
+              '#!'*)  sh -n "$f" ;;
+              *)      zsh -n "$f" ;;
+            esac || { echo "::error file=$f::does not parse"; bad=1; }
+          done < <(git ls-files -z '*.sh')
+          exit $bad
+
+      - name: decrypt_self.py self-test
+        run: python -I tools/decrypt_self.py --selftest
