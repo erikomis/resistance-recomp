@@ -59,6 +59,20 @@ v0.17.0 ou a este port), com os autores mantidos nos cabeçalhos do patch:
   thread principal do macOS. Ele, por sua vez, se apoia no fork do inFAMOUS 1
   do ps3recomp feito por [NoahBPeterson](https://github.com/NoahBPeterson/ps3recomp).
 
+## Outro port do mesmo jogo
+
+- **[Resistance: Fall of Man PC port](https://github.com/Psyykosis/Resistance-Fall-of-Man-Recomp)**
+  — o port do mesmo jogo para Windows / Direct3D 12 feito por Psyykosis, sobre
+  o mesmo commit do toolkit (MIT). Estas correções vêm dele, adaptadas a este
+  port: o alpha test sobre o alpha que o buffer de cor guarda (a vegetação), o
+  registrador de destino do `ARL` no programa de vértice, um `stwcx.` que grava
+  o valor que já estava lá não derruba mais as reservas das SPUs, o "acordar"
+  do canal das SPUs sob a trava de quem espera e a espera curta antes de uma
+  SPU dormir, o `cellSpursReadyCountStore` sem trava, os saltos indiretos das
+  SPUs alinhados à palavra, o código SPU traduzido sem as sondas de depuração
+  da local store, e a corrida no layout das caixas de som (o centro/LFE
+  variando na música do menu).
+
 ## Ferramentas
 
 - [RPCS3](https://github.com/RPCS3/rpcs3) — a tabela pública de chaves dele

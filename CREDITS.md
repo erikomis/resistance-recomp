@@ -58,6 +58,19 @@ v0.17.0 or to this port), with their authors kept in the patch headers:
   stands on [NoahBPeterson](https://github.com/NoahBPeterson/ps3recomp)'s
   inFAMOUS 1 fork of ps3recomp.
 
+## Another port of the same game
+
+- **[Resistance: Fall of Man PC port](https://github.com/Psyykosis/Resistance-Fall-of-Man-Recomp)**
+  — Psyykosis's Windows / Direct3D 12 port of the same game on the same
+  toolkit commit (MIT). These fixes come from it, adapted to this port: the
+  alpha test on the alpha the colour buffer stores (the foliage), the vertex
+  program's `ARL` destination register, a `stwcx.` that stores the value
+  already there no longer taking the SPUs' reservations, the SPU channel wake
+  under the waiter's lock and the short spin before an SPU sleeps, the
+  lock-free `cellSpursReadyCountStore`, word-aligned SPU indirect branches,
+  the lifted SPU code without local-store debug probes, and the speaker-layout
+  race (the menu music's varying centre/LFE).
+
 ## Tools
 
 - [RPCS3](https://github.com/RPCS3/rpcs3) — its public key table

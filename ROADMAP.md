@@ -7,7 +7,10 @@ campaign from the v1.7 update) port to macOS/arm64 and what comes next.
 Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
-## Status at a glance (2026-10-29)
+## Status at a glance (2026-11-06)
+
+- **From another port of the game (2026-11-06):** Psyykosis's Windows / Direct3D 12 port of Resistance on the same toolkit commit (MIT) was compared change by change with this one, and what applies to macOS is in: the alpha test on the stored 8-bit alpha (the grass layer on the ground and rocks now draws), the vertex program's `ARL` destination register, a same-value `stwcx.` no longer taking the SPUs' reservations, the SPU channel wake under the waiter's lock plus a short spin before a raw SPU sleeps, the lock-free `cellSpursReadyCountStore`, word-aligned SPU indirect branches, the lifted SPU code without local-store debug probes, and the speaker-layout race behind the menu music's varying centre/LFE. Each has an off switch (see the README's Environment). An fps A/B in "The Cathedral" was not conclusive: other games were running on the Mac and the stationary player died in one run.
+- **Closing the window ends the game (2026-11-06, from the Resistance 2 port):** SDL took SIGTERM over, so the game outlived its window until the launcher's kill 3 s later; it now waits for a save in progress and exits in about 0.1 s (`PS3_CLEAN_EXIT=0` reverts).
 
 - **Played into Manchester (2026-10-29):** the v1.7 campaign played by hand with a DualSense from York (The Gauntlet, A Lone Survivor, Spires) through Grimsby (Fates Worse than Death, Conversion, Hunted Down) and Manchester's Path of Least Resistance into "The Cathedral", at about 29–33 fps; a 20-minute session in "The Cathedral" (one of the three heaviest levels) held 29–32 fps and ended with a normal quit.
 - **Every level loads (2026-10-25):** a sweep started each of the 30 campaign levels with `RES_LEVEL=<n>` and ran it to gameplay: no errors, no unresolved calls, no SPU timeouts (see [Level sweep](#level-sweep-2026-10-25)).
@@ -39,7 +42,7 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Released:** v0.1.0 and v0.2.0 (2026-10-23), v0.2.1 (2026-10-24) and v0.2.2 (2026-10-29), pre-releases: the macOS launcher and a Windows preview; v0.2.2 carries the Grimsby, Location Select and `RES_LEVEL` changes.
 - **Giving back (2026-10-24):** five more upstream pull requests: scissored clears (#560), the polygon offset (#562), invariant positions (#563), `cellSysconfOpen`/`Abort` (#564), the pad sensor mode (#565) (see [Giving back](#giving-back)).
 - **In progress:** playing on from Manchester to the end of the campaign; speeding up the heaviest levels.
-- **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music sometimes has extra centre/LFE content (+4–6 dB, from the game's synth, varies per run); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
+- **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music's varying centre/LFE (fixed in code 2026-11-06, the speaker-layout race; to check by ear); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
 - **Next:** the rest of the campaign by hand (Nottingham to the Chimeran Tower, the vehicles and bosses); the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps uncapped); the snow lighting in "Ice and Iron" against RPCS3; a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
 
 ## Level sweep (2026-10-25)
@@ -393,7 +396,8 @@ What got it this far:
 - [x] Dark hard-edged rectangles on the ground: the surface and depth tables evict the least recently used entry, so the shadow-map pool's passes are no longer dropped (2026-10-24; play test of the scene pending).
 - [x] Cooperative split-screen: player 1's view was black; clears honour the scissor (`PS3RECOMP_ENG_RECT_CLEAR=0` reverts) (2026-10-24).
 - [x] The polygon offset (character shadow maps, terrain decals, projected shadows; `PS3RECOMP_ENG_POLY_OFFSET=0` off) and an invariant vertex position (the foliage's depth pre-pass and `EQUAL` colour pass; `PS3RECOMP_MSL_INVARIANT=0` off) (2026-10-24).
-- [ ] Dark speckles on the foliage: it looks like the game's own content (grainy leaf alpha); to confirm against RPCS3.
+- [x] The grass layer on the ground and rocks: the alpha test compares the alpha the colour buffer stores, 8-bit (2026-11-06, from the Resistance PC port).
+- [ ] Dark speckles in the trees: to re-check after the alpha-test fix.
 - [ ] An eye glitch on a character, reported but not reproduced: it needs a repro.
 
 ### Performance

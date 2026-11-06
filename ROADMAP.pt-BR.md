@@ -7,7 +7,10 @@ campanha da atualização v1.7) para macOS/arm64 e o que vem a seguir. Mesmo
 formato do roadmap do inFAMOUS 2.
 `[x]` = feito e verificado; `[ ]` = a fazer; "(em andamento)" = sendo feito.
 
-## Resumo (2026-10-29)
+## Resumo (2026-11-06)
+
+- **De outro port do jogo (2026-11-06):** o port do Resistance para Windows / Direct3D 12 feito por Psyykosis, sobre o mesmo commit do toolkit (MIT), foi comparado mudança por mudança com este, e o que vale para o macOS entrou: o alpha test sobre o alpha de 8 bits guardado (a camada de grama no chão e nas pedras agora aparece), o registrador de destino do `ARL` no programa de vértice, um `stwcx.` com o mesmo valor não derruba mais as reservas das SPUs, o "acordar" do canal das SPUs sob a trava de quem espera mais uma espera curta antes de uma SPU raw dormir, o `cellSpursReadyCountStore` sem trava, os saltos indiretos das SPUs alinhados à palavra, o código SPU traduzido sem as sondas de depuração da local store, e a corrida no layout das caixas de som por trás do centro/LFE variando na música do menu. Cada um tem como ser desligado (veja as Variáveis de ambiente do README). Um A/B de fps em "The Cathedral" não foi conclusivo: havia outros jogos rodando no Mac e o jogador parado morreu numa das execuções.
+- **Fechar a janela encerra o jogo (2026-11-06, vindo do port do Resistance 2):** o SDL tomava o SIGTERM, então o jogo sobrevivia à janela até o launcher matá-lo 3 s depois; agora ele espera um save em andamento e sai em uns 0,1 s (`PS3_CLEAN_EXIT=0` volta).
 
 - **Jogado até Manchester (2026-10-29):** a campanha v1.7 jogada na mão com um DualSense de York (The Gauntlet, A Lone Survivor, Spires), passando por Grimsby (Fates Worse than Death, Conversion, Hunted Down) e pela Path of Least Resistance de Manchester, até "The Cathedral", a uns 29–33 fps; uma sessão de 20 minutos em "The Cathedral" (uma das três fases mais pesadas) ficou em 29–32 fps e terminou com uma saída normal.
 - **Todas as fases carregam (2026-10-25):** uma varredura começou cada uma das 30 fases da campanha com `RES_LEVEL=<n>` e rodou até o gameplay: sem erros, sem chamadas sem resolver, sem timeouts de SPU (veja [Varredura das fases](#varredura-das-fases-2026-10-25)).
@@ -39,7 +42,7 @@ formato do roadmap do inFAMOUS 2.
 - **Lançado:** v0.1.0 e v0.2.0 (2026-10-23), v0.2.1 (2026-10-24) e v0.2.2 (2026-10-29), pré-releases: o launcher para macOS e uma prévia para Windows; a v0.2.2 traz as mudanças de Grimsby, do Location Select e do `RES_LEVEL`.
 - **Retribuindo (2026-10-24):** mais cinco pull requests no upstream: limpezas com scissor (#560), o polygon offset (#562), posições invariantes (#563), `cellSysconfOpen`/`Abort` (#564), o modo de sensor do controle (#565) (veja [Retribuindo](#retribuindo)).
 - **Em andamento:** seguir jogando de Manchester até o fim da campanha; acelerar as fases mais pesadas.
-- **Em aberto:** pontos escuros na vegetação (parece ser o conteúdo do próprio jogo, o alpha granulado das folhas; ainda não comparado com o RPCS3); um defeito nos olhos de um personagem que não foi reproduzido (precisa de um jeito de reproduzir); a música do menu às vezes tem conteúdo a mais no centro/LFE (+4–6 dB, do sintetizador do jogo, varia a cada execução); os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado (o jogo, e o novo mixer de áudio), sem Linux.
+- **Em aberto:** pontos escuros na vegetação (parece ser o conteúdo do próprio jogo, o alpha granulado das folhas; ainda não comparado com o RPCS3); um defeito nos olhos de um personagem que não foi reproduzido (precisa de um jeito de reproduzir); o centro/LFE variando na música do menu (corrigido no código em 2026-11-06, a corrida no layout das caixas de som; falta conferir de ouvido); os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado (o jogo, e o novo mixer de áudio), sem Linux.
 - **Próximo:** o resto da campanha na mão (de Nottingham à Chimeran Tower, os veículos e os chefes); as três fases mais pesadas ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps sem limite); a iluminação da neve em "Ice and Iron" comparada com o RPCS3; um teste jogando da correção do pool de shadow maps na cena onde os retângulos apareciam; reproduzir o defeito nos olhos; comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; um controle físico com o launcher; Windows.
 
 ## Varredura das fases (2026-10-25)
@@ -410,7 +413,8 @@ O que trouxe até aqui:
 - [x] Retângulos escuros de bordas duras no chão: as tabelas de superfícies e de profundidade descartam a entrada usada há mais tempo, então as passadas do pool de shadow maps não se perdem mais (2026-10-24; falta o teste jogando na cena).
 - [x] Tela dividida cooperativa: a visão do jogador 1 ficava preta; as limpezas respeitam o scissor (`PS3RECOMP_ENG_RECT_CLEAR=0` reverte) (2026-10-24).
 - [x] O polygon offset (shadow maps dos personagens, decalques do terreno, sombras projetadas; `PS3RECOMP_ENG_POLY_OFFSET=0` desliga) e uma posição de vértice invariante (a pré-passada de profundidade da vegetação e a passada de cor com `EQUAL`; `PS3RECOMP_MSL_INVARIANT=0` desliga) (2026-10-24).
-- [ ] Pontos escuros na vegetação: parece ser o conteúdo do próprio jogo (o alpha granulado das folhas); confirmar com o RPCS3.
+- [x] A camada de grama no chão e nas pedras: o alpha test compara o alpha que o buffer de cor guarda, em 8 bits (2026-11-06, vindo do port para PC do Resistance).
+- [ ] Pontos escuros nas árvores: conferir de novo depois da correção do alpha test.
 - [ ] Um defeito nos olhos de um personagem, relatado mas não reproduzido: precisa de um jeito de reproduzir.
 
 ### Desempenho
