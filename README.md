@@ -62,7 +62,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | Saves, Continue from a checkpoint | ✅ |
 | Game update v1.7 for the campaign | ✅ when you have the update's files; the menus stay 01.00 |
 | The app: one-click install from your disc, rebuild, play, settings, saves | ✅ |
-| Online multiplayer | 🚧 through [PS Rewired](https://psrewired.com), a community server that lists the game ([plan](ROADMAP.md#online-multiplayer-through-ps-rewired-future)): Online Game signs in to PS Rewired and downloads the v1.7 update it requires (2026-11-11); online play needs the v1.7 menus, which are next |
+| Online multiplayer | 🚧 through [PS Rewired](https://psrewired.com), a community server that lists the game ([plan](ROADMAP.md#online-multiplayer-through-ps-rewired-future)): Online Game reaches PS Rewired's lobby with the v1.7 menus (2026-11-11): the game list, creating a game; a full match and a "Play online" button in the app are next |
 | Linux and Windows | ⏳ not supported (a Windows launcher preview exists; the game itself builds only on macOS) |
 
 The full table, with what each fix was, is in
@@ -153,9 +153,9 @@ save. What you change is kept for the next start. Details in
   spare, but not a steady 60 with the 60 fps option.
 - **Dark speckles** in some trees: the grass layer was fixed on 2026-11-06;
   the trees are still to re-check.
-- **The menus stay 01.00:** only the campaign runs the v1.7 update. A
-  disc-type v1.7 menu executable does exist after all (PS Rewired's update
-  server hands it out, 2026-11-11) and is to be lifted; online play needs it.
+- **The menus are 01.00 offline:** the v1.7 menus now build too
+  (`tools/v17/regen_eboot_v17.sh`, from the update the game downloads online)
+  and are what online play runs; the app does not start them yet.
 - **Rare hangs:** about 1 test run in 10 froze (3 in about 25, 2026-11-11).
   The SPU job manager stops taking jobs and the game says so in the log
   ("Physics SPU Collision Timed Out!", "WwsJobDelay timed out"); two

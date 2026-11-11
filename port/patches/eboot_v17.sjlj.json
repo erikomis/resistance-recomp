@@ -1,0 +1,6 @@
+{
+  "elf": "EBOOT.elf (v1.7, the disc-type EBOOT.BIN PS Rewired's update server hands out; ELF SHA-256 f6f48d59efb221056908b72840eca4ef6c52d27da2faa61de5bb7c13d17023a8)",
+  "note": "newlib setjmp/longjmp, found by the bytes of the 01.00 functions (eboot.sjlj.json: 0x0070FC3C, 0x0070FD60); their callers are Lua's protected call and error.",
+  "setjmp": ["0x007A2EF0"],
+  "longjmp": ["0x007A3014"]
+}

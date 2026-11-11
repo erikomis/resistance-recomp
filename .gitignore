@@ -54,6 +54,8 @@ port/spu/jobmods_register.c
 port/spu/jobmods_manifest.json
 # The v1.7 campaign's SPU code (tools/v17/regen_v17.sh), all of it lifted
 port/spu_v17/
+# The v1.7 menus' SPU code (tools/v17/regen_eboot_v17.sh)
+port/spu_eboot_v17/
 port/recompiled/
 
 # Firmware and keys. tools/fetch_keys.py writes its key file outside the

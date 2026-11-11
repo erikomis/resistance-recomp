@@ -109,7 +109,7 @@ for s in $steps; do
         rm -rf "$S/captured"; cp -R "$RES_ROOT/port/spu/captured" "$S/captured"
         work=$(mktemp -d)
         "$PY" "$RES_ROOT/tools/extract_jobmods_elf.py" "$M/game.elf" --out "$work/jobmods"
-        rm -rf "$S"/jobmod_*
+        rm -rf "$S"/jobmod_*(N)
         "$PY" "$TK/tools/lift_jobmods.py" --jobmods "$work/jobmods" --out "$S" \
             --register "$S/jobmods_register.c" --symbol-prefix resistance
         "$PY" -I "$RES_ROOT/tools/extract_rawspu_elf.py" "$M/game.elf" --out "$work/rawspu"

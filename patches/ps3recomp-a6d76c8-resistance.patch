@@ -641,10 +641,16 @@ index 00000000..46c7ac05
 +
 +#endif /* PS3EMU_QUIT_GATE_H */
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 6f76df8a..a621c722 100644
+index 6f76df8a..a8978bb6 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
-@@ -20,6 +20,7 @@
+@@ -15,11 +15,13 @@
+ #include "../../runtime/memory/vm.h"   /* vm_commit */
+ #include "cellAudio.h"
+ #include "../../runtime/ppu/ppu_memory.h"   /* vm_base, vm_read64, vm_write32 */
++#include "../../runtime/ppu/ppu_context.h"  /* ppu_context: cellAudioSetPortLevel reads f1 */
+ #include <stdio.h>
+ #include <string.h>
  #include <stdlib.h>
  #include <stdint.h>
  #include <math.h>
@@ -652,7 +658,7 @@ index 6f76df8a..a621c722 100644
  #include "ps3emu/log_first.h"
  
  /* Event-queue push/lookup (runtime/syscalls/sys_event.c). Forward-declared
-@@ -127,6 +128,8 @@ typedef struct {
+@@ -127,6 +129,8 @@ typedef struct {
      /* For address reporting to guest */
      u64                  port_addr;      /* guest-visible buffer address */
      u64                  read_idx_addr;  /* guest-visible read index address */
@@ -661,7 +667,7 @@ index 6f76df8a..a621c722 100644
  } AudioPortSlot;
  
  static int            s_audio_initialized = 0;
-@@ -161,10 +164,101 @@ static float s_mix_buffer[CELL_AUDIO_BLOCK_SAMPLES * 2];
+@@ -161,10 +165,101 @@ static float s_mix_buffer[CELL_AUDIO_BLOCK_SAMPLES * 2];
   * Host audio output backend
   * -----------------------------------------------------------------------*/
  
@@ -763,7 +769,7 @@ index 6f76df8a..a621c722 100644
  static int audio_backend_init(void)
  {
      if (SDL_WasInit(SDL_INIT_AUDIO) == 0) {
-@@ -182,11 +276,20 @@ static int audio_backend_init(void)
+@@ -182,11 +277,20 @@ static int audio_backend_init(void)
      want.samples  = CELL_AUDIO_BLOCK_SAMPLES;
      want.callback = NULL; /* We'll use SDL_QueueAudio */
  
@@ -785,7 +791,7 @@ index 6f76df8a..a621c722 100644
  
      SDL_PauseAudioDevice(s_sdl_audio_dev, 0); /* Start playback */
      return 0;
-@@ -427,6 +530,258 @@ static inline float ld_be_f32(const float* p)
+@@ -427,6 +531,258 @@ static inline float ld_be_f32(const float* p)
      return f;
  }
  
@@ -1044,7 +1050,7 @@ index 6f76df8a..a621c722 100644
  /* Mix one block from all active ports into s_mix_buffer (stereo float) */
  static void audio_mix_one_block(void)
  {
-@@ -439,7 +794,7 @@ static void audio_mix_one_block(void)
+@@ -439,7 +795,7 @@ static void audio_mix_one_block(void)
          /* Diagnostic: a port that HOLDS PCM but was never started is inaudible
           * by design -- flag it once so "no PortStart" vs "no data" is decidable
           * from the log (LBP's Bink movie audio port sat exactly there). */
@@ -1053,7 +1059,7 @@ index 6f76df8a..a621c722 100644
              static u8 warned[CELL_AUDIO_PORT_MAX];
              if (!warned[p]) {
                  u32 probe = (u32)(port->param.nBlock * CELL_AUDIO_BLOCK_SAMPLES *
-@@ -459,7 +814,7 @@ static void audio_mix_one_block(void)
+@@ -459,7 +815,7 @@ static void audio_mix_one_block(void)
          u32 nch    = (u32)port->param.nChannel;
          u32 nblock = (u32)port->param.nBlock;
          float level = port->param.level;
@@ -1062,7 +1068,7 @@ index 6f76df8a..a621c722 100644
          if (level > 1.0f) level = 1.0f;
  
          /* Read one block at the current read_index */
-@@ -486,31 +841,11 @@ static void audio_mix_one_block(void)
+@@ -486,31 +842,11 @@ static void audio_mix_one_block(void)
                          p, (unsigned long long)port->read_index, block_idx, map);
              } } }
  
@@ -1075,10 +1081,7 @@ index 6f76df8a..a621c722 100644
 -                /* Mono: duplicate to both channels */
 -                left = right = ld_be_f32(&src[s]) * level;
 -            }
-+        if (s_stats > 0)
-+            audio_level_add(&s_lvl_port[p], src, CELL_AUDIO_BLOCK_SAMPLES * nch, 1, nch);
-+        port->was_playing = !audio_block_is_zero(src, nch);
- 
+-
 -            /* If 7.1, mix center and other channels into stereo */
 -            if (nch == 8) {
 -                float center = ld_be_f32(&src[s * 8 + 2]) * level * 0.707f;
@@ -1090,7 +1093,10 @@ index 6f76df8a..a621c722 100644
 -                left  += center + lfe + rl + sl;
 -                right += center + lfe + rr + sr;
 -            }
--
++        if (s_stats > 0)
++            audio_level_add(&s_lvl_port[p], src, CELL_AUDIO_BLOCK_SAMPLES * nch, 1, nch);
++        port->was_playing = !audio_block_is_zero(src, nch);
+ 
 -            s_mix_buffer[s * 2 + 0] += left;
 -            s_mix_buffer[s * 2 + 1] += right;
 -        }
@@ -1098,7 +1104,7 @@ index 6f76df8a..a621c722 100644
  
          /* Firmware clears a ring-buffer block after consuming it. Besides
           * preventing stale PCM from replaying when a producer stalls, the
-@@ -529,8 +864,8 @@ static void audio_mix_one_block(void)
+@@ -529,8 +865,8 @@ static void audio_mix_one_block(void)
  
      /* Clip to [-1.0, 1.0] */
      for (u32 i = 0; i < CELL_AUDIO_BLOCK_SAMPLES * 2; i++) {
@@ -1109,7 +1115,7 @@ index 6f76df8a..a621c722 100644
      }
  }
  
-@@ -592,12 +927,7 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -592,12 +928,7 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
                  float a = s_mix_buffer[i]; if (a < 0) a = -a; if (a > pk) pk = a; }
              if ((++_n % 200) == 0 || (pk > 0.001f && _n < 40))
                  fprintf(stderr, "[audio-peak] block#%u peak=%.4f\n", _n, pk); } }
@@ -1123,7 +1129,7 @@ index 6f76df8a..a621c722 100644
          /* AUDIO_RATE=1: blocks mixed vs real time, and frames dropped. */
          { static int on = -1; if (on < 0) on = getenv("AUDIO_RATE") ? 1 : 0;
            if (on) { static ULONGLONG t0; static unsigned n, z; static unsigned long long d0;
-@@ -622,22 +952,105 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -622,22 +953,105 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
      return 0;
  }
  #else
@@ -1237,7 +1243,7 @@ index 6f76df8a..a621c722 100644
      }
  
      printf("[cellAudio] Mixing thread stopped\n");
-@@ -727,6 +1140,7 @@ s32 cellAudioInit(void)
+@@ -727,6 +1141,7 @@ s32 cellAudioInit(void)
      { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
        s_audio_start_us = (u64)ts.tv_sec * 1000000ULL + (u64)ts.tv_nsec / 1000ULL; }
  #endif
@@ -1245,7 +1251,7 @@ index 6f76df8a..a621c722 100644
      if (audio_start_mix_thread() < 0) {
          printf("[cellAudio] WARNING: Could not start mixing thread\n");
      }
-@@ -744,6 +1158,7 @@ s32 cellAudioQuit(void)
+@@ -744,6 +1159,7 @@ s32 cellAudioQuit(void)
  
      audio_stop_mix_thread();
      audio_backend_shutdown();
@@ -1253,7 +1259,7 @@ index 6f76df8a..a621c722 100644
  
      /* Port buffers live in the guest vm_base arena (bump-allocated, not host
       * malloc) -- just drop the references; never free() them. */
-@@ -772,8 +1187,17 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
+@@ -772,8 +1188,17 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
  
      u64 nch  = vm_read64(param_ea + 0);   /* nChannel */
      u64 nblk = vm_read64(param_ea + 8);   /* nBlock   */
@@ -1273,7 +1279,7 @@ index 6f76df8a..a621c722 100644
  
      if (nch != CELL_AUDIO_PORT_2CH && nch != CELL_AUDIO_PORT_8CH)
          return CELL_AUDIO_ERROR_PARAM;
-@@ -801,8 +1225,12 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
+@@ -801,8 +1226,12 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
      port->running = 0;
      /* Store the decoded (host-endian) param values, not the raw BE guest bytes. */
      memset(&port->param, 0, sizeof(port->param));
@@ -1286,7 +1292,7 @@ index 6f76df8a..a621c722 100644
      port->read_index  = 0;
      port->write_index = 0;
  
-@@ -840,7 +1268,7 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
+@@ -840,7 +1269,7 @@ s32 cellAudioPortOpen(const CellAudioPortParam* param, u32* portNum)
  
  s32 cellAudioPortClose(u32 portNum)
  {
@@ -1295,7 +1301,7 @@ index 6f76df8a..a621c722 100644
  
      if (!s_audio_initialized)
          return CELL_AUDIO_ERROR_NOT_INIT;
-@@ -869,7 +1297,7 @@ s32 cellAudioPortClose(u32 portNum)
+@@ -869,7 +1298,7 @@ s32 cellAudioPortClose(u32 portNum)
  
  s32 cellAudioPortStart(u32 portNum)
  {
@@ -1304,7 +1310,7 @@ index 6f76df8a..a621c722 100644
  
      if (!s_audio_initialized)
          return CELL_AUDIO_ERROR_NOT_INIT;
-@@ -882,6 +1310,7 @@ s32 cellAudioPortStart(u32 portNum)
+@@ -882,6 +1311,7 @@ s32 cellAudioPortStart(u32 portNum)
  
      mutex_lock(&s_audio_mutex);
      s_ports[portNum].running = 1;
@@ -1312,7 +1318,7 @@ index 6f76df8a..a621c722 100644
      mutex_unlock(&s_audio_mutex);
  
      return CELL_OK;
-@@ -889,7 +1318,7 @@ s32 cellAudioPortStart(u32 portNum)
+@@ -889,7 +1319,7 @@ s32 cellAudioPortStart(u32 portNum)
  
  s32 cellAudioPortStop(u32 portNum)
  {
@@ -1321,6 +1327,72 @@ index 6f76df8a..a621c722 100644
  
      if (!s_audio_initialized)
          return CELL_AUDIO_ERROR_NOT_INIT;
+@@ -907,6 +1337,36 @@ s32 cellAudioPortStop(u32 portNum)
+     return CELL_OK;
+ }
+ 
++/* A port's level (0..1, the mix gain cellAudioPortOpen's param.level set).
++ * The level is a float, in f1, so it is registered as a context handler
++ * (cellAudio_register_ctx) rather than through a plain prototype, which
++ * would read r4. Resistance v1.7's online lobby sets the headset port's
++ * level. */
++static s32 audio_set_port_level(u32 portNum, float level)
++{
++    if (!s_audio_initialized)
++        return CELL_AUDIO_ERROR_NOT_INIT;
++    if (portNum >= CELL_AUDIO_PORT_MAX || !s_ports[portNum].in_use)
++        return CELL_AUDIO_ERROR_PORT_NOT_OPEN;
++    if (!(level >= 0.0f)) level = 0.0f;
++    if (level > 1.0f) level = 1.0f;
++    mutex_lock(&s_audio_mutex);
++    s_ports[portNum].param.level = level;
++    mutex_unlock(&s_audio_mutex);
++    return CELL_OK;
++}
++
++static void hle_audio_set_port_level(ppu_context* ctx)
++{
++    ctx->gpr[3] = (u64)(s64)audio_set_port_level((u32)ctx->gpr[3], (float)ctx->fpr[1]);
++}
++
++void cellAudio_register_ctx(void)
++{
++    extern void ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
++    ps3_hle_register_ctx(0x56DFE179u, "cellAudioSetPortLevel", hle_audio_set_port_level);
++}
++
+ s32 cellAudioGetPortBlockTag(u32 portNum, u64 blockNo, u64* tag)
+ {
+     uint32_t tag_ea = (uint32_t)(uintptr_t)tag;
+diff --git a/libs/audio/cellMic.c b/libs/audio/cellMic.c
+index 4d2b4782..e129fce1 100644
+--- a/libs/audio/cellMic.c
++++ b/libs/audio/cellMic.c
+@@ -118,3 +118,12 @@ s32 cellMicGetDeviceGUID(s32 devNum, u64* guid)
+     vm_write64((u32)(uintptr_t)guid, 0);
+     return CELL_OK;
+ }
++
++/* The event queue a title gets microphone attach/detach events on. There is
++ * no microphone here, so no event ever comes; accepting the queue is enough
++ * (Resistance v1.7's online lobby sets it up for voice chat). */
++s32 cellMicSetNotifyEventQueue(u64 key)
++{
++    (void)key;
++    return CELL_OK;
++}
+diff --git a/libs/audio/cellMic.h b/libs/audio/cellMic.h
+index 626aa14d..661a6e9a 100644
+--- a/libs/audio/cellMic.h
++++ b/libs/audio/cellMic.h
+@@ -66,6 +66,7 @@ s32 cellMicGetSignalState(s32 devNum, s32* signalState);
+ s32 cellMicSetSignalAttr(s32 devNum, u32 attr, u32 value);
+ 
+ s32 cellMicGetDeviceGUID(s32 devNum, u64* guid);
++s32 cellMicSetNotifyEventQueue(u64 key);
+ 
+ #ifdef __cplusplus
+ }
 diff --git a/libs/audio/tests/test_audio_pacing.c b/libs/audio/tests/test_audio_pacing.c
 new file mode 100644
 index 00000000..daa96822
@@ -3602,6 +3674,38 @@ index 00000000..aec42f78
 +    printf("test_cellfs_hdd0_root: all passed\n");
 +    return 0;
 +}
+diff --git a/libs/input/cellKb.c b/libs/input/cellKb.c
+index 6b4cdbc7..cf830214 100644
+--- a/libs/input/cellKb.c
++++ b/libs/input/cellKb.c
+@@ -206,6 +206,15 @@ s32 cellKbGetData(u32 port_no, CellKbData* data)
+     return CELL_OK;
+ }
+ 
++/* cellKbRead: the older name of cellKbGetData, same arguments and layout.
++ * Resistance v1.7's online lobby polls it for its chat; unresolved it
++ * returned without writing the CellKbData, so the title read whatever was
++ * in its buffer as typed keys. */
++s32 cellKbRead(u32 port_no, CellKbData* data)
++{
++    return cellKbGetData(port_no, data);
++}
++
+ /* Guest CellKbInfo layout (big-endian): +0x00 max_connect u32, +0x04
+  * now_connect u32, +0x08 info u32, +0x0C status[] u8 PER KEYBOARD (bytes,
+  * not u32s -- SDK/RPCS3 layout). */
+diff --git a/libs/input/cellKb.h b/libs/input/cellKb.h
+index 49e13905..24f12d08 100644
+--- a/libs/input/cellKb.h
++++ b/libs/input/cellKb.h
+@@ -148,6 +148,7 @@ typedef struct CellKbInfo {
+ s32 cellKbInit(u32 max_connect);
+ s32 cellKbEnd(void);
+ s32 cellKbGetData(u32 port_no, CellKbData* data);
++s32 cellKbRead(u32 port_no, CellKbData* data);
+ s32 cellKbGetInfo(CellKbInfo* info);
+ s32 cellKbSetReadMode(u32 port_no, u32 rmode);
+ s32 cellKbSetCodeType(u32 port_no, u32 codetype);
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
 index 7fa8cab9..02e2decc 100644
 --- a/libs/input/cellPad.c
@@ -9329,6 +9433,44 @@ index 238e1880..d265b33b 100644
  #ifdef __cplusplus
  }
  #endif
+diff --git a/libs/system/sysPrxForUser.c b/libs/system/sysPrxForUser.c
+index b2cba7b6..40b62496 100644
+--- a/libs/system/sysPrxForUser.c
++++ b/libs/system/sysPrxForUser.c
+@@ -1042,6 +1042,20 @@ s32 sys_prx_exitspawn_with_level(void)
+     return CELL_OK;
+ }
+ 
++/* Registering a library a module exports for others to import: modules are
++ * linked statically here, so there is nothing to register. */
++s32 sys_prx_register_library(void* library)
++{
++    (void)library;
++    return CELL_OK;
++}
++
++s32 sys_prx_unregister_library(void* library)
++{
++    (void)library;
++    return CELL_OK;
++}
++
+ s32 sys_prx_get_module_id_by_name(const char* name, u64 flags, u32* id)
+ {
+     (void)flags;
+diff --git a/libs/system/sysPrxForUser.h b/libs/system/sysPrxForUser.h
+index 30290c73..0e9a45cb 100644
+--- a/libs/system/sysPrxForUser.h
++++ b/libs/system/sysPrxForUser.h
+@@ -169,6 +169,8 @@ s32   _sys_heap_free(sys_heap_t heap, void* ptr);
+ 
+ s32 sys_prx_exitspawn_with_level(void);
+ s32 sys_prx_get_module_id_by_name(const char* name, u64 flags, u32* id);
++s32 sys_prx_register_library(void* library);
++s32 sys_prx_unregister_library(void* library);
+ 
+ /* ---------------------------------------------------------------------------
+  * Random number generation
 diff --git a/libs/system/tests/test_license_area.c b/libs/system/tests/test_license_area.c
 new file mode 100644
 index 00000000..58ad2481
@@ -29487,7 +29629,7 @@ index 00000000..5372d6d2
 +
 +#endif /* PS3RECOMP_PPU_SJLJ_H */
 diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
-index 1a393fde..02c63b00 100644
+index 1a393fde..5b436c10 100644
 --- a/runtime/ppu/ppu_sysprx.cpp
 +++ b/runtime/ppu/ppu_sysprx.cpp
 @@ -21,6 +21,10 @@
@@ -29513,6 +29655,23 @@ index 1a393fde..02c63b00 100644
  #endif
  }
  
+@@ -528,6 +533,7 @@ extern "C" void ps3_net_host_register(unsigned int (*guest_alloc)(unsigned int,
+ extern "C" void np_score_register_ctx(void);   /* libs/network/sceNpScore.c */
+ extern "C" void cellSaveData_register_ctx_handlers(void); /* libs/system/cellSaveData.c */
+ extern "C" void avconf_register_ctx(void);     /* libs/misc/cellAvconfExt.c */
++extern "C" void cellAudio_register_ctx(void);  /* libs/audio/cellAudio.c */
+ static uint32_t g_net_errno_ea = 0;
+ static void hle_net_errno_loc(ppu_context* ctx)
+ {
+@@ -864,6 +870,8 @@ extern "C" void ppu_sysprx_register(void)
+     cellSaveData_register_ctx_handlers();
+     /* cellVideoOutSetGamma's float argument is in f1. */
+     avconf_register_ctx();
++    /* cellAudioSetPortLevel's level is in f1 as well. */
++    cellAudio_register_ctx();
+     /* sys_net offline model (NIDs from PSL1GHT libnet exports). Covers every
+      * sys_net NID LBP imports so none fall to the unresolved-NID default. */
+     ps3_hle_register_ctx(0x6005CDE1u, "_sys_net_errno_loc",     hle_net_errno_loc);
 diff --git a/runtime/ppu/tests/test_fs_rw_switch.cpp b/runtime/ppu/tests/test_fs_rw_switch.cpp
 new file mode 100644
 index 00000000..5d8f1ec9

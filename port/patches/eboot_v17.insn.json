@@ -1,0 +1,7 @@
+{
+  "elf": "EBOOT.elf (v1.7, the disc-type EBOOT.BIN PS Rewired's update server hands out; ELF SHA-256 f6f48d59efb221056908b72840eca4ef6c52d27da2faa61de5bb7c13d17023a8)",
+  "source": "eboot.insn.json's speaker-count patch, found by its bytes. The menu 60 fps patches have no match in v1.7 and are left out (online play forbids frame-rate changes anyway).",
+  "patches": [
+    {"addr": "0x000E6764", "orig": "0x80690000", "new": "0x38600006", "guard": "g_res_speakers", "note": "speaker-count getter: lwz r3,0(r9) -> li r3,6 (as 0x000E1508 in 01.00)"}
+  ]
+}
