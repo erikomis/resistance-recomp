@@ -39,7 +39,7 @@ index 67bb40b3..27d02ca7 100644
            # walk they are now computed without.
            ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }} -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.github/workflows/macos.yml b/.github/workflows/macos.yml
-index 19e9eb18..6b2a61d7 100644
+index 19e9eb18..ec20a677 100644
 --- a/.github/workflows/macos.yml
 +++ b/.github/workflows/macos.yml
 @@ -74,6 +74,8 @@ jobs:
@@ -51,7 +51,7 @@ index 19e9eb18..6b2a61d7 100644
  
        - name: Run self-contained SPU helper tests
          run: |
-@@ -102,6 +104,23 @@ jobs:
+@@ -102,6 +104,25 @@ jobs:
            clang -std=gnu17 -I include -o /tmp/test_np_identity libs/network/tests/test_np_identity.c
            /tmp/test_np_identity
  
@@ -64,6 +64,8 @@ index 19e9eb18..6b2a61d7 100644
 +          /tmp/test_np_ticket_offline
 +          clang -std=gnu17 -I include -o /tmp/test_np_ticket_local libs/network/tests/test_np_ticket_local.c
 +          /tmp/test_np_ticket_local
++          clang -std=gnu17 -I include -o /tmp/test_np_commerce1 libs/network/tests/test_np_commerce1.c
++          /tmp/test_np_commerce1
 +          clang -std=gnu17 -I include -o /tmp/test_cellfs_hdd0_root libs/filesystem/tests/test_cellfs_hdd0_root.c
 +          /tmp/test_cellfs_hdd0_root
 +          clang -std=gnu17 -DMIC_NO_SDL -I include -o /tmp/test_mic libs/audio/tests/test_mic.c -lm
@@ -75,7 +77,7 @@ index 19e9eb18..6b2a61d7 100644
        # cellVideoOutSetGamma's float argument comes from f1, and the value
        # reaches the presenter.
        - name: Run the video out gamma test
-@@ -109,9 +128,10 @@ jobs:
+@@ -109,9 +130,10 @@ jobs:
            clang -std=gnu17 -I include -o /tmp/test_avconf_gamma libs/misc/tests/test_avconf_gamma.c
            /tmp/test_avconf_gamma
  
@@ -89,7 +91,7 @@ index 19e9eb18..6b2a61d7 100644
        - name: Run the Metal present post-processing test
          run: |
            clang -fobjc-arc -I include -I libs/video libs/video/tests/test_metal_present_post.m \
-@@ -128,10 +148,67 @@ jobs:
+@@ -128,10 +150,67 @@ jobs:
  
        # cellPadSetActDirect: the small motor is on/off at full strength, and
        # a rumble lasts until the title changes it (renewed from the pad poll).
@@ -157,7 +159,7 @@ index 19e9eb18..6b2a61d7 100644
  
        # Drives a real NV4097 command buffer through cellGcm -> RSX -> the Metal
        # backend and asserts the presented pixel matches the guest clear colour.
-@@ -176,6 +253,15 @@ jobs:
+@@ -176,6 +255,15 @@ jobs:
              echo "--mip-aniso passed without PS3_ANISO; the check is not checking"
              exit 1
            fi
@@ -173,7 +175,7 @@ index 19e9eb18..6b2a61d7 100644
            # Render-to-texture: a red triangle drawn into a colour surface of
            # the guest's own, then sampled by a full-screen quad through the
            # guest programs. The guest bytes behind that surface are green, so
-@@ -342,6 +428,14 @@ jobs:
+@@ -342,6 +430,14 @@ jobs:
            # restart cuts bounding topology expansion. Runs on Linux too.
            clang -std=gnu17 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_rsx_draw_engine libs/video/tests/test_rsx_draw_engine.c libs/video/rsx_draw_engine.c libs/video/rsx_dispatch.c libs/video/rsx_vertex_compact.c libs/video/rsx_texture_layout.c libs/video/rsx_vp_decompiler.c libs/video/rsx_fp_decompiler.c
            /tmp/test_rsx_draw_engine
@@ -8092,7 +8094,7 @@ index c7926c0c..3a0a50a0 100644
      return CELL_OK;
  }
 diff --git a/libs/network/sceNp.c b/libs/network/sceNp.c
-index 697901a0..bbd84dbe 100644
+index 697901a0..e6100884 100644
 --- a/libs/network/sceNp.c
 +++ b/libs/network/sceNp.c
 @@ -9,6 +9,8 @@
@@ -8146,7 +8148,7 @@ index 697901a0..bbd84dbe 100644
          const u64 args[8] = { (u64)(u32)SCE_NP_MANAGER_STATUS_ONLINE, 0,
                                (u64)(u32)(uintptr_t)arg, 0, 0, 0, 0, 0 };
          cellSysutilQueueGuestCallbackArgs((u32)(uintptr_t)callback, args);
-@@ -274,6 +293,190 @@ s32 sceNpManagerGetOnlineId(SceNpOnlineId* onlineId) { return sceNpGetOnlineId(0
+@@ -274,6 +293,298 @@ s32 sceNpManagerGetOnlineId(SceNpOnlineId* onlineId) { return sceNpGetOnlineId(0
  s32 sceNpManagerGetOnlineName(SceNpOnlineName* name) { return sceNpGetOnlineName(0, name); }
  s32 sceNpManagerGetAccountAge(s32* age)              { return sceNpGetAccountAge(0, age); }
  
@@ -8334,11 +8336,119 @@ index 697901a0..bbd84dbe 100644
 +    return CELL_OK;
 +}
 +
++/* ---------------------------------------------------------------------------
++ * NP Commerce (the first version, before sceNpCommerce2): the in-game
++ * PlayStation Store. Resistance's online menus create a context and ask for
++ * a product category (the map packs on sale) once the lobby opens:
++ * sceNpCommerceCreateCtx(1, npId, handler, 0, &ctx), then, for each entry,
++ * sceNpCommerceGetProductCategoryStart(ctx, category, lang, &req), retried
++ * in English on SCE_NP_COMMERCE_ERROR_INVALID_LANG_CODE. The store is gone,
++ * so a request is accepted and then fails the way a dead connection does:
++ * the handler gets REQUEST_ERROR with GPC_SEND_REQUEST, and every getter
++ * finds nothing. Unregistered, these answered CELL_OK and wrote nothing (no
++ * context ID, no request ID, no event).
++ * -----------------------------------------------------------------------*/
++#define SCE_NP_COMMERCE_VERSION                   1
++#define SCE_NP_COMMERCE_EVENT_REQUEST_ERROR       0x0001
++#define SCE_NP_COMMERCE_ERROR_NOT_INITIALIZED     0x80029401
++#define SCE_NP_COMMERCE_ERROR_UNSUPPORTED_VERSION 0x80029404
++#define SCE_NP_COMMERCE_ERROR_CTX_NOT_FOUND       0x80029406
++#define SCE_NP_COMMERCE_ERROR_REQ_NOT_FOUND       0x80029409
++#define SCE_NP_COMMERCE_ERROR_GPC_SEND_REQUEST    0x8002941D
++#define SCE_NP_COMMERCE_ERROR_CURRENCY_INFO_NOT_FOUND 0x80029422
++#define SCE_NP_COMMERCE_ERROR_CATEGORY_INFO_NOT_FOUND 0x80029423
++#define SCE_NP_COMMERCE_ERROR_SKU_INFO_NOT_FOUND  0x80029427
++
++static struct { u32 handler, arg, ctx, next_req; } s_commerce;
++
++s32 sceNpCommerceCreateCtx(u32 version, const SceNpId* npId, void* handler, void* arg, u32* ctxId)
++{
++    (void)npId;
++    if (!s_np_initialized) return (s32)SCE_NP_COMMERCE_ERROR_NOT_INITIALIZED;
++    if (version != SCE_NP_COMMERCE_VERSION) return (s32)SCE_NP_COMMERCE_ERROR_UNSUPPORTED_VERSION;
++    if (!ctxId) return (s32)SCE_NP_ERROR_INVALID_ARGUMENT;
++    s_commerce.handler = (u32)(uintptr_t)handler;
++    s_commerce.arg = (u32)(uintptr_t)arg;
++    s_commerce.ctx = 1;
++    vm_write32((u32)(uintptr_t)ctxId, s_commerce.ctx);
++    printf("[sceNp] CommerceCreateCtx() -> ctx 1 (the PlayStation Store is gone: its requests fail)\n");
++    return CELL_OK;
++}
++
++s32 sceNpCommerceDestroyCtx(u32 ctxId)
++{
++    if (!s_commerce.ctx || ctxId != s_commerce.ctx) return (s32)SCE_NP_COMMERCE_ERROR_CTX_NOT_FOUND;
++    s_commerce.ctx = 0;
++    return CELL_OK;
++}
++
++s32 sceNpCommerceGetProductCategoryStart(u32 ctxId, const char* categoryId, s32 langCode, u32* reqId)
++{
++    (void)categoryId; (void)langCode;
++    if (!s_commerce.ctx || ctxId != s_commerce.ctx) return (s32)SCE_NP_COMMERCE_ERROR_CTX_NOT_FOUND;
++    if (!reqId) return (s32)SCE_NP_ERROR_INVALID_ARGUMENT;
++    const u32 req = ++s_commerce.next_req;
++    vm_write32((u32)(uintptr_t)reqId, req);
++    if (s_commerce.handler) {
++        const u64 args[8] = { ctxId, req, (u64)(u32)SCE_NP_COMMERCE_EVENT_REQUEST_ERROR,
++                              (u64)(u32)SCE_NP_COMMERCE_ERROR_GPC_SEND_REQUEST, s_commerce.arg, 0, 0, 0 };
++        cellSysutilQueueGuestCallbackArgs(s_commerce.handler, args);
++    }
++    { static int _n = 0; if (_n++ < 4) printf("[sceNp] CommerceGetProductCategoryStart(req %u) -> REQUEST_ERROR (no store)\n", req); }
++    return CELL_OK;
++}
++
++s32 sceNpCommerceGetProductCategoryFinish(u32 reqId)
++{
++    return reqId && reqId <= s_commerce.next_req ? CELL_OK : (s32)SCE_NP_COMMERCE_ERROR_REQ_NOT_FOUND;
++}
++
++s32 sceNpCommerceGetProductCategoryResult(u32 reqId, void* buf, u32 bufSize, u32* fillSize)
++{
++    (void)buf; (void)bufSize;
++    if (fillSize) vm_write32((u32)(uintptr_t)fillSize, 0);
++    return reqId && reqId <= s_commerce.next_req ? (s32)SCE_NP_COMMERCE_ERROR_CATEGORY_INFO_NOT_FOUND
++                                                 : (s32)SCE_NP_COMMERCE_ERROR_REQ_NOT_FOUND;
++}
++
++s32 sceNpCommerceInitProductCategory(void* pc, const void* data, u32 dataSize)
++{
++    (void)pc; (void)data; (void)dataSize;
++    return (s32)SCE_NP_COMMERCE_ERROR_CATEGORY_INFO_NOT_FOUND;
++}
++
++s32 sceNpCommerceDestroyProductCategory(void* pc) { (void)pc; return CELL_OK; }
++
++/* Nothing to buy: checkout cannot start. */
++s32 sceNpCommerceDoCheckoutStartAsync(u32 ctxId, const void* skuIds, u32 skuNum, u32 container, u32* reqId)
++{
++    (void)ctxId; (void)skuIds; (void)skuNum; (void)container;
++    if (reqId) vm_write32((u32)(uintptr_t)reqId, 0);
++    return (s32)SCE_NP_COMMERCE_ERROR_SKU_INFO_NOT_FOUND;
++}
++s32 sceNpCommerceDoCheckoutFinishAsync(u32 reqId) { (void)reqId; return (s32)SCE_NP_COMMERCE_ERROR_REQ_NOT_FOUND; }
++
++/* The category and SKU getters: an empty store. */
++s32 sceNpCommerceGetCurrencyCode(void* info)          { (void)info; return (s32)SCE_NP_COMMERCE_ERROR_CURRENCY_INFO_NOT_FOUND; }
++s32 sceNpCommerceGetCurrencyDecimals(void* info)      { (void)info; return (s32)SCE_NP_COMMERCE_ERROR_CURRENCY_INFO_NOT_FOUND; }
++s32 sceNpCommerceGetCurrencyInfo(void* pc, void* info){ (void)pc; (void)info; return (s32)SCE_NP_COMMERCE_ERROR_CURRENCY_INFO_NOT_FOUND; }
++s32 sceNpCommerceGetNumOfChildProductSku(void* pc, u32* num)
++{
++    (void)pc;
++    if (num) vm_write32((u32)(uintptr_t)num, 0);
++    return CELL_OK;
++}
++s32 sceNpCommerceGetChildProductSkuInfo(void* pc, u32 index, void* info) { (void)pc; (void)index; (void)info; return (s32)SCE_NP_COMMERCE_ERROR_SKU_INFO_NOT_FOUND; }
++s32 sceNpCommerceGetSkuId(void* info)          { (void)info; return 0; }
++s32 sceNpCommerceGetSkuDescription(void* info) { (void)info; return 0; }
++s32 sceNpCommerceGetSkuPrice(void* info)       { (void)info; return 0; }
++s32 sceNpCommerceGetProductName(void* info)    { (void)info; return 0; }
++
  /* Parental controls: an unrestricted adult account. Unimplemented, these
   * returned OK without writing, and the title read whatever was in its stack. */
  s32 sceNpManagerGetContentRatingFlag(s32* isRestricted, s32* age)
 diff --git a/libs/network/sceNp.h b/libs/network/sceNp.h
-index a2318a0d..72c26761 100644
+index a2318a0d..22d9d65e 100644
 --- a/libs/network/sceNp.h
 +++ b/libs/network/sceNp.h
 @@ -29,6 +29,8 @@ extern "C" {
@@ -8366,6 +8476,34 @@ index a2318a0d..72c26761 100644
  
  /* NPDRM availability checks. The guest passes its klicensee (16 bytes) and the
   * path of an EDAT/SELF; the klicensee is handed to the EDAT reader, which then
+@@ -142,6 +153,27 @@ s32 sceNpDrmIsAvailable2(const u8* k_licensee, const char* drm_path);
+ /* Set the fake PSN username (call before sceNpInit if desired) */
+ void sceNpSetFakeUsername(const char* username);
+ 
++/* NP Commerce, first version (sceNp.c): the PlayStation Store, gone: a
++ * context is made, product-category requests fail with REQUEST_ERROR. */
++s32 sceNpCommerceCreateCtx(u32 version, const SceNpId* npId, void* handler, void* arg, u32* ctxId);
++s32 sceNpCommerceDestroyCtx(u32 ctxId);
++s32 sceNpCommerceGetProductCategoryStart(u32 ctxId, const char* categoryId, s32 langCode, u32* reqId);
++s32 sceNpCommerceGetProductCategoryFinish(u32 reqId);
++s32 sceNpCommerceGetProductCategoryResult(u32 reqId, void* buf, u32 bufSize, u32* fillSize);
++s32 sceNpCommerceInitProductCategory(void* pc, const void* data, u32 dataSize);
++s32 sceNpCommerceDestroyProductCategory(void* pc);
++s32 sceNpCommerceDoCheckoutStartAsync(u32 ctxId, const void* skuIds, u32 skuNum, u32 container, u32* reqId);
++s32 sceNpCommerceDoCheckoutFinishAsync(u32 reqId);
++s32 sceNpCommerceGetCurrencyCode(void* info);
++s32 sceNpCommerceGetCurrencyDecimals(void* info);
++s32 sceNpCommerceGetCurrencyInfo(void* pc, void* info);
++s32 sceNpCommerceGetNumOfChildProductSku(void* pc, u32* num);
++s32 sceNpCommerceGetChildProductSkuInfo(void* pc, u32 index, void* info);
++s32 sceNpCommerceGetSkuId(void* info);
++s32 sceNpCommerceGetSkuDescription(void* info);
++s32 sceNpCommerceGetSkuPrice(void* info);
++s32 sceNpCommerceGetProductName(void* info);
++
+ #ifdef __cplusplus
+ }
+ #endif
 diff --git a/libs/network/sysNet.c b/libs/network/sysNet.c
 index 87595f37..dbb94d64 100644
 --- a/libs/network/sysNet.c
@@ -8742,6 +8880,91 @@ index 00000000..8e3902b8
 +
 +    free(vm_base);
 +    puts("test_netstart_offline: all passed");
++    return 0;
++}
+diff --git a/libs/network/tests/test_np_commerce1.c b/libs/network/tests/test_np_commerce1.c
+new file mode 100644
+index 00000000..dae59f73
+--- /dev/null
++++ b/libs/network/tests/test_np_commerce1.c
+@@ -0,0 +1,79 @@
++/* NP Commerce, first version (the in-game PlayStation Store), as Resistance's
++ * online menus call it: a context is made (version 1 only), a product-category
++ * request gets a request ID and fails through the handler with REQUEST_ERROR /
++ * GPC_SEND_REQUEST (the store is gone), and the getters find nothing.
++ *
++ *   cc -std=gnu17 -I include -o /tmp/test_np_commerce1 \
++ *      libs/network/tests/test_np_commerce1.c && /tmp/test_np_commerce1
++ */
++#include "../sceNp.c"
++#include <assert.h>
++#include <stdlib.h>
++
++uint8_t* vm_base;
++uint32_t ppu_vm_size;
++int g_resv_store_active;
++uint32_t g_ww_lo, g_ww_hi;
++void ppu_resv_break_store(uint64_t ea) { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
++int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++int np_psnr_enabled(void) { return 0; }
++const char* np_psnr_online_id(void) { return "Player_01"; }
++void edat_add_klicensee(const uint8_t klic[16]) { (void)klic; }
++
++static int s_calls;
++static u32 s_opd;
++static u64 s_args[8];
++s32 cellSysutilQueueGuestCallbackArgs(u32 opd, const u64 args[8])
++{
++    s_opd = opd; memcpy(s_args, args, sizeof s_args); s_calls++;
++    return 0;
++}
++
++#define NPID    0x1000u
++#define HANDLER 0x2000u
++#define ARG     0x2100u
++#define CTX     0x3000u
++#define REQ     0x3100u
++#define NUM     0x3200u
++
++int main(void)
++{
++    vm_base = calloc(1, 0x10000); assert(vm_base);
++    assert(sceNpCommerceCreateCtx(1, (const SceNpId*)(uintptr_t)NPID, (void*)(uintptr_t)HANDLER,
++                                  (void*)(uintptr_t)ARG, (u32*)(uintptr_t)CTX) == (s32)SCE_NP_COMMERCE_ERROR_NOT_INITIALIZED);
++    assert(sceNpInit(0, NULL) == CELL_OK);
++    assert(sceNpCommerceCreateCtx(2, (const SceNpId*)(uintptr_t)NPID, (void*)(uintptr_t)HANDLER,
++                                  (void*)(uintptr_t)ARG, (u32*)(uintptr_t)CTX) == (s32)SCE_NP_COMMERCE_ERROR_UNSUPPORTED_VERSION);
++    assert(sceNpCommerceCreateCtx(1, (const SceNpId*)(uintptr_t)NPID, (void*)(uintptr_t)HANDLER,
++                                  (void*)(uintptr_t)ARG, NULL) == (s32)SCE_NP_ERROR_INVALID_ARGUMENT);
++    assert(sceNpCommerceCreateCtx(1, (const SceNpId*)(uintptr_t)NPID, (void*)(uintptr_t)HANDLER,
++                                  (void*)(uintptr_t)ARG, (u32*)(uintptr_t)CTX) == CELL_OK);
++    const u32 ctx = vm_read32(CTX);
++    assert(ctx != 0);
++
++    /* A category request: a request ID, then REQUEST_ERROR through the handler. */
++    assert(sceNpCommerceGetProductCategoryStart(ctx + 1, NULL, 0, (u32*)(uintptr_t)REQ) == (s32)SCE_NP_COMMERCE_ERROR_CTX_NOT_FOUND);
++    assert(s_calls == 0);
++    assert(sceNpCommerceGetProductCategoryStart(ctx, NULL, 0, (u32*)(uintptr_t)REQ) == CELL_OK);
++    const u32 req = vm_read32(REQ);
++    assert(req != 0 && s_calls == 1 && s_opd == HANDLER);
++    assert(s_args[0] == ctx && s_args[1] == req && s_args[2] == SCE_NP_COMMERCE_EVENT_REQUEST_ERROR);
++    assert((u32)s_args[3] == SCE_NP_COMMERCE_ERROR_GPC_SEND_REQUEST && s_args[4] == ARG);
++    assert(sceNpCommerceGetProductCategoryResult(req, NULL, 0, (u32*)(uintptr_t)NUM) == (s32)SCE_NP_COMMERCE_ERROR_CATEGORY_INFO_NOT_FOUND);
++    assert(vm_read32(NUM) == 0);
++    assert(sceNpCommerceGetProductCategoryFinish(req) == CELL_OK);
++    assert(sceNpCommerceGetProductCategoryFinish(req + 5) == (s32)SCE_NP_COMMERCE_ERROR_REQ_NOT_FOUND);
++
++    /* An empty store. */
++    vm_write32(NUM, 7);
++    assert(sceNpCommerceGetNumOfChildProductSku(NULL, (u32*)(uintptr_t)NUM) == CELL_OK && vm_read32(NUM) == 0);
++    assert(sceNpCommerceDoCheckoutStartAsync(ctx, NULL, 0, 0, (u32*)(uintptr_t)REQ) < 0);
++    assert(sceNpCommerceDestroyCtx(ctx) == CELL_OK);
++    assert(sceNpCommerceDestroyCtx(ctx) == (s32)SCE_NP_COMMERCE_ERROR_CTX_NOT_FOUND);
++    printf("test_np_commerce1: all passed\n");
 +    return 0;
 +}
 diff --git a/libs/network/tests/test_np_ticket_local.c b/libs/network/tests/test_np_ticket_local.c
