@@ -7368,10 +7368,24 @@ index bea806d0..fa7a52b7 100644
      return 0;
  }
 diff --git a/libs/network/cellNetCtl.c b/libs/network/cellNetCtl.c
-index c7926c0c..aa2bbf53 100644
+index c7926c0c..3a0a50a0 100644
 --- a/libs/network/cellNetCtl.c
 +++ b/libs/network/cellNetCtl.c
-@@ -234,13 +234,20 @@ s32 cellNetCtlGetInfo(s32 code, CellNetCtlInfo* info)
+@@ -222,7 +222,12 @@ s32 cellNetCtlGetInfo(s32 code, CellNetCtlInfo* info)
+         break;
+ 
+     case CELL_NET_CTL_INFO_IP_ADDRESS:
+-        netctl_get_host_ip(info->ip_address, sizeof(info->ip_address));
++        /* PS3_NET_LOCAL_IP=<ip>: the address the title is told it has, instead
++         * of this computer's own LAN address (a title may pass it to its
++         * servers, for peer connections). */
++        { const char* ip = getenv("PS3_NET_LOCAL_IP");
++          if (ip && *ip) strncpy(info->ip_address, ip, sizeof(info->ip_address) - 1);
++          else netctl_get_host_ip(info->ip_address, sizeof(info->ip_address)); }
+         break;
+ 
+     case CELL_NET_CTL_INFO_NETMASK:
+@@ -234,13 +239,20 @@ s32 cellNetCtlGetInfo(s32 code, CellNetCtlInfo* info)
                  sizeof(info->default_route) - 1);
          break;
  
@@ -7395,7 +7409,7 @@ index c7926c0c..aa2bbf53 100644
          break;
  
      case CELL_NET_CTL_INFO_IP_CONFIG:
-@@ -344,10 +351,18 @@ static void netstart_broadcast(u32 status)
+@@ -344,10 +356,18 @@ static void netstart_broadcast(u32 status)
          cellSysutilQueueEvent(slot, status, 0);
  }
  
@@ -7415,7 +7429,7 @@ index c7926c0c..aa2bbf53 100644
      netstart_broadcast(CELL_SYSUTIL_NET_CTL_NETSTART_LOADED);
      netstart_broadcast(CELL_SYSUTIL_NET_CTL_NETSTART_FINISHED);
      return CELL_OK;
-@@ -361,11 +376,11 @@ s32 cellNetCtlNetStartDialogAbortAsync(void)
+@@ -361,11 +381,11 @@ s32 cellNetCtlNetStartDialogAbortAsync(void)
  
  s32 cellNetCtlNetStartDialogUnloadAsync(CellNetCtlNetStartDialogResult* result)
  {
@@ -7708,7 +7722,7 @@ index a2318a0d..72c26761 100644
  /* NPDRM availability checks. The guest passes its klicensee (16 bytes) and the
   * path of an EDAT/SELF; the klicensee is handed to the EDAT reader, which then
 diff --git a/libs/network/sysNet.c b/libs/network/sysNet.c
-index 87595f37..fdeca202 100644
+index 87595f37..dbb94d64 100644
 --- a/libs/network/sysNet.c
 +++ b/libs/network/sysNet.c
 @@ -25,6 +25,7 @@
@@ -7727,7 +7741,48 @@ index 87595f37..fdeca202 100644
      typedef int host_socket_t;
      typedef struct pollfd host_pollfd;
      #define HOST_INVALID_SOCKET (-1)
-@@ -611,6 +613,25 @@ int32_t sys_net_bnet_send(int32_t s, const void* buf, uint32_t len, int32_t flag
+@@ -506,6 +508,32 @@ int32_t sys_net_bnet_accept(int32_t s, sys_net_sockaddr* addr, uint32_t* addrlen
+     return slot;
+ }
+ 
++/* PS3_NET_ALLOW=ip[,ip...]: the only addresses a title may connect or send
++ * to (loopback always may); anything else is refused and logged. For trying
++ * a community server without the title reaching anything else. */
++static int net_allowed(const struct in_addr* a)
++{
++    const char* list = getenv("PS3_NET_ALLOW");
++    if (!list || !*list) return 1;
++    if ((ntohl(a->s_addr) >> 24) == 127) return 1;
++    for (const char* p = list; *p;) {
++        while (*p == ',' || *p == ' ') p++;
++        const char* e = p;
++        while (*e && *e != ',' && *e != ' ') e++;
++        char buf[16];
++        const size_t n = (size_t)(e - p);
++        struct in_addr x;
++        if (n > 0 && n < sizeof buf) {
++            memcpy(buf, p, n); buf[n] = 0;
++            if (inet_pton(AF_INET, buf, &x) == 1 && x.s_addr == a->s_addr) return 1;
++        }
++        p = e;
++    }
++    char ip[16];
++    printf("[sys_net] %s blocked (not in PS3_NET_ALLOW)\n", inet_ntop(AF_INET, a, ip, sizeof ip) ? ip : "?");
++    return 0;
++}
++
+ int32_t sys_net_bnet_connect(int32_t s, const sys_net_sockaddr* addr, uint32_t addrlen)
+ {
+     (void)addrlen;
+@@ -523,6 +551,7 @@ int32_t sys_net_bnet_connect(int32_t s, const sys_net_sockaddr* addr, uint32_t a
+ 
+     char ip[16];
+     printf("[sys_net] connect(%d, %s:%u)\n", s, ip_str(&a.sin_addr, ip), ntohs(a.sin_port));
++    if (!net_allowed(&a.sin_addr)) return fail(SYS_NET_ECONNREFUSED);
+     if (s_sockets[s].p2p && s_sockets[s].stream) {
+         /* A peer that can't take a direct connection (behind its router):
+          * the stream goes through psnr's relay, and its socket replaces
+@@ -611,6 +640,25 @@ int32_t sys_net_bnet_send(int32_t s, const void* buf, uint32_t len, int32_t flag
      return n == HOST_SOCKET_ERROR ? host_fail() : n;
  }
  
@@ -7753,17 +7808,29 @@ index 87595f37..fdeca202 100644
  int32_t sys_net_bnet_sendto(int32_t s, const void* buf, uint32_t len, int32_t flags,
                              const sys_net_sockaddr* to, uint32_t tolen)
  {
-@@ -619,6 +640,9 @@ int32_t sys_net_bnet_sendto(int32_t s, const void* buf, uint32_t len, int32_t fl
+@@ -619,6 +667,21 @@ int32_t sys_net_bnet_sendto(int32_t s, const void* buf, uint32_t len, int32_t fl
      if (!valid_socket(s)) return fail(SYS_NET_EBADF);
      if (!to) return sys_net_bnet_send(s, buf, len, flags);   /* connected socket */
      if (read_sockaddr(EA(to), &a)) return fail(SYS_NET_EINVAL);
 +    { struct in_addr dip; uint16_t dport;
 +      if (ntohs(a.sin_port) == 53 && net_dns_redirect(&dip, &dport) && a.sin_addr.s_addr == dip.s_addr)
 +          a.sin_port = htons(dport); }
++    /* PS3_NET_NO_UPNP=1: UPnP discovery (SSDP, 239.255.255.250:1900) is
++     * dropped as if sent, so a title cannot ask the player's router to open
++     * ports. */
++    if (ntohs(a.sin_port) == 1900 && a.sin_addr.s_addr == htonl(0xEFFFFFFAu)) {
++        const char* nu = getenv("PS3_NET_NO_UPNP");
++        if (nu && *nu && nu[0] != '0') {
++            static int _n = 0;
++            if (_n++ < 4) printf("[sys_net] sendto(%d) UPnP discovery dropped (PS3_NET_NO_UPNP)\n", s);
++            return (int32_t)len;
++        }
++    }
++    if (!net_allowed(&a.sin_addr)) return (int32_t)len;   /* dropped, as if sent */
      if (s_sockets[s].p2p && np_psnr_p2p_route(GUEST_PTR(EA(buf), const char*), len,
                                               (const uint8_t*)&a.sin_addr, ntohs(a.sin_port)))
          return (int32_t)len;   /* went through psnr's relay */
-@@ -665,6 +689,9 @@ int32_t sys_net_bnet_recvfrom(int32_t s, void* buf, uint32_t len, int32_t flags,
+@@ -665,6 +728,9 @@ int32_t sys_net_bnet_recvfrom(int32_t s, void* buf, uint32_t len, int32_t flags,
          }
          break;
      } while (1);
@@ -7773,7 +7840,7 @@ index 87595f37..fdeca202 100644
      if (net_trace()) trace("recvfrom", s, n, &a);
      write_sockaddr(EA(from), EA(fromlen), &a);
      if (from && s_sockets[s].p2p) vm_write16(EA(from) + 8, s_sockets[s].vport);
-@@ -983,6 +1010,124 @@ uint32_t sys_net_bnet_inet_ntoa(uint32_t addr)
+@@ -983,6 +1049,124 @@ uint32_t sys_net_bnet_inet_ntoa(uint32_t addr)
      return ea;
  }
  
@@ -7898,7 +7965,7 @@ index 87595f37..fdeca202 100644
  uint32_t sys_net_bnet_gethostbyname(const char* name)
  {
      const char* host = GUEST_PTR(EA(name), const char*);
-@@ -990,14 +1135,30 @@ uint32_t sys_net_bnet_gethostbyname(const char* name)
+@@ -990,14 +1174,30 @@ uint32_t sys_net_bnet_gethostbyname(const char* name)
      struct addrinfo hints, *res = NULL;
      if (!host || !h) return 0;
  
@@ -7936,7 +8003,7 @@ index 87595f37..fdeca202 100644
  
      memset(vm_ptr8(h), 0, HOSTENT_SCRATCH);
      vm_write32(h + 0,  h + 64);           /* h_name */
-@@ -1010,8 +1171,9 @@ uint32_t sys_net_bnet_gethostbyname(const char* name)
+@@ -1010,8 +1210,9 @@ uint32_t sys_net_bnet_gethostbyname(const char* name)
      strncpy((char*)vm_ptr8(h + 64), host, HOSTENT_SCRATCH - 65);
  
      char ip[16];
@@ -8236,10 +8303,10 @@ index 00000000..7835583b
 +    return 0;
 +}
 diff --git a/libs/network/tests/test_sys_net.c b/libs/network/tests/test_sys_net.c
-index e9f78886..03f5fbbb 100644
+index e9f78886..2e814ad4 100644
 --- a/libs/network/tests/test_sys_net.c
 +++ b/libs/network/tests/test_sys_net.c
-@@ -107,10 +107,77 @@ static void put_sockaddr(uint32_t ea, uint32_t ip_be, uint16_t port)
+@@ -107,10 +107,88 @@ static void put_sockaddr(uint32_t ea, uint32_t ip_be, uint16_t port)
      vm_write32(ea + 4, ip_be);
  }
  
@@ -8306,6 +8373,17 @@ index e9f78886..03f5fbbb 100644
 +    assert(!sys_net_dns_query("not-an-ip", "x.y", &a));
 +    assert(!sys_net_dns_query("127.0.0.1:0", "x.y", &a));
 +#endif
++    /* PS3_NET_ALLOW: only the listed addresses, and loopback. */
++    struct in_addr x;
++    unsetenv("PS3_NET_ALLOW");
++    inet_pton(AF_INET, "8.8.8.8", &x);        assert(net_allowed(&x));
++    setenv("PS3_NET_ALLOW", "67.222.156.250, 10.1.2.3", 1);
++    inet_pton(AF_INET, "67.222.156.250", &x); assert(net_allowed(&x));
++    inet_pton(AF_INET, "10.1.2.3", &x);       assert(net_allowed(&x));
++    inet_pton(AF_INET, "127.0.0.1", &x);      assert(net_allowed(&x));
++    inet_pton(AF_INET, "8.8.8.8", &x);        assert(!net_allowed(&x));
++    inet_pton(AF_INET, "239.255.255.250", &x); assert(!net_allowed(&x));
++    unsetenv("PS3_NET_ALLOW");
 +    printf("test_sys_net: name lookups passed\n");
 +}
 +

@@ -62,7 +62,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Saves, Continuar a partir de um checkpoint | ✅ |
 | Atualização v1.7 do jogo na campanha | ✅ quando você tem os arquivos da atualização; os menus continuam na 01.00 |
 | O app: instalação com um clique a partir do seu disco, recompilação, jogar, ajustes, saves | ✅ |
-| Multiplayer online | 🚧 pelo [PS Rewired](https://psrewired.com), um servidor da comunidade que lista o jogo ([plano](ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)): o Online Game já chega ao servidor em testes locais; a primeira conexão de verdade é o próximo passo |
+| Multiplayer online | 🚧 pelo [PS Rewired](https://psrewired.com), um servidor da comunidade que lista o jogo ([plano](ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)): o Online Game já faz login no PS Rewired (2026-11-11) e chega ao contrato de uso deles; o lobby é o próximo passo |
 | Linux e Windows | ⏳ sem suporte (existe uma prévia do launcher para Windows; o jogo em si só compila no macOS) |
 
 A tabela completa, com o que foi cada correção, está em
