@@ -1675,6 +1675,20 @@ fn play_online(app: AppHandle, state: State<'_, AppState>) -> Result<OnlineStart
     })
 }
 
+/// SHA-256 of the v1.7 EBOOT.BIN PS Rewired's update server hands out, the
+/// one tools/v17/regen_eboot_v17.sh was tested with (which checks its
+/// decrypted ELF too). It comes from a community server and becomes native
+/// code, so build_online_menus refuses any other.
+const ONLINE_EBOOT_SHA: &str = "5edb729f7d8d251ff1f2f9a177a8c8af941d56c54c3df773cd5c6b37192d8ef7";
+
+fn file_sha256(p: &Path) -> Option<String> {
+    let o = Command::new("/usr/bin/shasum").args(["-a", "256"]).arg(p).output().ok()?;
+    if !o.status.success() {
+        return None;
+    }
+    String::from_utf8(o.stdout).ok()?.split_whitespace().next().map(str::to_string)
+}
+
 /// The script build_online_menus runs in the port folder: the toolkit and
 /// the venv as the rebuild sets them up, then tools/rebuild.sh eboot17.
 fn online_menus_script(deps: bool) -> String {
@@ -1705,6 +1719,9 @@ fn build_online_menus(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     let eboot = online_update_eboot(&st);
     if !eboot.is_file() {
         return Err("no update downloaded yet: Play online, then Multiplayer > Online Game, and let the game download its update".into());
+    }
+    if file_sha256(&eboot).as_deref() != Some(ONLINE_EBOOT_SHA) {
+        return Err(format!("{}: not the tested v1.7 EBOOT.BIN, so it is not built (it comes from a server and would become native code)", eboot.display()));
     }
     let deps = !deps_ready(&deps_dir()) && !brew_complete() && root.join("tools/bootstrap_deps.sh").is_file();
     let mut cmd = Command::new("/usr/bin/nice");
@@ -3550,6 +3567,16 @@ mod tests {
         // one value per variable: the online ones are not doubled by the extras
         let v = online_env(&st, Path::new("/d"), Path::new("/o"), &InputEnv::default());
         assert_eq!(v.iter().filter(|(k, _)| k == "PS3_NET_ALLOW").count(), 1);
+    }
+
+    #[test]
+    fn file_sha256_hashes_a_file() {
+        let d = std::env::temp_dir().join(format!("res-sha-{}", std::process::id()));
+        fs::write(&d, b"abc").unwrap();
+        assert_eq!(file_sha256(&d).as_deref(), Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+        let _ = fs::remove_file(&d);
+        assert_eq!(file_sha256(Path::new("/nonexistent/x")), None);
+        assert_eq!(ONLINE_EBOOT_SHA.len(), 64);
     }
 
     #[test]
