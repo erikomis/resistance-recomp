@@ -62,7 +62,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Saves, Continuar a partir de um checkpoint | ✅ |
 | Atualização v1.7 do jogo na campanha | ✅ quando você tem os arquivos da atualização; os menus continuam na 01.00 |
 | O app: instalação com um clique a partir do seu disco, recompilação, jogar, ajustes, saves | ✅ |
-| Multiplayer online | ⏳ planejado para o futuro pelo [PS Rewired](https://psrewired.com), um servidor da comunidade que lista o jogo ([plano](ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)); hoje só offline |
+| Multiplayer online | 🚧 pelo [PS Rewired](https://psrewired.com), um servidor da comunidade que lista o jogo ([plano](ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)): o Online Game já chega ao servidor em testes locais; a primeira conexão de verdade é o próximo passo |
 | Linux e Windows | ⏳ sem suporte (existe uma prévia do launcher para Windows; o jogo em si só compila no macOS) |
 
 A tabela completa, com o que foi cada correção, está em
@@ -173,7 +173,8 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
   testados jogando.
 - **Multiplayer online** ainda não funciona: os servidores da Sony acabaram,
   e o servidor da comunidade [PS Rewired](https://psrewired.com), que lista o
-  jogo, está planejado para o futuro. A tela dividida offline funciona.
+  jogo, está em andamento (o Online Game já chega ao servidor em testes
+  locais). A tela dividida offline funciona.
 
 ## Em andamento
 

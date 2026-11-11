@@ -62,7 +62,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | Saves, Continue from a checkpoint | ✅ |
 | Game update v1.7 for the campaign | ✅ when you have the update's files; the menus stay 01.00 |
 | The app: one-click install from your disc, rebuild, play, settings, saves | ✅ |
-| Online multiplayer | ⏳ planned for the future through [PS Rewired](https://psrewired.com), a community server that lists the game ([plan](ROADMAP.md#online-multiplayer-through-ps-rewired-future)); offline today |
+| Online multiplayer | 🚧 through [PS Rewired](https://psrewired.com), a community server that lists the game ([plan](ROADMAP.md#online-multiplayer-through-ps-rewired-future)): Online Game now reaches the server in local tests; the first real connection is next |
 | Linux and Windows | ⏳ not supported (a Windows launcher preview exists; the game itself builds only on macOS) |
 
 The full table, with what each fix was, is in
@@ -165,7 +165,8 @@ save. What you change is kept for the next start. Details in
 - **Keyboard and mouse, rumble, an Xbox pad:** implemented, not play-tested.
 - **Online multiplayer** does not work yet: Sony's servers are gone, and the
   community server [PS Rewired](https://psrewired.com), which lists the game,
-  is planned for the future. Offline split-screen works.
+  is being worked on (Online Game reaches the server in local tests).
+  Offline split-screen works.
 
 ## Work in progress
 

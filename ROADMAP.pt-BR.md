@@ -511,12 +511,14 @@ PS2, PSP e PS3 e lista o **Resistance: Fall of Man (All Regions)** (e o
 Resistance 2) entre eles, com página de status própria. Num PS3 ou no RPCS3 o
 jogador aponta o DNS para o servidor deles (`67.222.156.250`, do guia de PS3
 deles) e as buscas que o próprio jogo faz pelos nomes dos servidores antigos
-chegam aos servidores da comunidade. O plano para o port, a ser feito no
-futuro:
+chegam aos servidores da comunidade. O plano para o port:
 
-- [ ] Sockets reais no jogo: o toolkit já tem, atrás de `PS3_NET_ONLINE=1` (`sys_net` em sockets do host, um `cellNetCtl` conectado); conferir que a rede do Resistance roda neles.
-- [ ] Resolver os nomes pelo DNS do PS Rewired em vez do DNS do Mac: o jogo resolve sozinho os nomes dos servidores antigos, então o resolvedor do runtime precisa perguntar a `67.222.156.250` (uma opção como `PS3_NET_DNS`).
-- [ ] O login na PSN que o jogo espera (`sceNp`: conectado, um online ID, um ticket que os servidores aceitem); descobrir o que o PS Rewired exige de um emulador (no RPCS3 o login é pelo RPCN).
+- [x] **Etapa 1, local (2026-11-11):** Multiplayer → Online Game agora vai até o servidor, testado com todos os nomes apontando para este Mac (um DNS falso e um registrador, nada enviado para fora). O jogo faz login, pega um ticket, passa da tela de rede, pergunta ao próprio cliente de DNS por `resistance.ps3.online.scea.com` (ele tem um: consulta o DNS que o `cellNetCtl` informa, na porta 53, e não o `gethostbyname`), abre TCP na porta 10071 (Medius) e manda os primeiros 728 bytes do handshake do SCE-RT (com o certificado embutido no jogo); sem resposta, desconecta depois de 30 s. O DNS do PS Rewired responde esse nome com o servidor deles (conferido em 2026-11-11).
+  - [x] Sockets reais: `PS3_NET_ONLINE=1` (`sys_net` em sockets do host, um `cellNetCtl` conectado); a rede do Resistance roda neles.
+  - [x] Nomes por um DNS escolhido: `PS3_NET_DNS=<ip>[:porta]` é o DNS que o `cellNetCtl` informa (o que o cliente do jogo pergunta) e o que o `gethostbyname` do runtime pergunta; `PS3_NET_HOSTS=nome=ip,...` dá respostas fixas (`*.sufixo`, `*`). Uma porta diferente de 53 é para testes locais.
+  - [x] O login na PSN, feito localmente: `PS3_NP_SIGNIN=1` (com `PS3_NET_ONLINE=1`) informa conectado, e o `RequestTicket` gera um ticket versão 2.1 com o online ID (`PS3_NP_ONLINE_ID`) e o service ID onde os servidores Medius os leem (bytes 84 e 136; o servidor de código aberto Horizon pega o nome dali e cria a conta, sem conferir assinatura), avisado com o evento `GOT_TICKET`. Testes: `test_np_ticket_local`, `test_sys_net`.
+- [ ] **Etapa 2, com o servidor (precisa do aval do jogador):** `PS3_NET_DNS=67.222.156.250` e ver até onde o login vai: o handshake do SCE-RT, depois o login com ticket (se o servidor do PS Rewired aceita um ticket feito localmente).
+- [ ] Duas chamadas do chat de voz ainda não estão resolvidas quando o menu online abre (`cellMicSetNotifyEventQueue`, `cellAudioSetPortLevel`); sem efeito até agora.
 - [ ] A atualização v1.7 online: os servidores esperam a última versão; a campanha já roda a v1.7, os menus (onde o Online Game começa) continuam na 01.00.
 - [ ] Chat de voz (`cellMic`) depois, opcional.
 - [ ] Uma opção no launcher ("Jogar online pelo PS Rewired"), desligada por padrão, com o link para as regras e o Discord deles.
