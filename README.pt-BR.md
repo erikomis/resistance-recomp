@@ -108,8 +108,11 @@ isso sem terminal: Início (a arte do seu disco, JOGAR, ajustes rápidos,
   atualização.
 - **Se atualiza sozinho** (a partir da v0.3.0): o card Atualizações no Início
   oferece **Baixar e instalar**, depois **Reiniciar para concluir** (assinado
-  e conferido), e em seguida **Recompilar o jogo**. A v0.2.2 e as anteriores
-  não têm atualizador: instale a v0.3.0 na mão uma vez.
+  e conferido), e em seguida **Recompilar o jogo**. O mesmo card avisa quando
+  o port tem fontes novas: **Baixar as fontes novas** e depois **Recompilar o
+  jogo** é como uma correção chega a um jogo já instalado (saves e ajustes
+  ficam). A v0.2.2 e as anteriores não têm atualizador: instale a v0.3.0 na
+  mão uma vez.
 - **Gráficos:** janela, tela cheia ou sem borda, vsync, filtros (FXAA, SMAA,
   nitidez), MetalFX, pacotes de texturas, as opções de 60 fps e de campo de
   visão.
@@ -143,6 +146,8 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
   Resistance 2: medido sem janela no mesmo ponto, 23–29 fps antes, uns 40
   depois. A thread do RSX passava 39% do tempo esperando a GPU (os shadow
   maps eram lidos de volta pela CPU a cada quadro). Falta confirmar jogando.
+  Já instalou? Início > Atualizações > **Baixar as fontes novas** e depois
+  **Recompilar o jogo**.
 - **Grama sumindo ou piscando** em alguns lugares: a tabela de alvos de
   renderização do engine enchia nas cenas pesadas e descartava alvos ainda
   em uso, o que perde o que a GPU desenhou neles. Agora ela tem 512 vagas
@@ -155,6 +160,10 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
   2026-11-06; as árvores ainda precisam ser conferidas.
 - **Os menus continuam na 01.00:** só a campanha roda a atualização v1.7 (o
   executável de menus da atualização só existe na versão digital).
+- **Travamentos raros:** em umas 20 execuções de teste o jogo travou duas
+  vezes, uma de cada: no vídeo de abertura de uma fase e em "Physics SPU
+  Collision Timed Out!". Nenhum dos dois voltou. Se acontecer com você, mande
+  o log (Modo de depuração > Criar .zip).
 - **Teclado e mouse, vibração, controle de Xbox:** implementados, ainda não
   testados jogando.
 - **Multiplayer online** não funciona (os servidores acabaram); a tela
@@ -210,6 +219,14 @@ aplicado pelo `tools/setup_toolkit.sh`. As que fizeram o jogo andar:
 - **Grimsby travava, o Location Select fechava o jogo:** o caminho do cache
   do sistema, e o `setjmp`/`longjmp` do Lua (uma opção nova do lifter).
 - **Vídeos sem som:** AC3 5.1 pelo FFmpeg.
+- **Velocidade:** um cache de vértices (de 5,9 para 14 fps em York), a
+  profundidade resolvida na GPU e o trabalho do engine de desenho do port do
+  Resistance 2: profundidade e blits copiados na GPU em vez de lidos de
+  volta, mais uma correção nossa para os alvos de renderização pequenos que
+  o jogo cria a cada quadro ("Outgunned" de 23–29 para uns 40 fps).
+- **Fechar a janela encerra o jogo, controles de Xbox:** uma saída limpa que
+  espera um save em andamento; controles Xbox One/Series lidos como HID, não
+  pelo MFi.
 - **Névoa, água, sombras, tela dividida, a camada de grama:** a origem da
   janela, comparações de profundidade, descarte de superfícies, limpezas com
   scissor, o alpha test.

@@ -104,8 +104,10 @@ save, status), Graphics, Performance, Game, Controls and Advanced.
 - **Install the game** with one button, and **rebuild** after an update.
 - **Updates itself** (from v0.3.0): the Updates card on Home offers
   **Download and install**, then **Restart to finish** (signed and checked),
-  and afterwards **Rebuild the game**. v0.2.2 and older have no updater:
-  install v0.3.0 by hand once.
+  and afterwards **Rebuild the game**. The same card says when the port has
+  new sources: **Get the new sources**, then **Rebuild the game**, is how a
+  fix reaches a game you already installed (saves and settings stay).
+  v0.2.2 and older have no updater: install v0.3.0 by hand once.
 - **Graphics:** window, fullscreen or borderless, vsync, filters (FXAA,
   SMAA, sharpening), MetalFX, texture packs, the 60 fps and field-of-view
   options.
@@ -138,7 +140,8 @@ save. What you change is kept for the next start. Details in
   with the Resistance 2 port's draw-engine work: measured headless at the
   same spot, 23–29 fps before, about 40 after. The RSX thread had spent 39%
   of its time waiting for the GPU (the shadow maps were read back to the CPU
-  every frame). Still to confirm in play.
+  every frame). Still to confirm in play. Already installed? Home > Updates >
+  **Get the new sources**, then **Rebuild the game**.
 - **Grass disappearing or flickering** in some places: the draw engine's
   render-target table filled up in heavy scenes and evicted targets that were
   still in use, which loses what the GPU drew in them. It now has 512 slots
@@ -151,6 +154,9 @@ save. What you change is kept for the next start. Details in
   the trees are still to re-check.
 - **The menus stay 01.00:** only the campaign runs the v1.7 update (the
   update's menu executable exists only in a digital-edition form).
+- **Rare hangs:** in about 20 test runs the game froze twice, once each: in a
+  level's opening movie, and on "Physics SPU Collision Timed Out!". Neither
+  came back. If it happens to you, send the log (Debug mode > Create .zip).
 - **Keyboard and mouse, rumble, an Xbox pad:** implemented, not play-tested.
 - **Online multiplayer** does not work (the servers are gone); offline
   split-screen does.
@@ -202,6 +208,14 @@ applied by `tools/setup_toolkit.sh`. The ones that got the game going:
 - **Grimsby froze, Location Select quit the game:** the system cache path,
   and Lua's `setjmp`/`longjmp` (a new lifter option).
 - **Silent movies:** AC3 5.1 through FFmpeg.
+- **Speed:** a vertex cache (5.9 to 14 fps in York), depth resolved on the
+  GPU, and the Resistance 2 port's draw-engine work: depth and blits copied
+  on the GPU instead of read back, plus a fix of our own for the small
+  render targets the game makes every frame ("Outgunned" 23–29 to about
+  40 fps).
+- **Closing the window ends the game, Xbox pads:** a clean quit that waits
+  for a save in progress; Xbox One/Series pads read as HID pads, not through
+  MFi.
 - **Fog, water, shadows, split-screen, the grass layer:** the window origin,
   depth compares, surface eviction, scissored clears, the alpha test.
 - **From other ports:** fixes from the
