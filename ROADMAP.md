@@ -511,7 +511,7 @@ plan for the port:
 - [ ] Voice chat (2026-11-11: talking is in, to confirm with another player). Without it `cellMic` reports no microphone, as before, so the game runs with voice chat off and no error.
   - [ ] Hearing the others: the menus start "headset audio out" and "headset mic in" threads; the voice the server relays should reach a `cellAudio` port the mixer already plays (`cellAudioSetPortLevel` now sets its level). To check in a match with another player.
   - [x] Talking: `PS3_MIC=1` makes the Mac's default microphone the headset (SDL2 capture). What the game expects was read off its "headset mic in" thread: the ATTACH (2) event on the queue `cellMicSetNotifyEventQueue` gives, `cellMicOpen(0, 8000)`, `cellMicStart`, a DATA (5) event every 32 ms, and `cellMicRead(0, buf, 0x2000)` with three arguments returning the BYTES read, 32-bit big-endian floats, mono (the toolkit's had a fourth argument and returned an error). `PS3_MIC_TONE=1` drives the same path with a 440 Hz tone and records nothing: online, in a private game, the game opens the microphone, starts it and reads the samples. The app's **Voice chat (microphone)** switch (Home > Online, off by default) passes `PS3_MIC=1` to Play online only; the launcher's Info.plist carries the microphone usage text macOS asks for. Test: `test_mic`.
-- [ ] A switch in the launcher ("Play online through PS Rewired"), off by default, with a link to their rules and Discord.
+- [x] In the launcher (v0.4.0): the **Play online** button and Home's **Online** card (the online ID, Voice chat off by default, **Server rules**, which opens psrewired.com with their rules and Discord); offline Play is unchanged.
 
 ### Out of scope for now
 
