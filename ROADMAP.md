@@ -485,9 +485,26 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 
 - [ ] Linux (Vulkan) and Windows (D3D12), with the launcher and the rebuild running natively. The Windows XInput runtime loading (upstream #494) is in the toolkit patch, untested on Windows; so is the audio mixer's new pacing.
 
+### Online multiplayer through PS Rewired (future)
+
+The official servers closed on 2014-04-08, but a community revival,
+[PS Rewired](https://psrewired.com), runs emulated servers for PS2, PSP and
+PS3 games and lists **Resistance: Fall of Man (All Regions)** (and Resistance
+2) among them, with a status page of its own. On a PS3 or in RPCS3 a player
+points the DNS at its server (`67.222.156.250`, from its PS3 guide) and the
+game's own lookups of the old server names reach the community servers. The
+plan for the port, to be done in the future:
+
+- [ ] Real sockets in the game: the toolkit already has them behind `PS3_NET_ONLINE=1` (`sys_net` on host sockets, a connected `cellNetCtl`); check that Resistance's networking runs on them.
+- [ ] Name lookups through PS Rewired's DNS instead of the Mac's: the game resolves the old server names itself, so the runtime's resolver has to ask `67.222.156.250` (an option such as `PS3_NET_DNS`).
+- [ ] The PSN sign-in the game expects (`sceNp`: signed in, an online ID, a ticket the servers accept); find what PS Rewired requires of an emulator (RPCS3 players use RPCN for the sign-in).
+- [ ] The v1.7 update online: the servers expect the last version; the campaign already runs v1.7, the menus (where Online Game starts) stay 01.00.
+- [ ] Voice chat (`cellMic`) later, optional.
+- [ ] A switch in the launcher ("Play online through PS Rewired"), off by default, with a link to their rules and Discord.
+
 ### Out of scope for now
 
-- [ ] Online (40-player matches, `sceNp`, `sys_net`, `cellMic` voice chat): the official servers are gone; only with a community server. Multiplayer → Online Game now backs out offline instead of hanging (2026-10-24).
+- [ ] Online through Sony's own servers: gone since 2014 (see PS Rewired above). Multiplayer → Online Game backs out offline instead of hanging (2026-10-24).
 
 ---
 

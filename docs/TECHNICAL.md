@@ -112,7 +112,7 @@ As of 2026-10-29 (played by hand from York into Manchester's "The Cathedral" at 
 | Launcher app | ✅ [`launcher/`](../launcher/) (Tauri): disc, builds, rebuild, settings, saves, Play/Stop, in English and Brazilian Portuguese; 🧪 the new Controls page (remapping, mouse, rumble) and Graphics settings (window, filters, texture packs) |
 | Linux and Windows | ⏳ not supported |
 | Menus, saves and long sessions | ✅ over two hours of scripted play without a crash (2026-10-24): every EBOOT menu and extra, pause and options, Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav`, a 25-minute 60 fps soak and a 22-minute idle one; a full run has no unresolved NIDs (the one at quit was `cellSysconfAbort`) |
-| Online multiplayer | ❌ out of scope (the official servers are gone); Multiplayer → Online Game now backs out offline instead of hanging |
+| Online multiplayer | ⏳ future, through the community's [PS Rewired](https://psrewired.com) servers ([plan](../ROADMAP.md#online-multiplayer-through-ps-rewired-future)); the official servers are gone; Multiplayer → Online Game now backs out offline instead of hanging |
 
 Next: play on from Manchester to the end of the campaign; speed up the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps uncapped in the sweep). Details and next steps in [ROADMAP.md](../ROADMAP.md).
 

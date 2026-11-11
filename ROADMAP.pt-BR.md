@@ -503,9 +503,27 @@ Feito em 2026-10-22: a campanha roda a v1.7 (veja "Estado atual").
 
 - [ ] Linux (Vulkan) e Windows (D3D12), com o launcher e o rebuild rodando nativamente. O carregamento do XInput em tempo de execução no Windows (upstream #494) está no patch do toolkit, sem teste no Windows; a nova cadência do mixer de áudio também.
 
+### Multiplayer online pelo PS Rewired (futuro)
+
+Os servidores oficiais fecharam em 2014-04-08, mas um projeto da comunidade,
+o [PS Rewired](https://psrewired.com), mantém servidores emulados de jogos de
+PS2, PSP e PS3 e lista o **Resistance: Fall of Man (All Regions)** (e o
+Resistance 2) entre eles, com página de status própria. Num PS3 ou no RPCS3 o
+jogador aponta o DNS para o servidor deles (`67.222.156.250`, do guia de PS3
+deles) e as buscas que o próprio jogo faz pelos nomes dos servidores antigos
+chegam aos servidores da comunidade. O plano para o port, a ser feito no
+futuro:
+
+- [ ] Sockets reais no jogo: o toolkit já tem, atrás de `PS3_NET_ONLINE=1` (`sys_net` em sockets do host, um `cellNetCtl` conectado); conferir que a rede do Resistance roda neles.
+- [ ] Resolver os nomes pelo DNS do PS Rewired em vez do DNS do Mac: o jogo resolve sozinho os nomes dos servidores antigos, então o resolvedor do runtime precisa perguntar a `67.222.156.250` (uma opção como `PS3_NET_DNS`).
+- [ ] O login na PSN que o jogo espera (`sceNp`: conectado, um online ID, um ticket que os servidores aceitem); descobrir o que o PS Rewired exige de um emulador (no RPCS3 o login é pelo RPCN).
+- [ ] A atualização v1.7 online: os servidores esperam a última versão; a campanha já roda a v1.7, os menus (onde o Online Game começa) continuam na 01.00.
+- [ ] Chat de voz (`cellMic`) depois, opcional.
+- [ ] Uma opção no launcher ("Jogar online pelo PS Rewired"), desligada por padrão, com o link para as regras e o Discord deles.
+
 ### Fora do escopo por enquanto
 
-- [ ] Online (partidas de 40 jogadores, `sceNp`, `sys_net`, chat de voz via `cellMic`): os servidores oficiais acabaram; só com um servidor da comunidade. Multiplayer → Online Game agora volta atrás offline em vez de travar (2026-10-24).
+- [ ] Online pelos servidores da própria Sony: acabaram em 2014 (veja o PS Rewired acima). Multiplayer → Online Game volta atrás offline em vez de travar (2026-10-24).
 
 ---
 

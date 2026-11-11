@@ -114,7 +114,7 @@ Em 2026-10-29 (jogado na mão de York até "The Cathedral", em Manchester, a uns
 | App launcher | ✅ [`launcher/`](../launcher/) (Tauri): disco, builds, recompilação, ajustes, saves, Jogar/Parar, em português do Brasil e inglês; 🧪 a nova página Controles (remapeamento, mouse, vibração) e os ajustes de Gráficos (janela, filtros, pacotes de texturas) |
 | Linux e Windows | ⏳ sem suporte |
 | Menus, saves e sessões longas | ✅ mais de duas horas de jogo roteirizado sem crash (2026-10-24): todos os menus e extras do EBOOT, pausa e opções, Salvar e Sair → Continuar (exitspawn nos dois sentidos), um HDD novo e vazio, um `quick.sav` corrompido, 25 minutos seguidos a 60 fps e 22 minutos parado; um run completo não tem NIDs sem resolver (o chamado ao sair era o `cellSysconfAbort`) |
-| Multiplayer online | ❌ fora do escopo (os servidores oficiais acabaram); Multiplayer → Online Game agora volta atrás offline em vez de travar |
+| Multiplayer online | ⏳ futuro, pelos servidores do [PS Rewired](https://psrewired.com), da comunidade ([plano](../ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)); os servidores oficiais acabaram; Multiplayer → Online Game agora volta atrás offline em vez de travar |
 
 Próximo: seguir jogando de Manchester até o fim da campanha; acelerar as três fases mais pesadas ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps sem limite na varredura). Detalhes e próximos passos no [ROADMAP.pt-BR.md](../ROADMAP.pt-BR.md).
 
