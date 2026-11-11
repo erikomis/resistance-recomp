@@ -8,8 +8,8 @@ jogo é traduzido para C/C++ e compilado como executáveis nativos, com
 gráficos em Metal. Não é um emulador.
 
 **Ele é jogável.** A campanha já foi jogada com controle de York, passando
-por Grimsby, até Manchester ("The Cathedral"), a uns 29–33 fps, a meta de
-30 fps do próprio jogo, e todas as 30 fases dela carregam até o gameplay.
+por Grimsby e Manchester, até Nottingham ("Viper's Nest"), a uns 30 fps, a
+meta do próprio jogo, e todas as 30 fases dela carregam até o gameplay.
 Baixe o app na
 [página de releases](https://github.com/erikomis/resistance-recomp/releases):
 você escolhe a imagem do seu disco e ele monta o jogo a partir dela
@@ -31,8 +31,9 @@ seguindo o [port do inFAMOUS 2](https://github.com/erikomis/infamous2-recomp)
 do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
-> **Alpha, ainda não jogado até o fim.** A campanha foi jogada até Manchester;
-> dali em diante as fases carregam, mas ninguém as jogou na mão. Só macOS com
+> **Alpha, ainda não jogado até o fim.** A campanha foi jogada até
+> Nottingham; dali em diante (de Cheshire em diante) as fases carregam, mas
+> ninguém as jogou na mão. Só macOS com
 > Apple silicon. O controle é o jeito testado de jogar. O que falta está no
 > [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
@@ -48,9 +49,9 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | | |
 | --- | --- |
 | Boot, telas legais, instalação da primeira execução, tela de título, menus | ✅ |
-| Campanha: York, Grimsby, Manchester, jogados com um DualSense | ✅ primeira pessoa, HUD, inimigos, morrer e renascer, Salvar e Sair e Continuar |
-| O resto da campanha (de Nottingham à Chimeran Tower) | 🧪 todas as fases carregam até o gameplay sem erros; ainda não jogadas na mão |
-| Desempenho | ✅ uns 29–33 fps jogando, a meta de 30 fps do jogo; 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas seguram 30, mas não 60) |
+| Campanha: York, Grimsby, Manchester e Nottingham, jogados com um DualSense | ✅ primeira pessoa, HUD, inimigos, morrer e renascer, Salvar e Sair e Continuar (até "Viper's Nest", 2026-11-10) |
+| O resto da campanha (de Cheshire à Chimeran Tower) | 🧪 todas as fases carregam até o gameplay sem erros; ainda não jogadas na mão |
+| Desempenho | ✅ uns 30 fps jogando, a meta do jogo; ⚠️ uma cena pesada em "Outgunned" cai para 13–15 fps (em andamento); 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas seguram 30, mas não 60) |
 | Vídeos, música e som (AC3 5.1, mixado para a sua saída) | ✅ |
 | Gráficos | ✅ as cores do mundo, sombras, névoa, água e a camada de grama; ⚠️ os pontos escuros em algumas árvores ainda precisam ser conferidos |
 | Uma janela só dos menus até a campanha | ✅ fechá-la encerra o jogo na hora |
@@ -136,6 +137,15 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
 
 ## Problemas conhecidos
 
+- **Quedas de fps em "Outgunned"** (Manchester): um combate grande ao ar
+  livre, com uns 2.500 draws por quadro, fica em 13–15 fps por alguns
+  segundos de cada vez (um quarto da fase abaixo de 17 fps numa sessão de
+  jogo). É a CPU preparando os draws, não a GPU: baixar a resolução interna
+  ganha só uns 10%. As otimizações do engine de desenho do port do
+  Resistance 2 estão sendo trazidas para isso.
+- **Grama sumindo ou piscando** em alguns lugares: relatado jogando, em
+  investigação (alpha-to-coverage, vértices velhos e jobs de SPU atrasados
+  já foram conferidos e descartados).
 - **Fases pesadas:** "The Cathedral", "No Way Out" e "Ice and Iron" são as
   mais lentas: seguram 30 fps jogando, mas não 60 com a opção de 60 fps. O
   limite são os jobs de SPU do jogo, que ele roda numa SPU só.
@@ -152,9 +162,13 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
 
 O que está sendo feito agora (detalhes no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md)):
 
-- **Jogar a campanha inteira** de Manchester até o fim, anotando o que
-  quebra.
-- **Velocidade nas fases mais pesadas:** o sistema de jobs de SPU.
+- **Jogar a campanha inteira:** jogada até Nottingham ("Viper's Nest"); a
+  próxima é Cheshire.
+- **Velocidade nas cenas pesadas:** as otimizações do engine de desenho do
+  port do Resistance 2 (reaproveitar vértices no mesmo quadro, busca por
+  atributo, cópias na GPU, caches maiores, cache de shaders em segundo
+  plano), medidas em "Outgunned".
+- **A grama** que some ou pisca.
 - **A iluminação da neve** em "Ice and Iron".
 - **Pull requests no [ps3recomp](https://github.com/sp00nznet/ps3recomp)**
   com as correções do toolkit feitas aqui.

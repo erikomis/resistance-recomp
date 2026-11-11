@@ -8,8 +8,9 @@ code is translated to C/C++ and compiled into native executables, with
 graphics on Metal. It is not an emulator.
 
 **It is playable.** The campaign has been played with a controller from York
-through Grimsby into Manchester ("The Cathedral") at about 29–33 fps, the
-game's own 30 fps target, and every one of its 30 levels loads to gameplay.
+through Grimsby and Manchester into Nottingham ("Viper's Nest"), at about
+30 fps, the game's own target, and every one of its 30 levels loads to
+gameplay.
 Get the app from the
 [releases page](https://github.com/erikomis/resistance-recomp/releases): you
 pick your disc image and it builds the game from it ([how](#download-and-play)).
@@ -31,7 +32,8 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 > [!WARNING]
 > **Alpha, not played to the end yet.** The campaign has been played into
-> Manchester; past that, the levels load but nobody has played them by hand.
+> Nottingham; past that (Cheshire onwards), the levels load but nobody has
+> played them by hand.
 > Apple-silicon macOS only. A controller is the tested way to play. What is
 > missing is in [ROADMAP.md](ROADMAP.md).
 
@@ -47,9 +49,9 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | | |
 | --- | --- |
 | Boot, legal screens, first-run install, title screen, menus | ✅ |
-| Campaign: York, Grimsby, Manchester, played with a DualSense | ✅ first person, HUD, enemies, dying and respawning, Save & Quit and Continue |
-| The rest of the campaign (Nottingham to the Chimeran Tower) | 🧪 every level loads to gameplay with no errors; not played by hand yet |
-| Performance | ✅ about 29–33 fps in play, the game's 30 fps target; 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels hold 30 but not 60) |
+| Campaign: York, Grimsby, Manchester and Nottingham, played with a DualSense | ✅ first person, HUD, enemies, dying and respawning, Save & Quit and Continue (into "Viper's Nest", 2026-11-10) |
+| The rest of the campaign (Cheshire to the Chimeran Tower) | 🧪 every level loads to gameplay with no errors; not played by hand yet |
+| Performance | ✅ about 30 fps in play, the game's target; ⚠️ one heavy scene in "Outgunned" drops to 13–15 fps (being worked on); 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels hold 30 but not 60) |
 | Movies, music and sound (AC3 5.1, mixed to your output) | ✅ |
 | Graphics | ✅ the world's colours, shadows, fog, water and the grass layer; ⚠️ dark speckles in some trees still to re-check |
 | One window from the menus through the campaign | ✅ closing it ends the game at once |
@@ -131,6 +133,15 @@ save. What you change is kept for the next start. Details in
 
 ## Known problems
 
+- **Frame drops in "Outgunned"** (Manchester): one big outdoor fight with
+  about 2,500 draws a frame runs at 13–15 fps for a few seconds at a time
+  (a quarter of the level below 17 fps in a play session). It is the CPU
+  preparing the draws, not the GPU: a lower internal resolution only gains
+  about 10%. The Resistance 2 port's draw-engine speed-ups are being brought
+  over for it.
+- **Grass disappearing or flickering** in some places: reported in play,
+  being looked into (alpha-to-coverage, stale vertices and late SPU culling
+  jobs were checked and ruled out).
 - **Heavy levels:** "The Cathedral", "No Way Out" and "Ice and Iron" are the
   slowest: they hold 30 fps in play but not 60 with the 60 fps option. The
   limit is the game's SPU jobs, which it runs on one SPU.
@@ -146,9 +157,12 @@ save. What you change is kept for the next start. Details in
 
 What is being worked on now (details in [ROADMAP.md](ROADMAP.md)):
 
-- **Playing the whole campaign** from Manchester to the end, writing down
-  what breaks.
-- **Speed in the heaviest levels:** the SPU job system.
+- **Playing the whole campaign:** played into Nottingham ("Viper's Nest");
+  next is Cheshire.
+- **Speed in the heavy scenes:** the Resistance 2 port's draw-engine work
+  (vertex reuse within a frame, per-attribute fetches, GPU copies, larger
+  caches, a background shader cache), measured on "Outgunned".
+- **The grass** that disappears or flickers.
 - **The snow lighting** in "Ice and Iron".
 - **Pull requests to [ps3recomp](https://github.com/sp00nznet/ps3recomp)**
   for the toolkit fixes made here.
