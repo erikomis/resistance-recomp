@@ -451,8 +451,10 @@ O que trouxe até aqui:
 
 - [ ] Teclado e mouse no macOS com mapeamento configurável (`PS3_INPUT_MAP`): portados do trabalho do inFAMOUS 2 e expostos na página Controles do launcher (2026-10-23); os testes passam, precisa de um teste jogando.
 - [x] DualSense/DualShock/Xbox via SDL2 (um DualSense jogou o capítulo 1, 2026-10-22).
-- [ ] Um controle físico com o launcher: o processo do jogo fica em segundo plano, então `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` está ligado; ainda não testado com um controle.
-- [ ] Vibração com um controle físico: o `game.self` da v1.7 chama `cellPadSetActDirect`; a vibração (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) foi portada em 2026-10-23, precisa de um teste jogando.
+- [x] Um controle físico com o launcher: o processo do jogo fica em segundo plano, então `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` está ligado; um DualSense joga pelo app (2026-11-11).
+- [x] Vibração com um controle físico: o jogo chama `cellPadSetActDirect`; a vibração (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) foi portada em 2026-10-23 e sentida num DualSense (2026-11-11).
+- [ ] Gatilhos adaptáveis do DualSense (2026-11-11, precisa de um teste jogando): o R2 tem o clique de um gatilho de arma (resistência até um ponto de quebra mais ou menos na metade, e só conta como apertado depois dele), vibra junto com os motores enquanto está apertado e o jogo vibra (atirando), e o L2 tem uma resistência leve; os dois ficam livres quando o controle fecha e ao sair. Os outros controles continuam com gatilhos livres. `PS3_PAD_ADAPTIVE=0` desliga, `PS3_PAD_FIRE_AT` muda o ponto do aperto; o launcher tem um botão em Vibração. `libs/input/tests/test_pad_adaptive.c`.
+- [x] Atirar com R2 (estilo PS5): um botão na página Controles do launcher troca o L1/R1 do controle com o L2/R2, então o R2 atira e o L2 mira; apertado de novo, volta (2026-11-11).
 - [ ] SIXAXIS: o jogo chama `cellPadSetSensorMode`/`cellPadInfoSensorMode` (os dois implementados em 2026-10-24); descobrir para que usa o movimento e mapear num botão.
 
 ### Atualização do jogo (v1.7)

@@ -433,8 +433,10 @@ What got it this far:
 
 - [ ] Keyboard and mouse on macOS with a configurable mapping (`PS3_INPUT_MAP`): ported from the inFAMOUS 2 work and exposed in the launcher's Controls page (2026-10-23); tests pass, needs a play test.
 - [x] DualSense/DualShock/Xbox via SDL2 (a DualSense played chapter 1, 2026-10-22).
-- [ ] A physical controller with the launcher: the game process is in the background, so `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` is set; not tested with a controller yet.
-- [ ] Rumble with a physical controller: the v1.7 `game.self` calls `cellPadSetActDirect`; rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported 2026-10-23, needs a play test.
+- [x] A physical controller with the launcher: the game process is in the background, so `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` is set; a DualSense plays through the app (2026-11-11).
+- [x] Rumble with a physical controller: the game calls `cellPadSetActDirect`; rumble (`PS3_RUMBLE`, `PS3_RUMBLE_STRENGTH`) ported 2026-10-23, felt on a DualSense (2026-11-11).
+- [ ] DualSense adaptive triggers (2026-11-11, needs a play test): R2 clicks like a gun's trigger (resistance to a break about half way, and it reads as pressed only past the break), buzzes with the motors while it is held and the game rumbles (firing), and L2 has a light resistance; both are freed when the controller closes and at exit. Other controllers keep free triggers. `PS3_PAD_ADAPTIVE=0` turns it off, `PS3_PAD_FIRE_AT` moves the press point; the launcher has a switch under Vibration. `libs/input/tests/test_pad_adaptive.c`.
+- [x] Fire with R2 (PS5 style): one button on the launcher's Controls page swaps the controller's L1/R1 with L2/R2, so R2 fires and L2 aims; pressed again it swaps back (2026-11-11).
 - [ ] SIXAXIS: the game calls `cellPadSetSensorMode`/`cellPadInfoSensorMode` (both implemented 2026-10-24); find what it uses motion for and map it to a button.
 
 ### Game update (v1.7)

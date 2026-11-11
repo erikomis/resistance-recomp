@@ -55,7 +55,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | Movies, music and sound (AC3 5.1, mixed to your output) | ✅ |
 | Graphics | ✅ the world's colours, shadows, fog, water and the grass layer; ⚠️ dark speckles in some trees still to re-check |
 | One window from the menus through the campaign | ✅ closing it ends the game at once |
-| Controller (DualSense, DualShock 4; Xbox One/Series through SDL), rumble | ✅ DualSense; 🧪 Xbox and rumble not yet tried with a physical pad |
+| Controller (DualSense, DualShock 4; Xbox One/Series through SDL), rumble, DualSense adaptive triggers, fire with R2 | ✅ DualSense and rumble; 🧪 adaptive triggers and Xbox not yet tried with a physical pad |
 | Keyboard and mouse (remappable) | 🧪 mapped, not play-tested |
 | In-game menu (F1 / Cmd+, / L3+R3): image, audio, controls, performance HUD, Quit game | 🧪 new in v0.3.0, checked headless through the menus and into gameplay; waiting for a windowed session |
 | Offline split-screen (co-op and versus) | ✅ |
@@ -169,11 +169,12 @@ save. What you change is kept for the next start. Details in
   found yet. The game now writes a **hang report** into its log after 30 s
   without a frame (every thread and SPU, and where each one waits). If it
   happens to you, send the log (Debug mode > Create .zip, or `last.log`).
-- **Keyboard and mouse, rumble, an Xbox pad:** implemented, not play-tested.
-- **Online multiplayer** does not work yet: Sony's servers are gone, and the
-  community server [PS Rewired](https://psrewired.com), which lists the game,
-  is being worked on (Online Game reaches the server in local tests).
-  Offline split-screen works.
+- **Keyboard and mouse, an Xbox pad, the DualSense's adaptive triggers:**
+  implemented, not play-tested (rumble on a DualSense is).
+- **Online multiplayer** on the community server
+  [PS Rewired](https://psrewired.com) (the app's Play online): login, the
+  lobby, the game list and creating a game work; a full match with other
+  players and voice chat are not tested yet. Offline split-screen works.
 
 ## Work in progress
 

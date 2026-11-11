@@ -55,7 +55,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Vídeos, música e som (AC3 5.1, mixado para a sua saída) | ✅ |
 | Gráficos | ✅ as cores do mundo, sombras, névoa, água e a camada de grama; ⚠️ os pontos escuros em algumas árvores ainda precisam ser conferidos |
 | Uma janela só dos menus até a campanha | ✅ fechá-la encerra o jogo na hora |
-| Controle (DualSense, DualShock 4; Xbox One/Series pelo SDL), vibração | ✅ DualSense; 🧪 Xbox e vibração ainda não testados com um controle físico |
+| Controle (DualSense, DualShock 4; Xbox One/Series pelo SDL), vibração, gatilhos adaptáveis do DualSense, atirar com R2 | ✅ DualSense e vibração; 🧪 gatilhos adaptáveis e Xbox ainda não testados com um controle físico |
 | Teclado e mouse (remapeáveis) | 🧪 mapeados, ainda não testados jogando |
 | Menu dentro do jogo (F1 / Cmd+, / L3+R3): imagem, áudio, controles, HUD de desempenho, Sair do jogo | 🧪 novo na v0.3.0, testado sem janela pelos menus e no gameplay; falta uma sessão com janela |
 | Tela dividida offline (cooperativo e versus) | ✅ |
@@ -176,12 +176,13 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
   **relatório de travamento** no log depois de 30 s sem quadro (todas as
   threads e SPUs, e onde cada uma espera). Se acontecer com você, mande o log
   (Modo de depuração > Criar .zip, ou o `last.log`).
-- **Teclado e mouse, vibração, controle de Xbox:** implementados, ainda não
-  testados jogando.
-- **Multiplayer online** ainda não funciona: os servidores da Sony acabaram,
-  e o servidor da comunidade [PS Rewired](https://psrewired.com), que lista o
-  jogo, está em andamento (o Online Game já chega ao servidor em testes
-  locais). A tela dividida offline funciona.
+- **Teclado e mouse, controle de Xbox, gatilhos adaptáveis do DualSense:**
+  implementados, ainda não testados jogando (a vibração num DualSense já foi).
+- **Multiplayer online** no servidor da comunidade
+  [PS Rewired](https://psrewired.com) (o Jogar online do app): login, lobby,
+  lista de partidas e criar partida funcionam; uma partida completa com outros
+  jogadores e o chat de voz ainda não foram testados. A tela dividida offline
+  funciona.
 
 ## Em andamento
 
