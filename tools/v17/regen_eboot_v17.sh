@@ -20,6 +20,10 @@
 # $PS3_HDD0_ROOT/game/BCUS98107/USRDIR/EBOOT.BIN (the app's dev_hdd0 when
 # PS3_HDD0_ROOT is not set). It is the game's own free update and is never
 # in this repository.
+#
+# The decrypted ELF must be the tested one (ELF_SHA below): the file comes
+# from a community server and becomes native code, so any other is refused
+# and deleted. RES_EBOOT17_ANY=1 lets a developer lift another on purpose.
 set -e
 v17=${0:A:h}
 here=${v17:h}; source "$here/env.sh"      # RES_ROOT, RES_GAME, RES_BUILD, PY, res_decrypt
@@ -54,8 +58,18 @@ for s in $steps; do
             res_decrypt "$src" "$ELF" || exit 1     # tools/env.sh
         fi
         [ "$(head -c 4 "$ELF")" = $'\x7fELF' ] || { echo "$ELF is not an ELF" >&2; exit 1; }
-        [ "$(shasum -a 256 "$ELF" | cut -d' ' -f1)" = $ELF_SHA ] ||
-            echo "WARNING: $ELF is not the tested v1.7 EBOOT; the port may not match it" >&2 ;;
+        # The EBOOT.BIN comes from a community server and is turned into native
+        # code that runs on this computer: only the tested one goes on.
+        # RES_EBOOT17_ANY=1 lets a developer lift another on purpose.
+        if [ "$(shasum -a 256 "$ELF" | cut -d' ' -f1)" != $ELF_SHA ]; then
+            if [ "$RES_EBOOT17_ANY" = 1 ]; then
+                echo "WARNING: $ELF is not the tested v1.7 EBOOT (RES_EBOOT17_ANY=1: going on)" >&2
+            else
+                rm -f "$ELF"
+                echo "ERROR: the downloaded EBOOT.BIN is not the tested v1.7 one (the SHA-256 of its ELF is not $ELF_SHA): not building it" >&2
+                exit 1
+            fi
+        fi ;;
     analyse)
         say "analyse"; need_tk ppu_loader.py
         "$PY" "$TK/tools/ppu_loader.py" "$ELF" -o "$AN" ;;
