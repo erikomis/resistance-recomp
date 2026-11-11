@@ -438,6 +438,7 @@ O que trouxe até aqui:
 
 - [x] Sessões longas sem crash (2026-10-24): mais de duas horas de jogo roteirizado, 25 minutos seguidos a 60 fps e 22 minutos parado.
 - [ ] Um relatório de travamento no estilo do `watch_stall.sh`.
+- [ ] Dois travamentos isolados em umas 20 execuções de teste (2026-11-11), nenhum reproduzido: um no vídeo de abertura de uma fase (antes do trabalho do engine de desenho do Resistance 2), outro no "Physics SPU Collision Timed Out!" do jogo (depois dele; outras 15 execuções desse build foram limpas, e o trabalho não mexe nas SPUs).
 - [x] Morrer e renascer a 30 e 60 fps (`RES_UNLOCK_FPS=1`) (2026-10-24).
 - [x] Salvar e Sair → Continuar (exitspawn nos dois sentidos), um HDD novo e vazio, um `quick.sav` corrompido (2026-10-24).
 - [x] Salvar e Sair com a opção de 60 fps não leva mais o vblank de 120 Hz de volta aos menus (`g_res_vblank_hz` em vez do ambiente; depois da v0.2.1, na main).

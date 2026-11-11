@@ -421,6 +421,7 @@ What got it this far:
 
 - [x] Long sessions without a crash (2026-10-24): over two hours of scripted play, a 25-minute 60 fps soak and a 22-minute idle one.
 - [ ] A `watch_stall.sh`-style hang report.
+- [ ] Two one-off hangs in about 20 test runs (2026-11-11), neither reproduced: one in a level's opening movie (before the Resistance 2 draw-engine work), one on the game's "Physics SPU Collision Timed Out!" (after it; 15 other runs of that build were clean, and the work does not touch the SPUs).
 - [x] Dying and respawning at 30 and 60 fps (`RES_UNLOCK_FPS=1`) (2026-10-24).
 - [x] Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav` (2026-10-24).
 - [x] Save & Quit with the 60 fps option no longer takes the 120 Hz vblank back to the menus (`g_res_vblank_hz` instead of the environment; after v0.2.1, on main).
