@@ -49,6 +49,7 @@ export interface Settings {
   mouseCapture: boolean;
   rumble: boolean;
   rumbleStrength: number;
+  adaptiveTriggers: boolean;
   audioVolume: number;
   audioMute: boolean;
   audioDevice: string;
@@ -497,6 +498,7 @@ function bindSettings() {
   bindCheck("mouse-invert-x", "mouseInvertX");
   bindCheck("mouse-capture", "mouseCapture");
   bindCheck("rumble-on", "rumble");
+  bindCheck("adaptive-on", "adaptiveTriggers");
   bindCheck("audio-mute", "audioMute");
   bind60fps();
   bindSelect("window-mode", "windowMode");
@@ -642,6 +644,7 @@ const DEFAULTS: Partial<Settings> = {
   mouseCapture: true,
   rumble: true,
   rumbleStrength: 100,
+  adaptiveTriggers: true,
   audioVolume: 100,
   audioMute: false,
   audioDevice: "",

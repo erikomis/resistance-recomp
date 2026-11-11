@@ -137,6 +137,9 @@ pub struct Settings {
     /// PS3_RUMBLE=0 when off; PS3_RUMBLE_STRENGTH in percent (0-200).
     pub rumble: bool,
     pub rumble_strength: u32,
+    /// PS3_PAD_ADAPTIVE=0 when off: a DualSense's triggers get a feel (a gun
+    /// click on R2, light resistance on L2, R2 buzzing while firing).
+    pub adaptive_triggers: bool,
     /// PS3_AUDIO_VOLUME (0-100, 100 = the default), PS3_AUDIO_MUTE=1 when
     /// muted, PS3_AUDIO_DEVICE (the output whose name contains it; empty =
     /// the system's default; macOS/Linux).
@@ -232,6 +235,7 @@ impl Default for Settings {
             mouse_capture: true,
             rumble: true,
             rumble_strength: 100,
+            adaptive_triggers: true,
             audio_volume: 100,
             audio_mute: false,
             audio_device: String::new(),
@@ -1264,6 +1268,9 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path, input: &InputEnv) -> Vec<(
     } else if s.rumble_strength != 100 {
         set("PS3_RUMBLE_STRENGTH", s.rumble_strength.min(200).to_string());
     }
+    if !s.adaptive_triggers {
+        set("PS3_PAD_ADAPTIVE", "0".into());
+    }
     // Audio: only what differs from the default (full volume, the system's
     // output). The runtime mutes on any PS3_AUDIO_MUTE value, so it is
     // passed only when on.
@@ -1883,6 +1890,7 @@ const FEATURE_MARKERS: &[&str] = &[
     "RES_UNLOCK_FPS",    // port/patches.cpp
     "RES_MENU_60FPS",
     "RES_FOV",
+    "PS3_PAD_ADAPTIVE",  // DualSense adaptive triggers
 ];
 
 /// The markers found in `data` (a NUL-terminated C string in the binary).
@@ -3655,7 +3663,7 @@ mod tests {
             "PS3_MOUSE_DEADZONE", "PS3_MOUSE_CAPTURE", "PS3_RUMBLE", "PS3_RUMBLE_STRENGTH", "PS3_WINDOW_MODE", "PS3_WINDOW_SIZE",
             "PS3_DISPLAY", "PS3_VSYNC", "PS3_UPSCALE", "PS3_VIBRANCE", "PS3_CONTRAST", "PS3_VIGNETTE", "PS3_GRAIN", "PS3_LUT",
             "PS3_LUT_STRENGTH", "PS3_MODS", "PS3_MODS_DIR", "PS3_MODS_DUMP", "PS3_RES_SCALE", "RES_UNLOCK_FPS", "RES_MENU_60FPS",
-            "RES_FOV", "PS3_AUDIO_VOLUME", "PS3_AUDIO_MUTE", "PS3_AUDIO_DEVICE",
+            "RES_FOV", "PS3_AUDIO_VOLUME", "PS3_AUDIO_MUTE", "PS3_AUDIO_DEVICE", "PS3_PAD_ADAPTIVE",
         ];
         for k in new_vars {
             assert!(!base.iter().any(|b| b == k), "{k} passed by default");
@@ -3746,6 +3754,7 @@ mod tests {
         // mouse and rumble off; values out of range or unknown pass nothing
         st.mouse = false;
         st.rumble = false;
+        st.adaptive_triggers = false;
         st.window_mode = "windowed".into();
         st.input_mode = "both".into();
         st.aa = "msaa".into();
@@ -3757,6 +3766,7 @@ mod tests {
         assert_eq!(e["PS3_MOUSE"], "0");
         assert!(!e.contains_key("PS3_MOUSE_SENS"));
         assert_eq!(e["PS3_RUMBLE"], "0");
+        assert_eq!(e["PS3_PAD_ADAPTIVE"], "0");
         for k in ["PS3_WINDOW_MODE", "PS3_INPUT_MODE", "PS3_AA", "PS3_RES_SCALE", "RES_FOV", "PS3_DISPLAY", "PS3_LUT_STRENGTH", "PS3_INPUT_MAP"] {
             assert!(!e.contains_key(k), "{k}");
         }
