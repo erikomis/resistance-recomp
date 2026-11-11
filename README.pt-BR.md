@@ -51,7 +51,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Boot, telas legais, instalação da primeira execução, tela de título, menus | ✅ |
 | Campanha: York, Grimsby, Manchester e Nottingham, jogados com um DualSense | ✅ primeira pessoa, HUD, inimigos, morrer e renascer, Salvar e Sair e Continuar (até "Viper's Nest", 2026-11-10) |
 | O resto da campanha (de Cheshire à Chimeran Tower) | 🧪 todas as fases carregam até o gameplay sem erros; ainda não jogadas na mão |
-| Desempenho | ✅ uns 30 fps jogando, a meta do jogo; ⚠️ uma cena pesada em "Outgunned" cai para 13–15 fps (em andamento); 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas seguram 30, mas não 60) |
+| Desempenho | ✅ uns 30 fps jogando, a meta do jogo; ✅ o combate pesado em "Outgunned" foi de 23–29 para uns 40 fps sem janela (2026-11-11, o trabalho do engine de desenho do port do Resistance 2), falta confirmar jogando; 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas seguram 30, mas não 60) |
 | Vídeos, música e som (AC3 5.1, mixado para a sua saída) | ✅ |
 | Gráficos | ✅ as cores do mundo, sombras, névoa, água e a camada de grama; ⚠️ os pontos escuros em algumas árvores ainda precisam ser conferidos |
 | Uma janela só dos menus até a campanha | ✅ fechá-la encerra o jogo na hora |
@@ -137,15 +137,17 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
 
 ## Problemas conhecidos
 
-- **Quedas de fps em "Outgunned"** (Manchester): um combate grande ao ar
-  livre, com uns 2.500 draws por quadro, fica em 13–15 fps por alguns
-  segundos de cada vez (um quarto da fase abaixo de 17 fps numa sessão de
-  jogo). É a CPU preparando os draws, não a GPU: baixar a resolução interna
-  ganha só uns 10%. As otimizações do engine de desenho do port do
-  Resistance 2 estão sendo trazidas para isso.
-- **Grama sumindo ou piscando** em alguns lugares: relatado jogando, em
-  investigação (alpha-to-coverage, vértices velhos e jobs de SPU atrasados
-  já foram conferidos e descartados).
+- **Quedas de fps em "Outgunned"** (Manchester): o combate grande ao ar
+  livre (uns 2.500 draws por quadro) ficava em 13–15 fps jogando. Corrigido
+  no código em 2026-11-11 com o trabalho do engine de desenho do port do
+  Resistance 2: medido sem janela no mesmo ponto, 23–29 fps antes, uns 40
+  depois. A thread do RSX passava 39% do tempo esperando a GPU (os shadow
+  maps eram lidos de volta pela CPU a cada quadro). Falta confirmar jogando.
+- **Grama sumindo ou piscando** em alguns lugares: a tabela de alvos de
+  renderização do engine enchia nas cenas pesadas e descartava alvos ainda
+  em uso, o que perde o que a GPU desenhou neles. Agora ela tem 512 vagas
+  (tinha 64, depois 128; `PS3RECOMP_ENG_SURFACE_SLOTS` muda isso). Falta
+  confirmar jogando que a grama fica.
 - **Fases pesadas:** "The Cathedral", "No Way Out" e "Ice and Iron" são as
   mais lentas: seguram 30 fps jogando, mas não 60 com a opção de 60 fps. O
   limite são os jobs de SPU do jogo, que ele roda numa SPU só.
@@ -164,11 +166,11 @@ O que está sendo feito agora (detalhes no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md))
 
 - **Jogar a campanha inteira:** jogada até Nottingham ("Viper's Nest"); a
   próxima é Cheshire.
-- **Velocidade nas cenas pesadas:** as otimizações do engine de desenho do
-  port do Resistance 2 (reaproveitar vértices no mesmo quadro, busca por
-  atributo, cópias na GPU, caches maiores, cache de shaders em segundo
-  plano), medidas em "Outgunned".
-- **A grama** que some ou pisca.
+- **Velocidade nas cenas pesadas:** o trabalho do engine de desenho do
+  Resistance 2 entrou (uns +40% em "Outgunned"); o que limita agora é a CPU
+  decodificando os comandos e preparando os draws na thread do RSX.
+- **A grama** que some ou pisca: falta confirmar com a tabela de alvos
+  maior.
 - **A iluminação da neve** em "Ice and Iron".
 - **Pull requests no [ps3recomp](https://github.com/sp00nznet/ps3recomp)**
   com as correções do toolkit feitas aqui.

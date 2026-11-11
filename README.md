@@ -51,7 +51,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | Boot, legal screens, first-run install, title screen, menus | ✅ |
 | Campaign: York, Grimsby, Manchester and Nottingham, played with a DualSense | ✅ first person, HUD, enemies, dying and respawning, Save & Quit and Continue (into "Viper's Nest", 2026-11-10) |
 | The rest of the campaign (Cheshire to the Chimeran Tower) | 🧪 every level loads to gameplay with no errors; not played by hand yet |
-| Performance | ✅ about 30 fps in play, the game's target; ⚠️ one heavy scene in "Outgunned" drops to 13–15 fps (being worked on); 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels hold 30 but not 60) |
+| Performance | ✅ about 30 fps in play, the game's target; ✅ the heavy fight in "Outgunned" went from 23–29 to about 40 fps headless (2026-11-11, the Resistance 2 port's draw-engine work), to confirm in play; 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels hold 30 but not 60) |
 | Movies, music and sound (AC3 5.1, mixed to your output) | ✅ |
 | Graphics | ✅ the world's colours, shadows, fog, water and the grass layer; ⚠️ dark speckles in some trees still to re-check |
 | One window from the menus through the campaign | ✅ closing it ends the game at once |
@@ -133,15 +133,17 @@ save. What you change is kept for the next start. Details in
 
 ## Known problems
 
-- **Frame drops in "Outgunned"** (Manchester): one big outdoor fight with
-  about 2,500 draws a frame runs at 13–15 fps for a few seconds at a time
-  (a quarter of the level below 17 fps in a play session). It is the CPU
-  preparing the draws, not the GPU: a lower internal resolution only gains
-  about 10%. The Resistance 2 port's draw-engine speed-ups are being brought
-  over for it.
-- **Grass disappearing or flickering** in some places: reported in play,
-  being looked into (alpha-to-coverage, stale vertices and late SPU culling
-  jobs were checked and ruled out).
+- **Frame drops in "Outgunned"** (Manchester): the big outdoor fight (about
+  2,500 draws a frame) ran at 13–15 fps in play. Fixed in code on 2026-11-11
+  with the Resistance 2 port's draw-engine work: measured headless at the
+  same spot, 23–29 fps before, about 40 after. The RSX thread had spent 39%
+  of its time waiting for the GPU (the shadow maps were read back to the CPU
+  every frame). Still to confirm in play.
+- **Grass disappearing or flickering** in some places: the draw engine's
+  render-target table filled up in heavy scenes and evicted targets that were
+  still in use, which loses what the GPU drew in them. It now has 512 slots
+  (it had 64, then 128; `PS3RECOMP_ENG_SURFACE_SLOTS` changes it). Still to
+  confirm in play that the grass stays.
 - **Heavy levels:** "The Cathedral", "No Way Out" and "Ice and Iron" are the
   slowest: they hold 30 fps in play but not 60 with the 60 fps option. The
   limit is the game's SPU jobs, which it runs on one SPU.
@@ -159,10 +161,11 @@ What is being worked on now (details in [ROADMAP.md](ROADMAP.md)):
 
 - **Playing the whole campaign:** played into Nottingham ("Viper's Nest");
   next is Cheshire.
-- **Speed in the heavy scenes:** the Resistance 2 port's draw-engine work
-  (vertex reuse within a frame, per-attribute fetches, GPU copies, larger
-  caches, a background shader cache), measured on "Outgunned".
-- **The grass** that disappears or flickers.
+- **Speed in the heavy scenes:** the Resistance 2 port's draw-engine work is
+  in (about +40% in "Outgunned"); what limits now is the CPU decoding the
+  command stream and preparing draws on the RSX thread.
+- **The grass** that disappears or flickers: to confirm with the larger
+  render-target table.
 - **The snow lighting** in "Ice and Iron".
 - **Pull requests to [ps3recomp](https://github.com/sp00nznet/ps3recomp)**
   for the toolkit fixes made here.
