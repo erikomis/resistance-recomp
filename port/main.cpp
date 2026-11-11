@@ -110,6 +110,10 @@ void     cellGcmTickFlip(void);
 int      cellGcm_take_flip_pending(void);
 void     cellGcm_rsx_process_fifo(void);      /* drain get -> put */
 unsigned cellGcm_flip_request_count(void);
+#ifdef __APPLE__
+void* objc_autoreleasePoolPush(void);
+void  objc_autoreleasePoolPop(void* pool);
+#endif
 }
 
 /* ---------------------------------------------------------------------------
@@ -374,7 +378,24 @@ static DWORD WINAPI frame_clock(LPVOID)
     ULONGLONG next_tick = GetTickCount64() * 1000;   /* us */
     ULONGLONG last_pump = 0;
 
+    /* PS3_RSX_AUTORELEASE (default 1; =0 is the old loop), from the
+     * Resistance 2 port: drain an autorelease pool on every pass of this
+     * loop. The draw engine runs here, on a plain thread with no pool, and
+     * every Metal object it gets autoreleased (a texture descriptor for each
+     * target it creates) was kept until exit: in R2, +150k
+     * MTLTextureDescriptorInternal, +38 MB in 200 s of a paused menu. With
+     * the pool the footprint stays flat. */
+#ifdef __APPLE__
+    const bool rsx_pool = [] { const char* e = getenv("PS3_RSX_AUTORELEASE"); return !(e && e[0] == '0'); }();
+#endif
     for (;;) {
+#ifdef __APPLE__
+        struct PoolScope {
+            void* p;
+            explicit PoolScope(bool on) : p(on ? objc_autoreleasePoolPush() : nullptr) {}
+            ~PoolScope() { if (p) objc_autoreleasePoolPop(p); }
+        } pool_scope(rsx_pool);
+#endif
 #ifdef _WIN32
         Sleep((DWORD)((clock_us + 999) / 1000));
 #else
