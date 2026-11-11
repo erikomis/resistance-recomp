@@ -582,6 +582,20 @@ int main(int argc, char** argv)
         else if (strcmp(s, "0") == 0) unsetenv("SPURS_RPCS3_SCHED");
 #endif
     }
+    /* The draw engine's surface and depth tables: 512 slots unless
+     * PS3RECOMP_ENG_SURFACE_SLOTS says otherwise (the toolkit's default is
+     * 128). Resistance fills small targets at new addresses every frame, and
+     * in "Outgunned"'s big fight 128 slots kept evicting real targets too;
+     * an evicted target loses what the GPU drew into it, which shows as
+     * flicker. 512 left only those stale small targets to evict, at the
+     * same frame rate (40.6 vs 41.6 fps, headless). */
+    if (!getenv("PS3RECOMP_ENG_SURFACE_SLOTS")) {
+#ifdef _WIN32
+        _putenv_s("PS3RECOMP_ENG_SURFACE_SLOTS", "512");
+#else
+        setenv("PS3RECOMP_ENG_SURFACE_SLOTS", "512", 1);
+#endif
+    }
 
     /* SIGTERM/SIGINT/SIGHUP and the window closing end the process
      * (PS3_CLEAN_EXIT). First, before the backend or anything else can
