@@ -353,6 +353,7 @@ static void quit_install(void)
  * stopped: a long load that ends on its own only leaves a report behind.
  * Loading screens and movies flip, so 30 s without a frame is not normal. */
 #include <spawn.h>
+#include <limits.h>
 #include <sys/wait.h>
 extern "C" unsigned cellGcm_flip_request_count(void);
 extern "C" void ppu_report_guest_lrs(void);
@@ -375,10 +376,26 @@ static void hang_report(unsigned secs, unsigned flips)
     if (!any) fprintf(stderr, "[hang]   no guest thread is inside an HLE call\n");
     fprintf(stderr, "[hang] SPU contexts (where each one is and what it waits for):\n");
     spu_coh_report();
-    char pid[16], out[64];
+    /* The sample goes into a private directory (mode 0700, mkdtemp) in this
+     * user's own temporary folder, never at a fixed name in the shared /tmp,
+     * where another account could plant a symlink for sample to write through. */
+    char pid[16], dir[PATH_MAX], out[PATH_MAX + 16];
     snprintf(pid, sizeof pid, "%d", (int)getpid());
-    snprintf(out, sizeof out, "/tmp/res-hang-%d.txt", (int)getpid());
-    unlink(out);
+    char base[PATH_MAX] = "";
+#ifdef __APPLE__
+    const size_t tl = confstr(_CS_DARWIN_USER_TEMP_DIR, base, sizeof base);
+    if (tl == 0 || tl > sizeof base) base[0] = 0;
+#else
+    { const char* t = getenv("TMPDIR"); snprintf(base, sizeof base, "%s/", t && *t ? t : "/tmp"); }
+#endif
+    /* mkdtemp makes the folder itself, 0700 and new, so even a shared base is safe. */
+    if (!base[0] || snprintf(dir, sizeof dir, "%sres-hang-XXXXXX", base) >= (int)sizeof dir ||
+        !mkdtemp(dir)) {
+        fprintf(stderr, "[hang] could not make a temporary folder: host sample skipped\n");
+        fflush(stderr);
+        return;
+    }
+    snprintf(out, sizeof out, "%s/sample.txt", dir);
     char* argv[] = { (char*)"/usr/bin/sample", pid, (char*)"3", (char*)"-mayDie",
                      (char*)"-file", out, nullptr };
     pid_t child;
@@ -392,17 +409,24 @@ static void hang_report(unsigned secs, unsigned flips)
     if (rc != 0 || waitpid(child, &st, 0) < 0) {
         fprintf(stderr, "[hang] could not run /usr/bin/sample (%d)\n", rc);
         fflush(stderr);
+        rmdir(dir);
         return;
     }
-    FILE* f = fopen(out, "r");
-    if (!f) { fprintf(stderr, "[hang] sample wrote nothing\n"); fflush(stderr); return; }
-    fprintf(stderr, "[hang] ---- host sample (every thread, 3 s) ----\n");
-    char line[1024];
-    while (fgets(line, sizeof line, f)) fputs(line, stderr);
-    fclose(f);
-    unlink(out);
-    fprintf(stderr, "[hang] ---- end of the host sample ----\n");
+    const int fd = open(out, O_RDONLY | O_NOFOLLOW);
+    FILE* f = fd >= 0 ? fdopen(fd, "r") : nullptr;
+    if (!f) {
+        if (fd >= 0) close(fd);
+        fprintf(stderr, "[hang] sample wrote nothing\n");
+    } else {
+        fprintf(stderr, "[hang] ---- host sample (every thread, 3 s) ----\n");
+        char line[1024];
+        while (fgets(line, sizeof line, f)) fputs(line, stderr);
+        fclose(f);
+        fprintf(stderr, "[hang] ---- end of the host sample ----\n");
+    }
     fflush(stderr);
+    unlink(out);
+    rmdir(dir);
 }
 
 static void* hang_thread(void* arg)
