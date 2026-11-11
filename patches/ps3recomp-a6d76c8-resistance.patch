@@ -39,7 +39,7 @@ index 67bb40b3..27d02ca7 100644
            # walk they are now computed without.
            ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }} -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.github/workflows/macos.yml b/.github/workflows/macos.yml
-index 19e9eb18..f01a1fa4 100644
+index 19e9eb18..ae67d591 100644
 --- a/.github/workflows/macos.yml
 +++ b/.github/workflows/macos.yml
 @@ -74,6 +74,8 @@ jobs:
@@ -51,7 +51,7 @@ index 19e9eb18..f01a1fa4 100644
  
        - name: Run self-contained SPU helper tests
          run: |
-@@ -102,6 +104,19 @@ jobs:
+@@ -102,6 +104,21 @@ jobs:
            clang -std=gnu17 -I include -o /tmp/test_np_identity libs/network/tests/test_np_identity.c
            /tmp/test_np_identity
  
@@ -64,6 +64,8 @@ index 19e9eb18..f01a1fa4 100644
 +          /tmp/test_np_ticket_offline
 +          clang -std=gnu17 -I include -o /tmp/test_np_ticket_local libs/network/tests/test_np_ticket_local.c
 +          /tmp/test_np_ticket_local
++          clang -std=gnu17 -I include -o /tmp/test_cellfs_hdd0_root libs/filesystem/tests/test_cellfs_hdd0_root.c
++          /tmp/test_cellfs_hdd0_root
 +          clang -std=gnu17 -I include -I libs/system -o /tmp/test_netstart_offline libs/network/tests/test_netstart_offline.c
 +          /tmp/test_netstart_offline
 +          PS3_NET_ONLINE=1 /tmp/test_netstart_offline
@@ -71,7 +73,7 @@ index 19e9eb18..f01a1fa4 100644
        # cellVideoOutSetGamma's float argument comes from f1, and the value
        # reaches the presenter.
        - name: Run the video out gamma test
-@@ -109,9 +124,10 @@ jobs:
+@@ -109,9 +126,10 @@ jobs:
            clang -std=gnu17 -I include -o /tmp/test_avconf_gamma libs/misc/tests/test_avconf_gamma.c
            /tmp/test_avconf_gamma
  
@@ -85,7 +87,7 @@ index 19e9eb18..f01a1fa4 100644
        - name: Run the Metal present post-processing test
          run: |
            clang -fobjc-arc -I include -I libs/video libs/video/tests/test_metal_present_post.m \
-@@ -128,10 +144,67 @@ jobs:
+@@ -128,10 +146,67 @@ jobs:
  
        # cellPadSetActDirect: the small motor is on/off at full strength, and
        # a rumble lasts until the title changes it (renewed from the pad poll).
@@ -153,7 +155,7 @@ index 19e9eb18..f01a1fa4 100644
  
        # Drives a real NV4097 command buffer through cellGcm -> RSX -> the Metal
        # backend and asserts the presented pixel matches the guest clear colour.
-@@ -176,6 +249,15 @@ jobs:
+@@ -176,6 +251,15 @@ jobs:
              echo "--mip-aniso passed without PS3_ANISO; the check is not checking"
              exit 1
            fi
@@ -169,7 +171,7 @@ index 19e9eb18..f01a1fa4 100644
            # Render-to-texture: a red triangle drawn into a colour surface of
            # the guest's own, then sampled by a full-screen quad through the
            # guest programs. The guest bytes behind that surface are green, so
-@@ -342,6 +424,14 @@ jobs:
+@@ -342,6 +426,14 @@ jobs:
            # restart cuts bounding topology expansion. Runs on Linux too.
            clang -std=gnu17 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_rsx_draw_engine libs/video/tests/test_rsx_draw_engine.c libs/video/rsx_draw_engine.c libs/video/rsx_dispatch.c libs/video/rsx_vertex_compact.c libs/video/rsx_texture_layout.c libs/video/rsx_vp_decompiler.c libs/video/rsx_fp_decompiler.c
            /tmp/test_rsx_draw_engine
@@ -3495,6 +3497,110 @@ index 00000000..b95def5f
 +    if (strcmp(mode, "decode") == 0) return mode_decode(argc, argv);
 +    printf("unknown mode %s\n", mode);
 +    return 2;
++}
+diff --git a/libs/filesystem/cellFs.c b/libs/filesystem/cellFs.c
+index 4d916ac7..ef6c960f 100644
+--- a/libs/filesystem/cellFs.c
++++ b/libs/filesystem/cellFs.c
+@@ -137,6 +137,28 @@ static int translate_path(const char* ps3_path, char* host_buf, size_t buf_size)
+     if (!ps3_path || !host_buf || buf_size == 0)
+         return -1;
+ 
++    /* /dev_hdd0 under PS3_HDD0_ROOT, as ppu_fs.cpp and sys_fs.c map it: the
++     * other two path translators honour it and this one did not, so a file
++     * opened through them and renamed here was looked for in ./gamedata.
++     * Resistance's online update writes EBOOT.BIN.tmp and the patch_NN.psarc
++     * files that way and renames them at the end; the rename failed and the
++     * update with it. */
++    { const char* root = getenv("PS3_HDD0_ROOT");
++      if (root && *root && strncmp(ps3_path, "/dev_hdd0", 9) == 0 &&
++          (ps3_path[9] == '/' || ps3_path[9] == '\0')) {
++          const char* rest = ps3_path[9] ? ps3_path + 10 : "";
++          const int n = snprintf(host_buf, buf_size, "%s%s%s", root, *rest ? "/" : "", rest);
++          if (n < 0 || (size_t)n >= buf_size) { host_buf[0] = '\0'; return -1; }
++          for (char* q = host_buf; *q; q++) {
++#ifdef _WIN32
++              if (*q == '/') *q = '\\';
++#else
++              if (*q == '\\') *q = '/';
++#endif
++          }
++          return 0;
++      } }
++
+     /* Find longest matching prefix */
+     int best = -1;
+     size_t best_len = 0;
+diff --git a/libs/filesystem/tests/test_cellfs_hdd0_root.c b/libs/filesystem/tests/test_cellfs_hdd0_root.c
+new file mode 100644
+index 00000000..aec42f78
+--- /dev/null
++++ b/libs/filesystem/tests/test_cellfs_hdd0_root.c
+@@ -0,0 +1,65 @@
++/* cellFs's own path translator honours PS3_HDD0_ROOT, as ppu_fs.cpp and
++ * sys_fs.c do. It did not, so a file written through them under
++ * $PS3_HDD0_ROOT and renamed through cellFsRename was looked for in
++ * ./gamedata: Resistance's online update downloads EBOOT.BIN.tmp and
++ * patch_NN.psarc.tmp and renames them at the end, and failed there.
++ *
++ *   cc -std=gnu17 -I include -o /tmp/test_cellfs_hdd0_root \
++ *      libs/filesystem/tests/test_cellfs_hdd0_root.c && /tmp/test_cellfs_hdd0_root
++ */
++#include "../cellFs.c"
++#include <assert.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++uint8_t* vm_base;
++int g_resv_store_active;
++uint32_t g_ww_lo, g_ww_hi;
++void ppu_resv_break_store(uint64_t ea) { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
++int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++uint32_t ppu_prof_resolve_host(void* ra) { (void)ra; return 0; }
++void ps3_vfs_ps3game_fallback(char* path, size_t cap) { (void)path; (void)cap; }
++
++#define FROM 0x1000u
++#define TO   0x2000u
++
++int main(void)
++{
++    vm_base = calloc(1, 0x10000); assert(vm_base);
++    char root[] = "/tmp/test_cellfs_hdd0_XXXXXX";
++    assert(mkdtemp(root));
++    setenv("PS3_HDD0_ROOT", root, 1);
++
++    char host[CELL_FS_MAX_FS_PATH_LENGTH], want[CELL_FS_MAX_FS_PATH_LENGTH];
++    assert(translate_path("/dev_hdd0/game/BCUS98107/USRDIR/EBOOT.BIN", host, sizeof host) == 0);
++    snprintf(want, sizeof want, "%s/game/BCUS98107/USRDIR/EBOOT.BIN", root);
++    assert(!strcmp(host, want));
++    assert(translate_path("/dev_hdd0", host, sizeof host) == 0 && !strcmp(host, root));
++    assert(translate_path("/dev_hdd0/x", host, 8) == -1);              /* too long: refused */
++    assert(translate_path("/dev_hdd01/x", host, sizeof host) != 0 ||
++           strncmp(host, root, strlen(root)) != 0);                     /* not the hdd0 mount */
++
++    /* The update's rename, end to end. */
++    char dir[CELL_FS_MAX_FS_PATH_LENGTH];
++    snprintf(dir, sizeof dir, "%s/game", root); mkdir(dir, 0700);
++    snprintf(dir, sizeof dir, "%s/game/BCUS98107", root); mkdir(dir, 0700);
++    snprintf(dir, sizeof dir, "%s/game/BCUS98107/USRDIR", root); mkdir(dir, 0700);
++    snprintf(host, sizeof host, "%s/EBOOT.BIN.tmp", dir);
++    FILE* f = fopen(host, "w"); assert(f); fputs("x", f); fclose(f);
++    strcpy((char*)vm_base + FROM, "/dev_hdd0/game/BCUS98107/USRDIR/EBOOT.BIN.tmp");
++    strcpy((char*)vm_base + TO,   "/dev_hdd0/game/BCUS98107/USRDIR/EBOOT.BIN");
++    assert(cellFsRename((const char*)(uintptr_t)FROM, (const char*)(uintptr_t)TO) == CELL_OK);
++    snprintf(want, sizeof want, "%s/EBOOT.BIN", dir);
++    assert(access(want, F_OK) == 0 && access(host, F_OK) != 0);
++
++    unlink(want); rmdir(dir);
++    snprintf(dir, sizeof dir, "%s/game/BCUS98107", root); rmdir(dir);
++    snprintf(dir, sizeof dir, "%s/game", root); rmdir(dir);
++    rmdir(root);
++    printf("test_cellfs_hdd0_root: all passed\n");
++    return 0;
 +}
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
 index 7fa8cab9..02e2decc 100644

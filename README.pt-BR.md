@@ -62,7 +62,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Saves, Continuar a partir de um checkpoint | ✅ |
 | Atualização v1.7 do jogo na campanha | ✅ quando você tem os arquivos da atualização; os menus continuam na 01.00 |
 | O app: instalação com um clique a partir do seu disco, recompilação, jogar, ajustes, saves | ✅ |
-| Multiplayer online | 🚧 pelo [PS Rewired](https://psrewired.com), um servidor da comunidade que lista o jogo ([plano](ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)): o Online Game já faz login no PS Rewired (2026-11-11) e chega ao contrato de uso deles; o lobby é o próximo passo |
+| Multiplayer online | 🚧 pelo [PS Rewired](https://psrewired.com), um servidor da comunidade que lista o jogo ([plano](ROADMAP.pt-BR.md#multiplayer-online-pelo-ps-rewired-futuro)): o Online Game já faz login no PS Rewired e baixa a atualização v1.7 que ele exige (2026-11-11); o online precisa dos menus v1.7, que são o próximo passo |
 | Linux e Windows | ⏳ sem suporte (existe uma prévia do launcher para Windows; o jogo em si só compila no macOS) |
 
 A tabela completa, com o que foi cada correção, está em
@@ -159,8 +159,10 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
   com folga, mas não 60 estáveis com a opção de 60 fps.
 - **Pontos escuros** em algumas árvores: a camada de grama foi corrigida em
   2026-11-06; as árvores ainda precisam ser conferidas.
-- **Os menus continuam na 01.00:** só a campanha roda a atualização v1.7 (o
-  executável de menus da atualização só existe na versão digital).
+- **Os menus continuam na 01.00:** só a campanha roda a atualização v1.7.
+  Um executável de menus v1.7 do tipo de disco existe sim (o servidor de
+  atualização do PS Rewired o entrega, 2026-11-11) e falta traduzi-lo; o
+  online precisa dele.
 - **Travamentos raros:** cerca de 1 execução de teste em 10 travou (3 em
   umas 25, 2026-11-11). O job manager das SPUs para de pegar jobs e o jogo
   avisa no log ("Physics SPU Collision Timed Out!", "WwsJobDelay timed
