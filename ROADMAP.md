@@ -46,7 +46,7 @@ Same layout as the inFAMOUS 2 roadmap.
 - **Giving back (2026-10-24):** five more upstream pull requests: scissored clears (#560), the polygon offset (#562), invariant positions (#563), `cellSysconfOpen`/`Abort` (#564), the pad sensor mode (#565) (see [Giving back](#giving-back)).
 - **In progress:** playing on from Nottingham (Cheshire next) to the end of the campaign; the Resistance 2 draw-engine speed-ups for the heavy scenes; the flickering grass.
 - **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music's varying centre/LFE (fixed in code 2026-11-06, the speaker-layout race; to check by ear); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
-- **Next:** the rest of the campaign by hand (Nottingham to the Chimeran Tower, the vehicles and bosses); the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron", ~25–26 fps uncapped); the snow lighting in "Ice and Iron" against RPCS3; a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
+- **Next:** the rest of the campaign by hand (Nottingham to the Chimeran Tower, the vehicles and bosses); 60 fps in the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron": 47, 44 and 56 fps uncapped since the Resistance 2 work); the rare hang where the SPU job manager stops (the hang report catches it); the snow lighting in "Ice and Iron" against RPCS3; a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
 
 ## Level sweep (2026-10-25)
 
@@ -92,7 +92,9 @@ conversion-centre switch (the system cache path, fixed).
 | 121 | Last Hope | Chimeran Tower | 32.5 | 463 | the final level |
 
 The three heaviest levels (41, 60, 101) are the performance targets: in hand
-play "The Cathedral" held 29–32 fps at the 30 fps cap (2026-10-29).
+play "The Cathedral" held 29–32 fps at the 30 fps cap (2026-10-29). Measured
+again on 2026-11-11, uncapped and headless with the Resistance 2 draw-engine
+work: 47.0, 44.2 (44.6 over a 10-minute run) and 56.5 fps.
 
 ## Current state (2026-10-24)
 
@@ -345,7 +347,7 @@ What got it this far:
 - [x] **Distant soldiers stood on dark rectangles.** Fixed 2026-10-23: swizzled 16-bit depth shadow maps written back to guest memory.
 - [x] **Dark hard-edged rectangles on the ground (the shadow-map pool).** Fixed 2026-10-24: the draw engine's surface and depth tables evict the least recently used entry instead of dropping new shadow passes once full (see "Current state"); the evictions show in a play session's log, the scene still needs a play test.
 - [x] **Multiplayer → Online Game hung offline.** Fixed 2026-10-24: the network-start dialog answers "cancelled" without a network; NP ticket calls added.
-- [ ] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`); check that halted lanes come back when work arrives.
+- [x] The job manager's idle lanes are halted after 30 s of polling the same queue line (`SPU_DMA_REPEAT_SECS`): in Resistance it never fires (no "halting the SPU" line in about 130 run logs, 2026-11-11); its idle lanes park in an event wait instead.
 
 ### Into the first chapter
 
@@ -414,14 +416,14 @@ What got it this far:
 - [x] 60 fps pacing: with `RES_UNLOCK_FPS=1` the vblank runs at 120 Hz; 88.5 fps in gameplay (it was ~50–56), game speed unchanged (2026-10-24). `PS3_FLIP_MAX_HZ` caps flips (off by default; 60 measured 50 fps).
 - [ ] Real ZPASS occlusion counts (`PS3RECOMP_ENG_ZPASS=1`): implemented, off by default; waiting for the counts cost 84 → 50 fps at 60 fps and no visible gain was found. Turn them on only if a scene needs them.
 - [x] The v1.7 campaign in hand play: 29–33 fps at the 30 fps cap, also in "The Cathedral" (2026-10-29).
-- [ ] The three heaviest levels: "The Cathedral" (41), "No Way Out" (60) and "Ice and Iron" (101) measured ~25–26 fps uncapped in the sweep (most levels 45–60); they hold 30 in play but not 60 with `RES_UNLOCK_FPS`.
+- [ ] The three heaviest levels: "The Cathedral" (41), "No Way Out" (60) and "Ice and Iron" (101) measured ~25–26 fps uncapped in the sweep (most levels 45–60); with the Resistance 2 draw-engine work 47.0, 44.2 and 56.5 fps uncapped (headless, 2026-11-11). 30 fps with room to spare; a steady 60 with `RES_UNLOCK_FPS` is what is left.
 - [ ] Measure how much SPU time is interpreted and cut it (translate what is left).
 
 ### Stability
 
 - [x] Long sessions without a crash (2026-10-24): over two hours of scripted play, a 25-minute 60 fps soak and a 22-minute idle one.
-- [ ] A `watch_stall.sh`-style hang report.
-- [ ] Two one-off hangs in about 20 test runs (2026-11-11), neither reproduced: one in a level's opening movie (before the Resistance 2 draw-engine work), one on the game's "Physics SPU Collision Timed Out!" (after it; 15 other runs of that build were clean, and the work does not touch the SPUs).
+- [x] A hang report (2026-11-11, `port/main.cpp`): after `RES_HANG_SECS` (30) seconds without a new frame the game writes every guest thread's last direct call, the threads inside an HLE call, every SPU context (pc, event mask and status, parked DMA list, mailboxes, reservation) and a 3-second host `sample` of every thread to its log, once per stall; `RES_HANG_SECS=0` turns it off. Checked by freezing every thread but the watchdog's.
+- [ ] A rare hang, 3 in about 25 test runs (2026-11-11): one in a level's opening movie; one in "Outgunned" ("Physics SPU Collision Timed Out!"); one in "No Way Out" ("For MobyShaderConstsUpdate, WwsJobDelay timed out after 1 seconds"). In the last two the WWS job manager stops completing jobs, the frames stop, and the two raw SPUs sit in an Lr wait on the same line (0x10295480, pc 0x0D64C and 0x0183C) for the PPU's next command; no lane halt, no unaligned branch. Two 10-minute runs of "No Way Out" afterwards were clean. Next time, the hang report says where the job manager is.
 - [x] Dying and respawning at 30 and 60 fps (`RES_UNLOCK_FPS=1`) (2026-10-24).
 - [x] Save & Quit → Continue (exitspawn both ways), a fresh empty HDD, a corrupted `quick.sav` (2026-10-24).
 - [x] Save & Quit with the 60 fps option no longer takes the 120 Hz vblank back to the menus (`g_res_vblank_hz` instead of the environment; after v0.2.1, on main).
@@ -476,7 +478,8 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 - [x] Audio settings (volume, mute, output device) and one "60 fps" switch (2026-10-23).
 - [x] One-click install (2026-10-29): Home > Install the game takes a player with only the `.dmg` and the disc image to Play: Apple's Command Line Tools (their installer, waited for), the sources cloned into `<data>/src`, `tools/bootstrap_deps.sh` (pinned CMake, Ninja, Python 3.12, SDL2, SPIRV-Tools, glslang, SPIRV-Cross and a minimal LGPL FFmpeg built into `<data>/deps`, no Homebrew), then `tools/install.sh` (toolkit, venv, decrypt, analyse, lift, SPU, build), one progress bar, plain-language errors with the log, resumable after a quit or a failure; RPCS3 only an optional fallback. Measured: ~7 min and ~1.5 GB on a 12-core Mac, the port built against that folder alone (no Homebrew). Not yet run end to end from the `.dmg` by a player (the repository must be public for the clone).
 - [ ] A physical controller with the launcher (see Controls).
-- [ ] Icon from the player's own `ICON0.PNG`, Game Mode app bundle on macOS.
+- [x] Icon from the player's own `ICON0.PNG` (the launcher's "Your disc's icon in the Dock", and in Finder).
+- [ ] Game Mode on macOS: the window host (`Resistance`) is a bare executable, not an app bundle with a games category.
 
 ### Other platforms
 
@@ -588,34 +591,34 @@ Done 2026-10-22: the campaign runs v1.7 (see "Current state").
 
 ## Giving back
 
-Pull requests to [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp), from branches on [erikomis/ps3recomp](https://github.com/erikomis/ps3recomp), each with a test:
+Pull requests to [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp), from branches on [erikomis/ps3recomp](https://github.com/erikomis/ps3recomp), each with a test. All the ones listed here were merged on 2026-10-26, except #493:
 
-- [ ] [#463](https://github.com/sp00nznet/ps3recomp/pull/463) RSX dispatch: every ATTR0 immediate encoding emits a vertex (the black movies).
-- [ ] [#469](https://github.com/sp00nznet/ps3recomp/pull/469) `sys_ppu_thread_get_stack_information` for the main thread.
-- [ ] [#471](https://github.com/sp00nznet/ps3recomp/pull/471) cellVdec: idle drain of the pictures libavcodec holds back.
-- [ ] [#473](https://github.com/sp00nznet/ps3recomp/pull/473) Raw SPUs on POSIX, one program per SPU.
-- [ ] [#474](https://github.com/sp00nznet/ps3recomp/pull/474) `MUTEX_WATCH` diagnostic.
-- [ ] [#475](https://github.com/sp00nznet/ps3recomp/pull/475) Template: the POSIX guest arena spans the raw-SPU windows.
-- [ ] [#477](https://github.com/sp00nznet/ps3recomp/pull/477) Template: the guest off the macOS main thread.
-- [ ] [#488](https://github.com/sp00nznet/ps3recomp/pull/488) lift_jobmods: each job module lifted at the link base in its header.
-- [ ] [#489](https://github.com/sp00nznet/ps3recomp/pull/489) HLE→guest callbacks on a stack per host thread (the post-movie hang).
-- [ ] [#490](https://github.com/sp00nznet/ps3recomp/pull/490) `sys_mutex_destroy` returns EBUSY for a held mutex or one with waiters.
-- [ ] [#491](https://github.com/sp00nznet/ps3recomp/pull/491) `SPU_IRQWAIT_DIAG` diagnostic.
-- [ ] [#492](https://github.com/sp00nznet/ps3recomp/pull/492) Atomic SPU event updates (the first gameplay frame).
+- [x] [#463](https://github.com/sp00nznet/ps3recomp/pull/463) RSX dispatch: every ATTR0 immediate encoding emits a vertex (the black movies).
+- [x] [#469](https://github.com/sp00nznet/ps3recomp/pull/469) `sys_ppu_thread_get_stack_information` for the main thread.
+- [x] [#471](https://github.com/sp00nznet/ps3recomp/pull/471) cellVdec: idle drain of the pictures libavcodec holds back.
+- [x] [#473](https://github.com/sp00nznet/ps3recomp/pull/473) Raw SPUs on POSIX, one program per SPU.
+- [x] [#474](https://github.com/sp00nznet/ps3recomp/pull/474) `MUTEX_WATCH` diagnostic.
+- [x] [#475](https://github.com/sp00nznet/ps3recomp/pull/475) Template: the POSIX guest arena spans the raw-SPU windows.
+- [x] [#477](https://github.com/sp00nznet/ps3recomp/pull/477) Template: the guest off the macOS main thread.
+- [x] [#488](https://github.com/sp00nznet/ps3recomp/pull/488) lift_jobmods: each job module lifted at the link base in its header.
+- [x] [#489](https://github.com/sp00nznet/ps3recomp/pull/489) HLE→guest callbacks on a stack per host thread (the post-movie hang).
+- [x] [#490](https://github.com/sp00nznet/ps3recomp/pull/490) `sys_mutex_destroy` returns EBUSY for a held mutex or one with waiters.
+- [x] [#491](https://github.com/sp00nznet/ps3recomp/pull/491) `SPU_IRQWAIT_DIAG` diagnostic.
+- [x] [#492](https://github.com/sp00nznet/ps3recomp/pull/492) Atomic SPU event updates (the first gameplay frame).
 - [x] [#493](https://github.com/sp00nznet/ps3recomp/pull/493) SPURS kernel-style selection: closed; it stays in this repository's toolkit patch.
-- [ ] [#504](https://github.com/sp00nznet/ps3recomp/pull/504) Vertex array addresses wrap at 28 bits (the blue world).
-- [ ] [#505](https://github.com/sp00nznet/ps3recomp/pull/505) `SPU_RunCntl`=0 stops a running raw SPU (the respawn; stacked on #473).
-- [ ] [#506](https://github.com/sp00nznet/ps3recomp/pull/506) Optimise a build configured without `CMAKE_BUILD_TYPE`.
-- [ ] [#507](https://github.com/sp00nznet/ps3recomp/pull/507) A depth snapshot is the region the texture names (stacked on #502).
-- [ ] [#508](https://github.com/sp00nznet/ps3recomp/pull/508) A compressed texture is never a render target's output.
-- [ ] [#509](https://github.com/sp00nznet/ps3recomp/pull/509) macOS: one window across an exitspawn (`tools/host_window`, Metal host-surface mode); follow-up: the window host says when the window is off screen and shows the newest frame on return.
-- [ ] [#538](https://github.com/sp00nznet/ps3recomp/pull/538) spu_workload: raw-SPU images with a parameter area the loader fills in (the Continue freeze; stacked on #473).
-- [ ] [#539](https://github.com/sp00nznet/ps3recomp/pull/539) ppu_lifter: `--insn-patches` lifts patched instructions as run-time switches (the 60 fps patches).
-- [ ] [#540](https://github.com/sp00nznet/ps3recomp/pull/540) sys_timer: one host clock for `mftb`, system time and timers (`mach_absolute_time` on macOS).
-- [ ] [#560](https://github.com/sp00nznet/ps3recomp/pull/560) A scissored `CLEAR_SURFACE` clears only the scissor rectangle (co-op split-screen) (2026-10-24).
-- [ ] [#562](https://github.com/sp00nznet/ps3recomp/pull/562) The polygon offset reaches Metal (2026-10-24).
-- [ ] [#563](https://github.com/sp00nznet/ps3recomp/pull/563) An invariant vertex position in the MSL translation (2026-10-24).
-- [ ] [#564](https://github.com/sp00nznet/ps3recomp/pull/564) `cellSysconfOpen` / `cellSysconfAbort` (2026-10-24).
-- [ ] [#565](https://github.com/sp00nznet/ps3recomp/pull/565) `cellPadInfoSensorMode` / `cellPadSetSensorMode` (2026-10-24).
+- [x] [#504](https://github.com/sp00nznet/ps3recomp/pull/504) Vertex array addresses wrap at 28 bits (the blue world).
+- [x] [#505](https://github.com/sp00nznet/ps3recomp/pull/505) `SPU_RunCntl`=0 stops a running raw SPU (the respawn; stacked on #473).
+- [x] [#506](https://github.com/sp00nznet/ps3recomp/pull/506) Optimise a build configured without `CMAKE_BUILD_TYPE`.
+- [x] [#507](https://github.com/sp00nznet/ps3recomp/pull/507) A depth snapshot is the region the texture names (stacked on #502).
+- [x] [#508](https://github.com/sp00nznet/ps3recomp/pull/508) A compressed texture is never a render target's output.
+- [x] [#509](https://github.com/sp00nznet/ps3recomp/pull/509) macOS: one window across an exitspawn (`tools/host_window`, Metal host-surface mode); follow-up: the window host says when the window is off screen and shows the newest frame on return.
+- [x] [#538](https://github.com/sp00nznet/ps3recomp/pull/538) spu_workload: raw-SPU images with a parameter area the loader fills in (the Continue freeze; stacked on #473).
+- [x] [#539](https://github.com/sp00nznet/ps3recomp/pull/539) ppu_lifter: `--insn-patches` lifts patched instructions as run-time switches (the 60 fps patches).
+- [x] [#540](https://github.com/sp00nznet/ps3recomp/pull/540) sys_timer: one host clock for `mftb`, system time and timers (`mach_absolute_time` on macOS).
+- [x] [#560](https://github.com/sp00nznet/ps3recomp/pull/560) A scissored `CLEAR_SURFACE` clears only the scissor rectangle (co-op split-screen) (2026-10-24).
+- [x] [#562](https://github.com/sp00nznet/ps3recomp/pull/562) The polygon offset reaches Metal (2026-10-24).
+- [x] [#563](https://github.com/sp00nznet/ps3recomp/pull/563) An invariant vertex position in the MSL translation (2026-10-24).
+- [x] [#564](https://github.com/sp00nznet/ps3recomp/pull/564) `cellSysconfOpen` / `cellSysconfAbort` (2026-10-24).
+- [x] [#565](https://github.com/sp00nznet/ps3recomp/pull/565) `cellPadInfoSensorMode` / `cellPadSetSensorMode` (2026-10-24).
 - [x] Not opened, already covered upstream: the surface/zeta LRU eviction (#499 by n0madic has it), the offline network-start result (already in this port's #503), the sceNp ticket calls (#543; `sceNpManagerRequestTicket` v1 held). Held back: `PS3_FLIP_MAX_HZ` (measured worse) and ZPASS counting (costly, no visible gain).
 - [x] Its own repository (`resistance-recomp`): port sources, a toolkit patch, `tools/setup_toolkit.sh`, README, credits, and a `.gitignore` that blocks game data, firmware and saves.

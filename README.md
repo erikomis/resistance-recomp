@@ -51,7 +51,7 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | Boot, legal screens, first-run install, title screen, menus | ✅ |
 | Campaign: York, Grimsby, Manchester and Nottingham, played with a DualSense | ✅ first person, HUD, enemies, dying and respawning, Save & Quit and Continue (into "Viper's Nest", 2026-11-10) |
 | The rest of the campaign (Cheshire to the Chimeran Tower) | 🧪 every level loads to gameplay with no errors; not played by hand yet |
-| Performance | ✅ about 30 fps in play, the game's target; ✅ the heavy fight in "Outgunned" went from 23–29 to about 40 fps headless (2026-11-11, the Resistance 2 port's draw-engine work), to confirm in play; 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels hold 30 but not 60) |
+| Performance | ✅ about 30 fps in play, the game's target; ✅ the heavy fight in "Outgunned" went from 23–29 to about 40 fps headless (2026-11-11, the Resistance 2 port's draw-engine work), to confirm in play; 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels now run at 44–56 fps uncapped, 2026-11-11) |
 | Movies, music and sound (AC3 5.1, mixed to your output) | ✅ |
 | Graphics | ✅ the world's colours, shadows, fog, water and the grass layer; ⚠️ dark speckles in some trees still to re-check |
 | One window from the menus through the campaign | ✅ closing it ends the game at once |
@@ -148,15 +148,20 @@ save. What you change is kept for the next start. Details in
   (it had 64, then 128; `PS3RECOMP_ENG_SURFACE_SLOTS` changes it). Still to
   confirm in play that the grass stays.
 - **Heavy levels:** "The Cathedral", "No Way Out" and "Ice and Iron" are the
-  slowest: they hold 30 fps in play but not 60 with the 60 fps option. The
-  limit is the game's SPU jobs, which it runs on one SPU.
+  slowest. With the Resistance 2 draw-engine work they went from about 25 fps
+  uncapped to 47, 44 and 56 (headless, 2026-11-11): 30 fps with room to
+  spare, but not a steady 60 with the 60 fps option.
 - **Dark speckles** in some trees: the grass layer was fixed on 2026-11-06;
   the trees are still to re-check.
 - **The menus stay 01.00:** only the campaign runs the v1.7 update (the
   update's menu executable exists only in a digital-edition form).
-- **Rare hangs:** in about 20 test runs the game froze twice, once each: in a
-  level's opening movie, and on "Physics SPU Collision Timed Out!". Neither
-  came back. If it happens to you, send the log (Debug mode > Create .zip).
+- **Rare hangs:** about 1 test run in 10 froze (3 in about 25, 2026-11-11).
+  The SPU job manager stops taking jobs and the game says so in the log
+  ("Physics SPU Collision Timed Out!", "WwsJobDelay timed out"); two
+  10-minute runs of "No Way Out" right after were clean, so the cause is not
+  found yet. The game now writes a **hang report** into its log after 30 s
+  without a frame (every thread and SPU, and where each one waits). If it
+  happens to you, send the log (Debug mode > Create .zip, or `last.log`).
 - **Keyboard and mouse, rumble, an Xbox pad:** implemented, not play-tested.
 - **Online multiplayer** does not work (the servers are gone); offline
   split-screen does.
@@ -172,6 +177,8 @@ What is being worked on now (details in [ROADMAP.md](ROADMAP.md)):
   command stream and preparing draws on the RSX thread.
 - **The grass** that disappears or flickers: to confirm with the larger
   render-target table.
+- **The rare hang** where the SPU job manager stops: the hang report is in
+  the game to catch it.
 - **The snow lighting** in "Ice and Iron".
 - **Pull requests to [ps3recomp](https://github.com/sp00nznet/ps3recomp)**
   for the toolkit fixes made here.

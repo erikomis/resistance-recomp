@@ -51,7 +51,7 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | Boot, telas legais, instalação da primeira execução, tela de título, menus | ✅ |
 | Campanha: York, Grimsby, Manchester e Nottingham, jogados com um DualSense | ✅ primeira pessoa, HUD, inimigos, morrer e renascer, Salvar e Sair e Continuar (até "Viper's Nest", 2026-11-10) |
 | O resto da campanha (de Cheshire à Chimeran Tower) | 🧪 todas as fases carregam até o gameplay sem erros; ainda não jogadas na mão |
-| Desempenho | ✅ uns 30 fps jogando, a meta do jogo; ✅ o combate pesado em "Outgunned" foi de 23–29 para uns 40 fps sem janela (2026-11-11, o trabalho do engine de desenho do port do Resistance 2), falta confirmar jogando; 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas seguram 30, mas não 60) |
+| Desempenho | ✅ uns 30 fps jogando, a meta do jogo; ✅ o combate pesado em "Outgunned" foi de 23–29 para uns 40 fps sem janela (2026-11-11, o trabalho do engine de desenho do port do Resistance 2), falta confirmar jogando; 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas agora rodam a 44–56 fps sem limite, 2026-11-11) |
 | Vídeos, música e som (AC3 5.1, mixado para a sua saída) | ✅ |
 | Gráficos | ✅ as cores do mundo, sombras, névoa, água e a camada de grama; ⚠️ os pontos escuros em algumas árvores ainda precisam ser conferidos |
 | Uma janela só dos menus até a campanha | ✅ fechá-la encerra o jogo na hora |
@@ -154,16 +154,21 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
   (tinha 64, depois 128; `PS3RECOMP_ENG_SURFACE_SLOTS` muda isso). Falta
   confirmar jogando que a grama fica.
 - **Fases pesadas:** "The Cathedral", "No Way Out" e "Ice and Iron" são as
-  mais lentas: seguram 30 fps jogando, mas não 60 com a opção de 60 fps. O
-  limite são os jobs de SPU do jogo, que ele roda numa SPU só.
+  mais lentas. Com o trabalho do engine de desenho do Resistance 2 elas foram
+  de uns 25 fps sem limite para 47, 44 e 56 (sem janela, 2026-11-11): 30 fps
+  com folga, mas não 60 estáveis com a opção de 60 fps.
 - **Pontos escuros** em algumas árvores: a camada de grama foi corrigida em
   2026-11-06; as árvores ainda precisam ser conferidas.
 - **Os menus continuam na 01.00:** só a campanha roda a atualização v1.7 (o
   executável de menus da atualização só existe na versão digital).
-- **Travamentos raros:** em umas 20 execuções de teste o jogo travou duas
-  vezes, uma de cada: no vídeo de abertura de uma fase e em "Physics SPU
-  Collision Timed Out!". Nenhum dos dois voltou. Se acontecer com você, mande
-  o log (Modo de depuração > Criar .zip).
+- **Travamentos raros:** cerca de 1 execução de teste em 10 travou (3 em
+  umas 25, 2026-11-11). O job manager das SPUs para de pegar jobs e o jogo
+  avisa no log ("Physics SPU Collision Timed Out!", "WwsJobDelay timed
+  out"); duas execuções de 10 minutos de "No Way Out" logo depois foram
+  limpas, então a causa ainda não foi achada. O jogo agora grava um
+  **relatório de travamento** no log depois de 30 s sem quadro (todas as
+  threads e SPUs, e onde cada uma espera). Se acontecer com você, mande o log
+  (Modo de depuração > Criar .zip, ou o `last.log`).
 - **Teclado e mouse, vibração, controle de Xbox:** implementados, ainda não
   testados jogando.
 - **Multiplayer online** não funciona (os servidores acabaram); a tela
@@ -178,6 +183,8 @@ O que está sendo feito agora (detalhes no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md))
 - **Velocidade nas cenas pesadas:** o trabalho do engine de desenho do
   Resistance 2 entrou (uns +40% em "Outgunned"); o que limita agora é a CPU
   decodificando os comandos e preparando os draws na thread do RSX.
+- **O travamento raro** em que o job manager das SPUs para: o relatório de
+  travamento está no jogo para pegá-lo.
 - **A grama** que some ou pisca: falta confirmar com a tabela de alvos
   maior.
 - **A iluminação da neve** em "Ice and Iron".
