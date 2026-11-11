@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Play online's voice chat, only when the player turns it on (Home > Online):
+       the game the launcher starts reads the microphone as the PS3 headset. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Voice chat in Resistance's online games (only when you turn it on in the launcher).</string>
+</dict>
+</plist>

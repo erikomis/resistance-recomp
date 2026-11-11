@@ -446,6 +446,10 @@ the online ID typed in Home's Online card (PSN's rules: 3-16 letters, digits,
   offers **Prepare the online menus** (`tools/rebuild.sh eboot17`, a few
   minutes, in Advanced's rebuild console), and Play online then goes
   straight online.
+- **Voice chat (microphone)**, in the Online card, off by default: Play
+  online then passes `PS3_MIC=1`, and the computer's microphone is the PS3
+  headset. macOS asks for the microphone the first time (the app's
+  Info.plist has the text); offline Play never opens it.
 
 ## Not done (from the inFAMOUS 2 launcher)
 

@@ -39,7 +39,7 @@ index 67bb40b3..27d02ca7 100644
            # walk they are now computed without.
            ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }} -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.github/workflows/macos.yml b/.github/workflows/macos.yml
-index 19e9eb18..ae67d591 100644
+index 19e9eb18..6b2a61d7 100644
 --- a/.github/workflows/macos.yml
 +++ b/.github/workflows/macos.yml
 @@ -74,6 +74,8 @@ jobs:
@@ -51,7 +51,7 @@ index 19e9eb18..ae67d591 100644
  
        - name: Run self-contained SPU helper tests
          run: |
-@@ -102,6 +104,21 @@ jobs:
+@@ -102,6 +104,23 @@ jobs:
            clang -std=gnu17 -I include -o /tmp/test_np_identity libs/network/tests/test_np_identity.c
            /tmp/test_np_identity
  
@@ -66,6 +66,8 @@ index 19e9eb18..ae67d591 100644
 +          /tmp/test_np_ticket_local
 +          clang -std=gnu17 -I include -o /tmp/test_cellfs_hdd0_root libs/filesystem/tests/test_cellfs_hdd0_root.c
 +          /tmp/test_cellfs_hdd0_root
++          clang -std=gnu17 -DMIC_NO_SDL -I include -o /tmp/test_mic libs/audio/tests/test_mic.c -lm
++          /tmp/test_mic
 +          clang -std=gnu17 -I include -I libs/system -o /tmp/test_netstart_offline libs/network/tests/test_netstart_offline.c
 +          /tmp/test_netstart_offline
 +          PS3_NET_ONLINE=1 /tmp/test_netstart_offline
@@ -73,7 +75,7 @@ index 19e9eb18..ae67d591 100644
        # cellVideoOutSetGamma's float argument comes from f1, and the value
        # reaches the presenter.
        - name: Run the video out gamma test
-@@ -109,9 +126,10 @@ jobs:
+@@ -109,9 +128,10 @@ jobs:
            clang -std=gnu17 -I include -o /tmp/test_avconf_gamma libs/misc/tests/test_avconf_gamma.c
            /tmp/test_avconf_gamma
  
@@ -87,7 +89,7 @@ index 19e9eb18..ae67d591 100644
        - name: Run the Metal present post-processing test
          run: |
            clang -fobjc-arc -I include -I libs/video libs/video/tests/test_metal_present_post.m \
-@@ -128,10 +146,67 @@ jobs:
+@@ -128,10 +148,67 @@ jobs:
  
        # cellPadSetActDirect: the small motor is on/off at full strength, and
        # a rumble lasts until the title changes it (renewed from the pad poll).
@@ -155,7 +157,7 @@ index 19e9eb18..ae67d591 100644
  
        # Drives a real NV4097 command buffer through cellGcm -> RSX -> the Metal
        # backend and asserts the presented pixel matches the guest clear colour.
-@@ -176,6 +251,15 @@ jobs:
+@@ -176,6 +253,15 @@ jobs:
              echo "--mip-aniso passed without PS3_ANISO; the check is not checking"
              exit 1
            fi
@@ -171,7 +173,7 @@ index 19e9eb18..ae67d591 100644
            # Render-to-texture: a red triangle drawn into a colour surface of
            # the guest's own, then sampled by a full-screen quad through the
            # guest programs. The guest bytes behind that surface are green, so
-@@ -342,6 +426,14 @@ jobs:
+@@ -342,6 +428,14 @@ jobs:
            # restart cuts bounding topology expansion. Runs on Linux too.
            clang -std=gnu17 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_rsx_draw_engine libs/video/tests/test_rsx_draw_engine.c libs/video/rsx_draw_engine.c libs/video/rsx_dispatch.c libs/video/rsx_vertex_compact.c libs/video/rsx_texture_layout.c libs/video/rsx_vp_decompiler.c libs/video/rsx_fp_decompiler.c
            /tmp/test_rsx_draw_engine
@@ -1365,26 +1367,353 @@ index 6f76df8a..a8978bb6 100644
  {
      uint32_t tag_ea = (uint32_t)(uintptr_t)tag;
 diff --git a/libs/audio/cellMic.c b/libs/audio/cellMic.c
-index 4d2b4782..e129fce1 100644
+index 4d2b4782..1344d6ab 100644
 --- a/libs/audio/cellMic.c
 +++ b/libs/audio/cellMic.c
-@@ -118,3 +118,12 @@ s32 cellMicGetDeviceGUID(s32 devNum, u64* guid)
+@@ -1,23 +1,135 @@
+ /*
+  * ps3recomp - cellMic HLE implementation
+  *
+- * Stub. Init/end work, all queries report no microphone.
++ * The PS3 headset's microphone, for in-game voice chat. Off by default:
++ * every query reports no microphone, as before, and nothing is recorded.
++ *
++ *   PS3_MIC=1       the computer's default microphone is the headset (SDL2
++ *                   capture, at the rate the title opens it). The launcher
++ *                   passes it only when the player turns voice chat on.
++ *   PS3_MIC_TONE=1  a 440 Hz test tone instead of any microphone: a test can
++ *                   drive the whole path without recording anything.
++ *
++ * What a title reads (Resistance's "headset mic in" thread, checked in its
++ * code): cellMicOpen(0, 8000), cellMicStart(0), then cellMicRead(0, buf,
++ * 0x2000) with three arguments, whose return value is the number of BYTES
++ * read; the bytes are 32-bit floats, big-endian, mono, -1..1 (it scales them
++ * to 16-bit PCM itself). Nothing waiting is not an error: the read returns 0.
+  */
+ 
+ #include "cellMic.h"
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
++#include <math.h>
++#include <time.h>
+ #include "../../runtime/ppu/ppu_memory.h"   /* GUEST_PTR, vm_write*: guest EA -> host */
+ 
++#if !defined(MIC_NO_SDL) && (!defined(_WIN32) || defined(PS3RECOMP_AUDIO_USE_SDL2))
++  #define MIC_SDL 1
++  #include <SDL2/SDL.h>
++#else
++  #define MIC_SDL 0
++#endif
++
++#ifndef _WIN32
++  #include <pthread.h>
++  #include <unistd.h>
++#endif
++
++/* The event queue the title gave cellMicSetNotifyEventQueue (the lv2 side). */
++extern int      sys_event_queue_push_by_id(uint32_t queue_id, uint64_t source,
++                                           uint64_t data1, uint64_t data2, uint64_t data3);
++extern uint32_t sys_event_find_queue_by_key(uint64_t key);
++
++/* The events on that queue: data1 is the type, data2 the device. Read off
++ * Resistance's "headset mic in" thread: 2 = the device number to use from
++ * now on, 3 = gone, 5 = samples waiting (it then calls cellMicRead). */
++enum { CELLMIC_ATTACH = 2, CELLMIC_DETACH = 3, CELLMIC_DATA = 5 };
++
+ /* Internal state */
+ 
+ static int s_initialized = 0;
++static u64 s_notify_key = 0;
++
++enum { MIC_RING = 48000 };          /* one second at the highest rate */
++static struct {
++    int      open, started;
++    u32      rate;
++    float    ring[MIC_RING];        /* written by the capture callback */
++    unsigned head, tail;            /* ring indices, SDL_LockAudioDevice'd */
++    double   tone_phase;
++    unsigned long long tone_t0_us;
++#if MIC_SDL
++    SDL_AudioDeviceID dev;
++#endif
++} s_mic;
++
++static int mic_mode(void)           /* 0 off, 1 microphone, 2 test tone */
++{
++    const char* t = getenv("PS3_MIC_TONE");
++    if (t && *t && t[0] != '0') return 2;
++    const char* m = getenv("PS3_MIC");
++    return (m && *m && m[0] != '0') ? 1 : 0;
++}
++
++static unsigned long long mic_now_us(void)
++{
++    struct timespec ts;
++    timespec_get(&ts, TIME_UTC);
++    return (unsigned long long)ts.tv_sec * 1000000ull + (unsigned long long)ts.tv_nsec / 1000u;
++}
++
++#if MIC_SDL
++static void mic_capture(void* user, Uint8* stream, int len)
++{
++    (void)user;
++    const float* in = (const float*)stream;
++    const int n = len / (int)sizeof(float);
++    for (int i = 0; i < n; i++) {
++        unsigned next = (s_mic.head + 1) % MIC_RING;
++        if (next == s_mic.tail) s_mic.tail = (s_mic.tail + 1) % MIC_RING;   /* full: drop the oldest */
++        s_mic.ring[s_mic.head] = in[i];
++        s_mic.head = next;
++    }
++}
++#endif
++
++static void mic_event(u64 type)
++{
++    if (!s_notify_key) return;
++    const uint32_t qid = sys_event_find_queue_by_key(s_notify_key);
++    if (qid) sys_event_queue_push_by_id(qid, s_notify_key, type, 0 /* device 0 */, 0);
++}
++
++/* While capturing, a DATA event every 32 ms (the title's own receive
++ * timeout), so its reader wakes and calls cellMicRead. */
++#ifndef _WIN32
++static pthread_t s_pump;
++static volatile int s_pump_run = 0;
++static void* mic_pump(void* arg)
++{
++    (void)arg;
++    while (s_pump_run) {
++        usleep(32 * 1000);
++        if (s_pump_run && s_mic.started) mic_event(CELLMIC_DATA);
++    }
++    return NULL;
++}
++#endif
++
++static void be_float(u32 ea, float f)
++{
++    u32 v;
++    memcpy(&v, &f, 4);
++    vm_write32(ea, v);
++}
+ 
+ /* API */
+ 
+ s32 cellMicInit(void)
+ {
+-    printf("[cellMic] Init()\n");
++    printf("[cellMic] Init()%s\n", mic_mode() == 2 ? " (test tone)" : mic_mode() == 1 ? " (microphone on)" : "");
+     if (s_initialized)
+         return (s32)CELL_MIC_ERROR_ALREADY_INITIALIZED;
+     s_initialized = 1;
+@@ -27,40 +139,141 @@ s32 cellMicInit(void)
+ s32 cellMicEnd(void)
+ {
+     printf("[cellMic] End()\n");
++    cellMicClose(0);
+     s_initialized = 0;
+     return CELL_OK;
+ }
+ 
+ s32 cellMicOpen(s32 devNum, u32 sampleRate)
+ {
+-    (void)devNum; (void)sampleRate;
+-    printf("[cellMic] Open(%d) - no device\n", devNum);
+-    return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++    const int mode = mic_mode();
++    if (devNum != 0 || !mode) {
++        printf("[cellMic] Open(%d) - no device\n", devNum);
++        return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++    }
++    if (s_mic.open) return (s32)CELL_MIC_ERROR_BUSY;
++    if (sampleRate < 8000 || sampleRate > 48000) return (s32)CELL_MIC_ERROR_INVALID_ARGUMENT;
++    s_mic.rate = sampleRate;
++    s_mic.head = s_mic.tail = 0;
++#if MIC_SDL
++    if (mode == 1) {
++        if (!SDL_WasInit(SDL_INIT_AUDIO) && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
++            printf("[cellMic] Open: no audio subsystem (%s)\n", SDL_GetError());
++            return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++        }
++        SDL_AudioSpec want, have;
++        SDL_zero(want);
++        want.freq = (int)sampleRate;
++        want.format = AUDIO_F32SYS;
++        want.channels = 1;
++        want.samples = 256;
++        want.callback = mic_capture;
++        /* No changes allowed: SDL converts to the rate and format asked for.
++         * The default input; its name is not logged (it can be personal). */
++        s_mic.dev = SDL_OpenAudioDevice(NULL, 1, &want, &have, 0);
++        if (!s_mic.dev) {
++            printf("[cellMic] Open: the microphone could not be opened (%s)\n", SDL_GetError());
++            return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++        }
++    }
++#else
++    if (mode == 1) return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++#endif
++    s_mic.open = 1;
++    printf("[cellMic] Open(0, %u Hz) - %s\n", sampleRate, mode == 2 ? "test tone" : "the default microphone");
++    return CELL_OK;
+ }
+ 
+ s32 cellMicClose(s32 devNum)
+ {
+-    (void)devNum;
++    if (devNum != 0 || !s_mic.open) return CELL_OK;
++#ifndef _WIN32
++    if (s_pump_run) { s_pump_run = 0; pthread_join(s_pump, NULL); }
++#endif
++#if MIC_SDL
++    if (s_mic.dev) { SDL_CloseAudioDevice(s_mic.dev); s_mic.dev = 0; }
++#endif
++    s_mic.open = s_mic.started = 0;
+     return CELL_OK;
+ }
+ 
+ s32 cellMicStart(s32 devNum)
+ {
+-    (void)devNum;
+-    return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++    if (devNum != 0 || !s_mic.open) return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++    s_mic.started = 1;
++    s_mic.tone_t0_us = mic_now_us();
++#ifndef _WIN32
++    if (!s_pump_run) {
++        s_pump_run = 1;
++        if (pthread_create(&s_pump, NULL, mic_pump, NULL) != 0) s_pump_run = 0;
++    }
++#endif
++#if MIC_SDL
++    if (s_mic.dev) SDL_PauseAudioDevice(s_mic.dev, 0);
++#endif
++    printf("[cellMic] Start(0)\n");
++    return CELL_OK;
+ }
+ 
+ s32 cellMicStop(s32 devNum)
+ {
+-    (void)devNum;
++    if (devNum != 0 || !s_mic.open) return CELL_OK;
++#if MIC_SDL
++    if (s_mic.dev) SDL_PauseAudioDevice(s_mic.dev, 1);
++#endif
++    s_mic.started = 0;
+     return CELL_OK;
+ }
+ 
+-s32 cellMicRead(s32 devNum, void* data, u32 maxBytes, u32* readBytes)
++static void mic_note_read(u32 n)
+ {
+-    (void)devNum; (void)data; (void)maxBytes;
+-    if (readBytes) vm_write32((u32)(uintptr_t)readBytes, 0);
+-    return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++    static int s_logged = 0;            /* the count only: never the samples */
++    if (n && !s_logged) {
++        s_logged = 1;
++        printf("[cellMic] Read: first %u samples handed to the title\n", n);
++    }
++}
++
++/* The samples captured since the last read, as big-endian floats; returns
++ * the number of bytes written (0 when nothing is waiting). */
++s32 cellMicRead(s32 devNum, void* data, u32 maxBytes)
++{
++    if (devNum != 0 || !s_mic.open) return (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND;
++    if (!data) return (s32)CELL_MIC_ERROR_INVALID_ARGUMENT;
++    if (!s_mic.started) return 0;
++    const u32 ea = (u32)(uintptr_t)data;
++    const u32 max = maxBytes / 4u;
++    u32 n = 0;
++    if (mic_mode() == 2) {
++        /* The tone's samples for the time since the last read, at most max. */
++        const unsigned long long now = mic_now_us();
++        unsigned long long want = (now - s_mic.tone_t0_us) * s_mic.rate / 1000000ull;
++        if (want > max) want = max;
++        for (; n < (u32)want; n++) {
++            be_float(ea + n * 4u, 0.25f * (float)sin(s_mic.tone_phase));
++            s_mic.tone_phase += 2.0 * M_PI * 440.0 / (double)s_mic.rate;
++            if (s_mic.tone_phase > 2.0 * M_PI) s_mic.tone_phase -= 2.0 * M_PI;
++        }
++        s_mic.tone_t0_us += (unsigned long long)n * 1000000ull / s_mic.rate;
++        mic_note_read(n);
++        return (s32)(n * 4u);
++    }
++#if MIC_SDL
++    if (s_mic.dev) {
++        SDL_LockAudioDevice(s_mic.dev);
++        while (n < max && s_mic.tail != s_mic.head) {
++            float f = s_mic.ring[s_mic.tail];
++            s_mic.tail = (s_mic.tail + 1) % MIC_RING;
++            if (f > 1.0f) f = 1.0f;
++            if (f < -1.0f) f = -1.0f;
++            be_float(ea + n * 4u, f);
++            n++;
++        }
++        SDL_UnlockAudioDevice(s_mic.dev);
++    }
++#endif
++    mic_note_read(n);
++    return (s32)(n * 4u);
+ }
+ 
+ s32 cellMicGetDeviceAttr(s32 devNum, CellMicDeviceAttr* attr)
+@@ -72,21 +285,18 @@ s32 cellMicGetDeviceAttr(s32 devNum, CellMicDeviceAttr* attr)
+ 
+ s32 cellMicIsAttached(s32 devNum)
+ {
+-    (void)devNum;
+-    return 0; /* not attached */
++    return devNum == 0 && mic_mode() ? 1 : 0;
+ }
+ 
+ s32 cellMicIsOpen(s32 devNum)
+ {
+-    (void)devNum;
+-    return 0; /* not open */
++    return devNum == 0 && s_mic.open ? 1 : 0;
+ }
+ 
+ s32 cellMicGetType(s32 devNum, s32* type)
+ {
+-    (void)devNum;
+     if (!type) return (s32)CELL_MIC_ERROR_INVALID_ARGUMENT;
+-    vm_write32((u32)(uintptr_t)type, (u32)CELL_MIC_TYPE_UNKNOWN);
++    vm_write32((u32)(uintptr_t)type, (u32)(devNum == 0 && mic_mode() ? CELL_MIC_TYPE_USBAUDIO : CELL_MIC_TYPE_UNKNOWN));
+     return CELL_OK;
+ }
+ 
+@@ -118,3 +328,14 @@ s32 cellMicGetDeviceGUID(s32 devNum, u64* guid)
      vm_write64((u32)(uintptr_t)guid, 0);
      return CELL_OK;
  }
 +
-+/* The event queue a title gets microphone attach/detach events on. There is
-+ * no microphone here, so no event ever comes; accepting the queue is enough
-+ * (Resistance v1.7's online lobby sets it up for voice chat). */
++/* The event queue a title gets the microphone's events on: with a
++ * microphone (PS3_MIC / PS3_MIC_TONE) it is attached at once, as a headset
++ * plugged in before the game started, and DATA follows while capturing. */
 +s32 cellMicSetNotifyEventQueue(u64 key)
 +{
-+    (void)key;
++    s_notify_key = key;
++    printf("[cellMic] SetNotifyEventQueue(key=0x%llX)\n", (unsigned long long)key);
++    if (mic_mode()) mic_event(CELLMIC_ATTACH);
 +    return CELL_OK;
 +}
 diff --git a/libs/audio/cellMic.h b/libs/audio/cellMic.h
-index 626aa14d..661a6e9a 100644
+index 626aa14d..ad9b4303 100644
 --- a/libs/audio/cellMic.h
 +++ b/libs/audio/cellMic.h
+@@ -53,7 +53,7 @@ s32 cellMicClose(s32 devNum);
+ s32 cellMicStart(s32 devNum);
+ s32 cellMicStop(s32 devNum);
+ 
+-s32 cellMicRead(s32 devNum, void* data, u32 maxBytes, u32* readBytes);
++s32 cellMicRead(s32 devNum, void* data, u32 maxBytes);  /* returns the bytes read */
+ s32 cellMicGetDeviceAttr(s32 devNum, CellMicDeviceAttr* attr);
+ 
+ s32 cellMicIsAttached(s32 devNum);
 @@ -66,6 +66,7 @@ s32 cellMicGetSignalState(s32 devNum, s32* signalState);
  s32 cellMicSetSignalAttr(s32 devNum, u32 attr, u32 value);
  
@@ -1579,6 +1908,112 @@ index 00000000..c5af295b
 +    cellAudio_host_set_volume(140);
 +    assert(cellAudio_host_volume() == 100 && cellAudio_host_gain() == 1.0f);
 +    printf("test_audio_settings: ok\n");
++    return 0;
++}
+diff --git a/libs/audio/tests/test_mic.c b/libs/audio/tests/test_mic.c
+new file mode 100644
+index 00000000..0f626b0e
+--- /dev/null
++++ b/libs/audio/tests/test_mic.c
+@@ -0,0 +1,100 @@
++/* cellMic: off by default (no microphone, nothing recorded); with
++ * PS3_MIC_TONE=1 the whole path a title uses, with a test tone instead of a
++ * microphone. cellMicRead takes three arguments and returns the BYTES read,
++ * big-endian 32-bit floats, mono (what Resistance's voice chat reads).
++ *
++ *   cc -std=gnu17 -DMIC_NO_SDL -I include -o /tmp/test_mic \
++ *      libs/audio/tests/test_mic.c -lm && /tmp/test_mic
++ */
++#define MIC_NO_SDL 1
++#include "../cellMic.c"
++#include <assert.h>
++#include <unistd.h>
++
++uint8_t* vm_base;
++uint32_t ppu_vm_size;
++int g_resv_store_active;
++uint32_t g_ww_lo, g_ww_hi;
++void ppu_resv_break_store(uint64_t ea) { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
++int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++
++/* The lv2 event queue the title registered: count what reaches it. */
++static volatile int s_attach, s_data, s_other;
++uint32_t sys_event_find_queue_by_key(uint64_t key) { return key == 0x72110700u ? 3u : 0u; }
++int sys_event_queue_push_by_id(uint32_t q, uint64_t src, uint64_t d1, uint64_t d2, uint64_t d3)
++{
++    (void)src; (void)d3;
++    assert(q == 3 && d2 == 0);
++    if (d1 == CELLMIC_ATTACH) s_attach++;
++    else if (d1 == CELLMIC_DATA) s_data++;
++    else s_other++;
++    return 0;
++}
++
++#define BUF  0x1000u
++#define TYPE 0x8000u
++
++static float read_be_float(u32 ea)
++{
++    u32 v = vm_read32(ea);
++    float f;
++    memcpy(&f, &v, 4);
++    return f;
++}
++
++int main(void)
++{
++    vm_base = calloc(1, 0x10000); assert(vm_base);
++
++    /* Off: no microphone, as before. */
++    unsetenv("PS3_MIC"); unsetenv("PS3_MIC_TONE");
++    assert(cellMicInit() == CELL_OK);
++    assert(cellMicIsAttached(0) == 0);
++    assert(cellMicOpen(0, 8000) == (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND);
++    assert(cellMicStart(0) == (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND);
++    assert(cellMicRead(0, (void*)(uintptr_t)BUF, 0x200) == (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND);
++    assert(cellMicGetType(0, (s32*)(uintptr_t)TYPE) == CELL_OK && vm_read32(TYPE) == CELL_MIC_TYPE_UNKNOWN);
++    assert(cellMicSetNotifyEventQueue(0x72110700u) == CELL_OK && s_attach == 0);   /* off: no events */
++
++    /* The test tone: attached, opened at the title's rate, samples to read. */
++    setenv("PS3_MIC_TONE", "1", 1);
++    assert(cellMicSetNotifyEventQueue(0x72110700u) == CELL_OK && s_attach == 1);   /* plugged in */
++    assert(cellMicIsAttached(0) == 1 && cellMicIsAttached(1) == 0);
++    assert(cellMicGetType(0, (s32*)(uintptr_t)TYPE) == CELL_OK && vm_read32(TYPE) == CELL_MIC_TYPE_USBAUDIO);
++    assert(cellMicOpen(1, 8000) == (s32)CELL_MIC_ERROR_DEVICE_NOT_FOUND);
++    assert(cellMicOpen(0, 100) == (s32)CELL_MIC_ERROR_INVALID_ARGUMENT);
++    assert(cellMicOpen(0, 8000) == CELL_OK && cellMicIsOpen(0) == 1);
++    assert(cellMicOpen(0, 8000) == (s32)CELL_MIC_ERROR_BUSY);
++    assert(cellMicRead(0, (void*)(uintptr_t)BUF, 0x200) == 0);          /* not started: nothing */
++    assert(cellMicStart(0) == CELL_OK);
++    usleep(100 * 1000);                                                  /* ~800 samples at 8 kHz */
++    assert(s_data >= 2 && s_other == 0);                                 /* DATA every 32 ms */
++    s32 n = cellMicRead(0, (void*)(uintptr_t)BUF, 0x2000);
++    assert(n > 0 && n % 4 == 0 && n <= 0x2000);
++    assert(n / 4 >= 500 && n / 4 <= 2048);
++    float lo = 1, hi = -1;
++    for (s32 i = 0; i < n / 4; i++) {
++        float f = read_be_float(BUF + (u32)i * 4u);
++        assert(f >= -0.2501f && f <= 0.2501f);
++        if (f < lo) lo = f;
++        if (f > hi) hi = f;
++    }
++    assert(hi > 0.2f && lo < -0.2f);                                     /* a whole sine went by */
++    /* A small buffer is filled no further than it allows. */
++    usleep(20 * 1000);
++    assert(cellMicRead(0, (void*)(uintptr_t)BUF, 8) == 8);
++    assert(cellMicStop(0) == CELL_OK);
++    assert(cellMicRead(0, (void*)(uintptr_t)BUF, 0x200) == 0);
++    assert(cellMicClose(0) == CELL_OK && cellMicIsOpen(0) == 0);
++    const int after = s_data;
++    usleep(80 * 1000);
++    assert(s_data == after);                                             /* closed: no more DATA */
++    assert(cellMicEnd() == CELL_OK);
++
++    printf("test_mic: all passed (%d samples read)\n", n / 4);
 +    return 0;
 +}
 diff --git a/libs/codec/adec_ffmpeg.c b/libs/codec/adec_ffmpeg.c

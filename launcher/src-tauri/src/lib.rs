@@ -156,6 +156,9 @@ pub struct Settings {
     /// The online ID "Play online" signs in with (PS3_NP_ONLINE_ID): 3-16
     /// letters, digits, '-' or '_', starting with a letter. Empty = not set.
     pub online_id: String,
+    /// Voice chat online: the computer's microphone as the PS3 headset
+    /// (PS3_MIC=1, Play online only). Off by default.
+    pub voice_chat: bool,
     /// PS3RECOMP_METAL_FPS=1: frame rate and frame times in the window title.
     pub show_fps: bool,
     /// PS3RECOMP_ENG_VCACHE=0 / PS3RECOMP_ENG_VCACHE_SPLIT=0 when off.
@@ -236,6 +239,7 @@ impl Default for Settings {
             menu_60fps: false,
             fov: String::new(),
             online_id: String::new(),
+            voice_chat: false,
             show_fps: true,
             vertex_cache: true,
             vertex_cache_split: true,
@@ -1520,7 +1524,7 @@ fn online_update_eboot(s: &Settings) -> PathBuf {
 /// at any time), the 01.00 campaign switch, and the network and sign-in
 /// variables, which online_env sets itself.
 fn online_forbidden(k: &str) -> bool {
-    matches!(k, "RES_UNLOCK_FPS" | "RES_MENU_60FPS" | "PS3_VBLANK_HZ" | "PS3_FLIP_MAX_HZ" | "RES_GAME_VERSION" | "PSNR_SERVER")
+    matches!(k, "RES_UNLOCK_FPS" | "RES_MENU_60FPS" | "PS3_VBLANK_HZ" | "PS3_FLIP_MAX_HZ" | "RES_GAME_VERSION" | "PSNR_SERVER" | "PS3_MIC" | "PS3_MIC_TONE")
         || k.starts_with("PS3_NET_")
         || k.starts_with("PS3_NP_")
 }
@@ -1545,6 +1549,10 @@ fn online_env(s: &Settings, disc: &Path, online: &Path, input: &InputEnv) -> Vec
         ("PS3_NET_HOSTS", "localhost=127.0.0.1"),
     ] {
         env.push((k.to_string(), v.to_string()));
+    }
+    // the microphone only when the player turned voice chat on
+    if s.voice_chat {
+        env.push(("PS3_MIC".into(), "1".into()));
     }
     env
 }
@@ -3529,6 +3537,16 @@ mod tests {
         assert_eq!(e["PS3_NET_LOCAL_IP"], ONLINE_LOCAL_IP);
         assert_eq!(e["PS3_NET_NO_UPNP"], "1");
         assert_eq!(e["PS3_AA"], "fxaa"); // the other extra variables still apply
+        assert!(!e.contains_key("PS3_MIC"), "the microphone without voice chat");
+        let mut sv = st.clone();
+        sv.voice_chat = true;
+        sv.extra_env.push_str("\nPS3_MIC_TONE=1");
+        let ev: BTreeMap<String, String> = online_env(&sv, Path::new("/d"), Path::new("/o"), &InputEnv::default()).into_iter().collect();
+        assert_eq!(ev["PS3_MIC"], "1");
+        assert!(!ev.contains_key("PS3_MIC_TONE"));
+        // offline Play never opens the microphone
+        let off: BTreeMap<String, String> = launch_env(&sv, Path::new("/d"), Path::new("/p"), &InputEnv::default()).into_iter().collect();
+        assert!(!off.contains_key("PS3_MIC"));
         // one value per variable: the online ones are not doubled by the extras
         let v = online_env(&st, Path::new("/d"), Path::new("/o"), &InputEnv::default());
         assert_eq!(v.iter().filter(|(k, _)| k == "PS3_NET_ALLOW").count(), 1);

@@ -56,6 +56,7 @@ export interface Settings {
   menu60fps: boolean;
   fov: string;
   onlineId: string;
+  voiceChat: boolean;
   showFps: boolean;
   vertexCache: boolean;
   vertexCacheSplit: boolean;
@@ -477,6 +478,7 @@ function bindSettings() {
   bindCheck("show-fps", "showFps");
   bindCheck("q-fps", "showFps");
   bindText("online-id", "onlineId", () => renderOnline());
+  bindCheck("online-voice", "voiceChat");
   bindCheck("keep-awake", "keepAwake");
   bindCheck("q-awake", "keepAwake");
   bindCheck("vcache", "vertexCache");
