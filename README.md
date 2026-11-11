@@ -119,6 +119,12 @@ save, status), Graphics, Performance, Game, Controls and Advanced.
   Plus a game log viewer.
 - **Play shortcut** on the Desktop and **Add to Steam** (Big Picture with
   the controller).
+- **Play online** (from v0.4.0): online multiplayer on the community's
+  [PS Rewired](https://psrewired.com) servers with the online ID you type on
+  Home, in a folder of its own (your saves are not touched), never at 60 fps
+  (their rules), reaching only their servers. The first time the game
+  downloads its v1.7 update and Home offers **Prepare the online menus**
+  (details in [launcher/README.md](launcher/README.md#play-online-ps-rewired)).
 
 **In the game,** F1 (fn+F1), Insert, Cmd+, or L3+R3 opens the **in-game
 menu** (from the inFAMOUS 2 port): image (gamma, sharpening, FXAA/SMAA,

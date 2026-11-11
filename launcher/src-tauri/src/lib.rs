@@ -153,6 +153,9 @@ pub struct Settings {
     pub unlock_fps: bool,
     pub menu_60fps: bool,
     pub fov: String,
+    /// The online ID "Play online" signs in with (PS3_NP_ONLINE_ID): 3-16
+    /// letters, digits, '-' or '_', starting with a letter. Empty = not set.
+    pub online_id: String,
     /// PS3RECOMP_METAL_FPS=1: frame rate and frame times in the window title.
     pub show_fps: bool,
     /// PS3RECOMP_ENG_VCACHE=0 / PS3RECOMP_ENG_VCACHE_SPLIT=0 when off.
@@ -232,6 +235,7 @@ impl Default for Settings {
             unlock_fps: false,
             menu_60fps: false,
             fov: String::new(),
+            online_id: String::new(),
             show_fps: true,
             vertex_cache: true,
             vertex_cache_split: true,
@@ -696,6 +700,9 @@ pub struct Builds {
     eboot_elf: Option<String>,
     game_elf: Option<String>,
     game_v17_elf: Option<String>,
+    /// The v1.7 menus (tools/v17/regen_eboot_v17.sh), which online play runs.
+    eboot_v17: Option<String>,
+    eboot_v17_elf: Option<String>,
     /// Everything Play needs is there (host, EBOOT build and ELF, 01.00
     /// campaign build and ELF).
     ok: bool,
@@ -728,11 +735,13 @@ fn resolve_builds(root: &Path) -> Builds {
     let (eboot, l1) = exe_in(&b.join(TITLE_ID));
     let (game, l2) = exe_in(&b.join(format!("{TITLE_ID}_game")));
     let (game_v17, _) = exe_in(&b.join(format!("{TITLE_ID}_game_v17")));
+    let (eboot_v17, _) = exe_in(&b.join(format!("{TITLE_ID}_eboot_v17")));
     let host = Some(b.join(TITLE_ID).join(HOST_EXE)).filter(|p| USES_HOST && p.is_file());
     let file = |p: PathBuf| Some(p).filter(|p| p.is_file());
     let eboot_elf = file(g.join("EBOOT.elf"));
     let game_elf = file(g.join("modules/game.elf"));
     let game_v17_elf = file(g.join("modules_v17/game.elf"));
+    let eboot_v17_elf = file(g.join("EBOOT_v17.elf"));
     let mut missing = Vec::new();
     for (what, v) in [
         (format!("build/{TITLE_ID}/{HOST_EXE}"), host.is_some() || !USES_HOST),
@@ -760,6 +769,8 @@ fn resolve_builds(root: &Path) -> Builds {
         eboot_elf: o(&eboot_elf),
         game_elf: o(&game_elf),
         game_v17_elf: o(&game_v17_elf),
+        eboot_v17: o(&eboot_v17).filter(|_| eboot_v17_elf.is_some()),
+        eboot_v17_elf: o(&eboot_v17_elf).filter(|_| eboot_v17.is_some()),
         missing,
         rebuild_sh: o(&rebuild_sh),
     }
@@ -1471,6 +1482,242 @@ fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) ->
     })
 }
 
+// ---------------------------------------------------------------------------
+// Online play (PS Rewired)
+// ---------------------------------------------------------------------------
+
+/// PS Rewired, the community revival whose servers run Resistance's online
+/// play: its DNS answers the game's old server names with its servers, and
+/// these three are the only addresses the game may reach online (the login,
+/// the update download, the lobby and the games; PS3_NET_ALLOW). See the
+/// ROADMAP, "Online multiplayer through PS Rewired".
+const ONLINE_DNS: &str = "67.222.156.250";
+const ONLINE_ALLOW: &str = "67.222.156.250,67.222.156.251,67.222.156.252";
+/// The LAN address the game is told it has, instead of this computer's own.
+const ONLINE_LOCAL_IP: &str = "192.168.1.100";
+
+/// Online play's own folder: its dev_hdd0 (with the v1.7 update the game
+/// downloads there, which the offline 01.00 menus cannot run with), dev_hdd1,
+/// its profile and saves, overlay.ini and last.log. Nothing of the offline
+/// game is touched by playing online.
+fn online_dir(s: &Settings) -> PathBuf {
+    play_dir(s).join("online")
+}
+
+/// PSN online-ID rules: 3-16 letters, digits, '-' or '_', starting with a letter.
+fn valid_online_id(id: &str) -> bool {
+    let b = id.as_bytes();
+    (3..=16).contains(&b.len()) && b[0].is_ascii_alphabetic() && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_')
+}
+
+/// The update's EBOOT.BIN, where the game puts it when it downloads its update.
+fn online_update_eboot(s: &Settings) -> PathBuf {
+    game_data_dir(&online_dir(s)).join("USRDIR/EBOOT.BIN")
+}
+
+/// What online play never takes from the settings or the extra variables:
+/// the frame-rate patches (PS Rewired's rules forbid changing the frame rate
+/// at any time), the 01.00 campaign switch, and the network and sign-in
+/// variables, which online_env sets itself.
+fn online_forbidden(k: &str) -> bool {
+    matches!(k, "RES_UNLOCK_FPS" | "RES_MENU_60FPS" | "PS3_VBLANK_HZ" | "PS3_FLIP_MAX_HZ" | "RES_GAME_VERSION" | "PSNR_SERVER")
+        || k.starts_with("PS3_NET_")
+        || k.starts_with("PS3_NP_")
+}
+
+/// Play's environment for the online folder, without the frame-rate patches,
+/// then the online settings: real sockets, signed in as the online ID with a
+/// locally made ticket, PS Rewired's DNS, and the guards (only its addresses,
+/// a generic LAN address, no UPnP requests to the router).
+fn online_env(s: &Settings, disc: &Path, online: &Path, input: &InputEnv) -> Vec<(String, String)> {
+    let mut os = s.clone();
+    os.unlock_fps = false;
+    os.menu_60fps = false;
+    let mut env: Vec<(String, String)> = launch_env(&os, disc, online, input).into_iter().filter(|(k, _)| !online_forbidden(k)).collect();
+    for (k, v) in [
+        ("PS3_NET_ONLINE", "1"),
+        ("PS3_NP_SIGNIN", "1"),
+        ("PS3_NP_ONLINE_ID", s.online_id.trim()),
+        ("PS3_NET_DNS", ONLINE_DNS),
+        ("PS3_NET_ALLOW", ONLINE_ALLOW),
+        ("PS3_NET_LOCAL_IP", ONLINE_LOCAL_IP),
+        ("PS3_NET_NO_UPNP", "1"),
+        ("PS3_NET_HOSTS", "localhost=127.0.0.1"),
+    ] {
+        env.push((k.to_string(), v.to_string()));
+    }
+    env
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineStarted {
+    log: String,
+    mounted: Option<String>,
+    first_boot: bool,
+    /// "v1.7": the v1.7 menus, straight online; "update": the disc's menus,
+    /// so the game can download the update the servers require.
+    menus: String,
+}
+
+/// "Play online": the v1.7 menus in the online folder with online_env. Before
+/// they are built, the disc's menus, so that Online Game downloads the update
+/// (the EBOOT.BIN the v1.7 menus are built from); when the game exits with it
+/// downloaded, "online-update-ready" asks for build_online_menus. Errors the
+/// window explains itself: "online-id" (none set), "online-build" (the update
+/// is there, the menus not built yet), "no-disc".
+#[tauri::command]
+fn play_online(app: AppHandle, state: State<'_, AppState>) -> Result<OnlineStarted, String> {
+    require_supported_host()?;
+    refuse_while_updating(&state)?;
+    let mut slot = state.game.lock().unwrap();
+    if slot.is_some() {
+        return Err("the game is already running".into());
+    }
+    if state.rebuild.lock().unwrap().is_some() {
+        return Err("a rebuild is running".into());
+    }
+    let s = load_settings_file();
+    if !valid_online_id(s.online_id.trim()) {
+        return Err("online-id".into());
+    }
+    let root = port_root(&s).ok_or("no port folder: pick it in Advanced > Install / rebuild")?;
+    let b = resolve_builds(&root);
+    if !b.ok {
+        return Err(format!("missing in {}: {}", b.root, b.missing.join(", ")));
+    }
+    let v17 = b.eboot_v17.is_some();
+    if !v17 && online_update_eboot(&s).is_file() {
+        return Err("online-build".into());
+    }
+    let mut mounted = None;
+    let disc = match find_disc(&s) {
+        Some(d) => d,
+        None if s.auto_mount && !s.disc_image.trim().is_empty() => {
+            let d = attach_image(Path::new(s.disc_image.trim()))?;
+            mounted = Some(self::s(&d));
+            d
+        }
+        None => return Err("no-disc".into()),
+    };
+    if disc_title_id(&disc).as_deref() != Some(TITLE_ID) {
+        return Err(format!("{}: not a {TITLE_ID} disc", disc.display()));
+    }
+    let online = online_dir(&s);
+    for d in ["dev_hdd0", "dev_hdd1"] {
+        fs::create_dir_all(online.join(d)).map_err(|e| format!("{}: {e}", online.display()))?;
+    }
+    // The first boot's install cache, from the offline folder: saves the
+    // "initial setup" a second time (the cache is the disc's data, no save).
+    let cache = game_data_dir(&online).join("USRDIR/cache");
+    let offline_cache = game_data_dir(&play_dir(&s)).join("USRDIR/cache");
+    if !cache.is_dir() && offline_cache.is_dir() {
+        let _ = saves::copy_tree(&offline_cache, &cache, &[]);
+    }
+    let first = first_boot(&online);
+    let log_path = online.join("last.log");
+    let log = fs::File::create(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
+    let log2 = log.try_clone().map_err(|e| e.to_string())?;
+
+    let mut menus = b.clone();
+    if v17 {
+        menus.eboot = b.eboot_v17.clone();
+        menus.eboot_elf = b.eboot_v17_elf.clone();
+    }
+    let argv = launch_argv(&s, &menus)?;
+    let env = online_env(&s, &disc, &online, &input_env());
+    let mut cmd = Command::new(&argv[0]);
+    cmd.args(&argv[1..])
+        .current_dir(&online)
+        .env("PATH", tool_path())
+        .env_remove("PS3RECOMP_METAL_HEADLESS")
+        .env_remove("PS3RECOMP_HOST_SURFACES")
+        .env_remove("PS3RECOMP_WINDOW_STATE")
+        .env_remove("RES_GAME_VERSION")
+        .env_remove("RES_UNLOCK_FPS")
+        .env_remove("RES_MENU_60FPS")
+        .env_remove("PS3_VBLANK_HZ")
+        .stdin(Stdio::null())
+        .stdout(log)
+        .stderr(log2);
+    for (k, v) in &env {
+        cmd.env(k, v);
+    }
+    own_process_group(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| format!("{}: {e}", argv[0]))?;
+    *slot = Some(child.id());
+    drop(slot);
+    *state.last_log.lock().unwrap() = Some(log_path.clone());
+    let a = app.clone();
+    let update_eboot = online_update_eboot(&s);
+    thread::spawn(move || {
+        let status = child.wait();
+        let code = status.as_ref().ok().and_then(|s| s.code()).unwrap_or(-1);
+        *a.state::<AppState>().game.lock().unwrap() = None;
+        let _ = a.emit("game-exit", code);
+        if !v17 && update_eboot.is_file() {
+            let _ = a.emit("online-update-ready", ());
+        }
+    });
+    Ok(OnlineStarted {
+        log: s_(&log_path),
+        mounted,
+        first_boot: first,
+        menus: if v17 { "v1.7" } else { "update" }.into(),
+    })
+}
+
+/// The script build_online_menus runs in the port folder: the toolkit and
+/// the venv as the rebuild sets them up, then tools/rebuild.sh eboot17.
+fn online_menus_script(deps: bool) -> String {
+    rebuild_script(&["toolkit".to_string()], deps).replace("echo '==> done'\n", "PY=$PWD/.venv/bin/python exec tools/rebuild.sh eboot17\n")
+}
+
+/// Build the v1.7 menus from the update the game downloaded into the online
+/// folder (tools/v17/regen_eboot_v17.sh), streamed like a rebuild.
+#[tauri::command]
+fn build_online_menus(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    require_supported_host()?;
+    refuse_while_updating(&state)?;
+    if cfg!(windows) {
+        return Err("building the v1.7 menus needs macOS".into());
+    }
+    if state.game.lock().unwrap().is_some() {
+        return Err("the game is running: close it first".into());
+    }
+    let mut slot = state.rebuild.lock().unwrap();
+    if slot.is_some() {
+        return Err("a rebuild is already running".into());
+    }
+    let st = load_settings_file();
+    let root = port_root(&st).ok_or("no port folder (pick the resistance-recomp checkout)")?;
+    if !root.join("tools/v17/regen_eboot_v17.sh").is_file() {
+        return Err(format!("{}: no tools/v17/regen_eboot_v17.sh (Get the new sources first)", root.display()));
+    }
+    let eboot = online_update_eboot(&st);
+    if !eboot.is_file() {
+        return Err("no update downloaded yet: Play online, then Multiplayer > Online Game, and let the game download its update".into());
+    }
+    let deps = !deps_ready(&deps_dir()) && !brew_complete() && root.join("tools/bootstrap_deps.sh").is_file();
+    let mut cmd = Command::new("/usr/bin/nice");
+    cmd.args(["-n", "10", "/bin/zsh", "-c", &online_menus_script(deps)])
+        .current_dir(&root)
+        .env("PATH", tool_path())
+        .env("RES_DEPS", deps_dir())
+        .env("RES_EBOOT17", &eboot)
+        .env("TERM", "dumb")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    own_process_group(&mut cmd);
+    let child = cmd.spawn().map_err(|e| format!("zsh: {e}"))?;
+    *slot = Some(child.id());
+    drop(slot);
+    let _ = app.emit("rebuild-line", format!("$ cd {} && tools/rebuild.sh eboot17   # the v1.7 menus, for online play", root.display()));
+    stream_child(&app, child, "rebuild", |s| &s.rebuild);
+    Ok(())
+}
+
 /// Stop: SIGTERM to what Play started (the window host closes the game, then
 /// itself). The host can miss its game's exit and linger with the window
 /// open after a SIGTERM; if that group is still there 8 s later it gets
@@ -1532,6 +1779,11 @@ pub struct Status {
     data_root: String,
     first_boot: bool,
     update_files: Vec<String>,
+    /// Online play: its folder, whether the game has downloaded the v1.7
+    /// update there, and whether the v1.7 menus are built.
+    online_dir: String,
+    online_update: bool,
+    online_menus: bool,
     host_supported: bool,
     /// The port's build for this system is untested (Windows).
     experimental: bool,
@@ -1556,6 +1808,7 @@ async fn get_status(app: AppHandle, state: State<'_, AppState>) -> Result<Status
         let play = play_dir(&s);
         sync_app_icon(&app2);
         let bundle = app_icon::app_bundle().filter(|_| cfg!(target_os = "macos"));
+        let online_menus = builds.as_ref().is_some_and(|b| b.eboot_v17.is_some());
         Status {
             builds,
             disc: disc_info(&s),
@@ -1567,6 +1820,9 @@ async fn get_status(app: AppHandle, state: State<'_, AppState>) -> Result<Status
             rebuild_running,
             first_boot: first_boot(&play),
             update_files: update_files(&play).iter().map(|p| self::s(p)).collect(),
+            online_dir: self::s(&online_dir(&s)),
+            online_update: online_update_eboot(&s).is_file(),
+            online_menus,
             play_dir: self::s(&play),
             data_root: self::s(&data_root()),
             host_supported: host_supported(),
@@ -2597,7 +2853,7 @@ fn pull_sources(app: AppHandle, state: State<'_, AppState>) -> Result<(), String
 // Links, files, the log
 // ---------------------------------------------------------------------------
 
-const URL_ALLOWED: &[&str] = &["https://rpcs3.net/", "https://brew.sh/", "https://github.com/erikomis/resistance-recomp", "https://github.com/sp00nznet/ps3recomp"];
+const URL_ALLOWED: &[&str] = &["https://rpcs3.net/", "https://brew.sh/", "https://github.com/erikomis/resistance-recomp", "https://github.com/sp00nznet/ps3recomp", "https://psrewired.com/"];
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -3105,6 +3361,8 @@ pub fn run() {
             move_update_files,
             check_updates,
             pull_sources,
+            play_online,
+            build_online_menus,
             update::install_update,
             update::restart_app,
             check_prereqs,
@@ -3236,6 +3494,52 @@ mod tests {
         fs::write(data.join("patch_06.psarc"), b"x").unwrap();
         assert_eq!(update_files(&play), vec![data.join("patch_06.bin")]);
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn online_ids_follow_the_psn_rules() {
+        for ok in ["abc", "Player_01", "a-b-c", "x234567890123456"] {
+            assert!(valid_online_id(ok), "{ok}");
+        }
+        for bad in ["", "ab", "1abc", "_abc", "abc def", "x2345678901234567", "ação", "a.b"] {
+            assert!(!valid_online_id(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn online_env_never_changes_the_frame_rate() {
+        let mut st = Settings::default();
+        st.online_id = "Player_01".into();
+        st.unlock_fps = true;
+        st.menu_60fps = true;
+        st.campaign = "100".into();
+        st.extra_env = "RES_UNLOCK_FPS=1\nPS3_VBLANK_HZ=120\nPS3_NET_ALLOW=1.2.3.4\nPS3_NP_ONLINE_ID=someone\nPS3_AA=fxaa".into();
+        let e: BTreeMap<String, String> =
+            online_env(&st, Path::new("/Volumes/RESISTANCE_1"), Path::new("/p/online"), &InputEnv::default()).into_iter().collect();
+        for k in ["RES_UNLOCK_FPS", "RES_MENU_60FPS", "PS3_VBLANK_HZ", "RES_GAME_VERSION"] {
+            assert!(!e.contains_key(k), "{k} passed online");
+        }
+        assert_eq!(e["PS3_HDD0_ROOT"], "/p/online/dev_hdd0");
+        assert_eq!(e["PS3_OVERLAY_INI"], "/p/online/overlay.ini");
+        assert_eq!(e["PS3_NET_ONLINE"], "1");
+        assert_eq!(e["PS3_NP_SIGNIN"], "1");
+        assert_eq!(e["PS3_NP_ONLINE_ID"], "Player_01");
+        assert_eq!(e["PS3_NET_DNS"], ONLINE_DNS);
+        assert_eq!(e["PS3_NET_ALLOW"], ONLINE_ALLOW);
+        assert_eq!(e["PS3_NET_LOCAL_IP"], ONLINE_LOCAL_IP);
+        assert_eq!(e["PS3_NET_NO_UPNP"], "1");
+        assert_eq!(e["PS3_AA"], "fxaa"); // the other extra variables still apply
+        // one value per variable: the online ones are not doubled by the extras
+        let v = online_env(&st, Path::new("/d"), Path::new("/o"), &InputEnv::default());
+        assert_eq!(v.iter().filter(|(k, _)| k == "PS3_NET_ALLOW").count(), 1);
+    }
+
+    #[test]
+    fn online_menus_script_runs_the_eboot17_step() {
+        let sc = online_menus_script(false);
+        assert!(sc.contains("tools/rebuild.sh toolkit\n"));
+        assert!(sc.ends_with("PY=$PWD/.venv/bin/python exec tools/rebuild.sh eboot17\n"), "{sc}");
+        assert!(!sc.contains("==> done"));
     }
 
     #[test]

@@ -420,6 +420,33 @@ before them says to rebuild):
 - **Field of view**: `RES_FOV` 0.85 or 0.7 (RPCS3's "Extended FOV"); the
   game's own is 1.0 and passes nothing. The patch accepts 0.1-4.
 
+## Play online (PS Rewired)
+
+**Play online**, beside Play on Home, starts the game for online
+multiplayer on [PS Rewired](https://psrewired.com)'s community servers, with
+the online ID typed in Home's Online card (PSN's rules: 3-16 letters, digits,
+`-` or `_`, starting with a letter):
+
+- It runs in its own folder, `<play folder>/online` (its own `dev_hdd0`,
+  `dev_hdd1`, profile and saves, `overlay.ini`, `last.log`), so the v1.7
+  update the game downloads there never reaches the offline game: the
+  disc's 01.00 menus cannot run with it, and the saves stay untouched. The
+  first time it copies the offline folder's install cache, so the "initial
+  setup" does not run twice.
+- The environment is Play's without any frame-rate setting (PS Rewired's
+  rules forbid changing the frame rate: `RES_UNLOCK_FPS`, `RES_MENU_60FPS`,
+  `PS3_VBLANK_HZ` and `PS3_FLIP_MAX_HZ` are dropped even from Extra
+  variables), then the online variables: `PS3_NET_ONLINE=1`,
+  `PS3_NP_SIGNIN=1`, `PS3_NP_ONLINE_ID`, `PS3_NET_DNS=67.222.156.250`, and the
+  guards `PS3_NET_ALLOW` (only PS Rewired's three addresses), a generic
+  `PS3_NET_LOCAL_IP` and `PS3_NET_NO_UPNP=1`.
+- It starts the v1.7 menus (`build/BCUS98107_eboot_v17`). Before they exist,
+  the disc's menus, so that Multiplayer > Online Game can download the
+  update the servers require; when the game exits with it downloaded, Home
+  offers **Prepare the online menus** (`tools/rebuild.sh eboot17`, a few
+  minutes, in Advanced's rebuild console), and Play online then goes
+  straight online.
+
 ## Not done (from the inFAMOUS 2 launcher)
 
 - **Button-icon settings, the built-in LUT presets, the tone curve and

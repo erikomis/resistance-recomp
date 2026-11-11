@@ -34,6 +34,12 @@
 #            tools/v17/regen_v17.sh -> game/BCUS98107/modules_v17/game.elf,
 #            recompiled/BCUS98107/game_module_v17, port/spu_v17,
 #            build/BCUS98107_game_v17. Needs the spu step's port/spu/captured.
+#   eboot17  only when named (tools/rebuild.sh eboot17): the v1.7 menus, which
+#            online play runs, from the EBOOT.BIN the game downloads with its
+#            update (RES_EBOOT17, update/, or $PS3_HDD0_ROOT/game/BCUS98107/
+#            USRDIR): tools/v17/regen_eboot_v17.sh -> game/BCUS98107/EBOOT_v17.elf,
+#            recompiled/BCUS98107/eboot_v17, port/spu_eboot_v17,
+#            build/BCUS98107_eboot_v17. Needs the spu step's port/spu/captured.
 #   launcher only when named (tools/rebuild.sh launcher): the desktop app in
 #            launcher/ (Tauri; needs Node 20+ and Rust) -> build/launcher/
 #            Resistance Launcher.app. CARGO_TARGET_DIR is honoured.
@@ -109,10 +115,17 @@ for s in $steps; do
         if [ -f "$RC/game_module_v17/ppu_recomp.h" ] && [ -f "$RES_ROOT/port/spu_v17/spu_workloads.c" ]; then
             echo "  the v1.7 campaign (build/BCUS98107_game_v17)"
             configure_build "$RES_BUILD/BCUS98107_game_v17" "$RC/game_module_v17" "$RES_ROOT/port/spu_v17"
+        fi
+        if [ -f "$RC/eboot_v17/ppu_recomp.h" ] && [ -f "$RES_ROOT/port/spu_eboot_v17/spu_workloads.c" ]; then
+            echo "  the v1.7 menus (build/BCUS98107_eboot_v17)"
+            configure_build "$RES_BUILD/BCUS98107_eboot_v17" "$RC/eboot_v17" "$RES_ROOT/port/spu_eboot_v17"
         fi ;;
     v17)
         say "v17 (the update's game.self: extract, decrypt, analyse, lift, spu, build)"
         PS3RECOMP_DIR=$TK "$here/v17/regen_v17.sh" ;;
+    eboot17)
+        say "eboot17 (the v1.7 menus, for online play: decrypt, analyse, lift, spu, build)"
+        PS3RECOMP_DIR=$TK "$here/v17/regen_eboot_v17.sh" ;;
     launcher)
         say "launcher (the desktop app)"
         command -v npm >/dev/null || { echo "npm not found: install Node 20+ (brew install node)" >&2; exit 1; }
@@ -130,7 +143,7 @@ for s in $steps; do
         cp -R "$tgt/release/bundle/macos/Resistance Launcher.app" "$RES_BUILD/launcher/"
         echo "$RES_BUILD/launcher/Resistance Launcher.app" ;;
     *)
-        echo "unknown step '$s' (toolkit decrypt analyse lift spu build v17 launcher)" >&2; exit 2 ;;
+        echo "unknown step '$s' (toolkit decrypt analyse lift spu build v17 eboot17 launcher)" >&2; exit 2 ;;
     esac
 done
 say "done"

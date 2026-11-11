@@ -331,7 +331,7 @@ fn copy_file(src: &Path, dst: &Path) -> Result<(), String> {
 }
 
 /// Copy a folder tree (links are skipped), keeping modification times.
-fn copy_tree(src: &Path, dst: &Path, skip: &[&str]) -> Result<(), String> {
+pub(crate) fn copy_tree(src: &Path, dst: &Path, skip: &[&str]) -> Result<(), String> {
     io(fs::create_dir_all(dst), dst)?;
     for e in io(fs::read_dir(src), src)?.flatten() {
         let name = e.file_name();

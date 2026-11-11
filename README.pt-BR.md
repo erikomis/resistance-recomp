@@ -124,6 +124,12 @@ isso sem terminal: Início (a arte do seu disco, JOGAR, ajustes rápidos,
   um relatório. Mais um visualizador do log do jogo.
 - **Atalho para jogar** na Mesa e **Adicionar à Steam** (Big Picture com o
   controle).
+- **Jogar online** (a partir da v0.4.0): multiplayer online nos servidores
+  da comunidade [PS Rewired](https://psrewired.com), com o online ID que você
+  digita no Início, numa pasta própria (seus saves não são tocados), nunca a
+  60 fps (regra deles), alcançando só os servidores deles. Na primeira vez o
+  jogo baixa a atualização v1.7 e o Início oferece **Preparar os menus
+  online** (detalhes em [launcher/README.md](launcher/README.md#play-online-ps-rewired)).
 
 **No jogo,** F1 (fn+F1), Insert, Cmd+, ou L3+R3 abre o **menu do jogo**
 (vindo do port do inFAMOUS 2): imagem (gama, nitidez, FXAA/SMAA, vibração das

@@ -5,11 +5,12 @@
 // step's rough share of a full install on an Apple-silicon Mac (the lift and
 // the compile dominate).
 
-export const STEP_IDS = ["sources", "deps", "toolkit", "venv", "decrypt", "analyse", "lift", "spu", "build"] as const;
+export const STEP_IDS = ["sources", "deps", "toolkit", "venv", "decrypt", "analyse", "lift", "spu", "build", "eboot"] as const;
 export type StepId = (typeof STEP_IDS)[number];
 /** The steps Advanced > Install / rebuild lets the player pick. */
 export const PICK_IDS: StepId[] = ["toolkit", "decrypt", "analyse", "lift", "spu", "build"];
-const WEIGHT: Record<StepId, number> = { sources: 1, deps: 8, toolkit: 2, venv: 3, decrypt: 2, analyse: 6, lift: 35, spu: 6, build: 37 };
+// "eboot": tools/rebuild.sh eboot17, the v1.7 menus for online play (Home > Online), only when asked for
+const WEIGHT: Record<StepId, number> = { sources: 1, deps: 8, toolkit: 2, venv: 3, decrypt: 2, analyse: 6, lift: 35, spu: 6, build: 37, eboot: 80 };
 
 export interface Step {
   id: StepId;
@@ -42,6 +43,7 @@ export class RebuildProgress {
     // a rebuild shows the build tools' step only when it is asked for ("deps":
     // they are missing, so the rebuild installs them first)
     const want = (id: StepId) =>
+      id === "eboot" ? only.includes("eboot") :
       kind === "install" ||
       (id === "deps" ? only.includes("deps") : id !== "sources" && (!only.length || only.includes(id) || id === "toolkit" || id === "venv"));
     this.steps = kind === "pull" ? [] : STEP_IDS.filter(want).map((id) => ({ id, state: "pending", start: 0, secs: 0 }));

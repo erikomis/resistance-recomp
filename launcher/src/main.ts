@@ -55,6 +55,7 @@ export interface Settings {
   unlockFps: boolean;
   menu60fps: boolean;
   fov: string;
+  onlineId: string;
   showFps: boolean;
   vertexCache: boolean;
   vertexCacheSplit: boolean;
@@ -115,6 +116,10 @@ interface Status {
   dataRoot: string;
   firstBoot: boolean;
   updateFiles: string[];
+  /** Online play: its folder, the downloaded v1.7 update, the v1.7 menus. */
+  onlineDir: string;
+  onlineUpdate: boolean;
+  onlineMenus: boolean;
   hostSupported: boolean;
   /** The port's build for this system is untested (Windows). */
   experimental: boolean;
@@ -471,6 +476,7 @@ function bindSettings() {
   bindCheck("gamma-on", "gammaOverride");
   bindCheck("show-fps", "showFps");
   bindCheck("q-fps", "showFps");
+  bindText("online-id", "onlineId", () => renderOnline());
   bindCheck("keep-awake", "keepAwake");
   bindCheck("q-awake", "keepAwake");
   bindCheck("vcache", "vertexCache");
@@ -801,6 +807,7 @@ function renderHome() {
   $("play-label").textContent = t(gameRunning ? "home.stop" : "home.play");
   play.classList.toggle("stop", gameRunning);
   play.disabled = !gameRunning && (rebuildRunning || !status.hostSupported || !b?.ok);
+  renderOnline();
   show($("run-state"), gameRunning || status.otherGameRunning);
   $("run-state-text").textContent = t(gameRunning ? "home.running" : "home.otherRunning");
   show($("make-shortcut"), !!status.appBundle && status.os === "macos" && !!b?.ok);
@@ -895,6 +902,71 @@ $("play").addEventListener("click", async () => {
     return;
   }
   await startGame(false);
+});
+
+// ---- online play (PS Rewired) ------------------------------------------------------
+/** PSN online-ID rules, as the launcher checks them (valid_online_id). */
+function validOnlineId(id: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9_-]{2,15}$/.test(id);
+}
+
+function renderOnline() {
+  if (!status) return;
+  const id = (settings.onlineId ?? "").trim();
+  const ok = validOnlineId(id);
+  const state = $("online-state");
+  let key: Key;
+  if (!ok) key = id ? "online.badId" : "online.needId";
+  else if (status.onlineMenus) key = "online.ready";
+  else if (status.onlineUpdate) key = "online.updateReady";
+  else key = "online.firstTime";
+  state.textContent = t(key);
+  state.className = "small " + (ok && (status.onlineMenus || !status.onlineUpdate) ? "" : "warn-text");
+  show($("online-build"), ok && status.onlineUpdate && !status.onlineMenus);
+  $<HTMLButtonElement>("online-build").disabled = rebuildRunning || gameRunning;
+  const btn = $<HTMLButtonElement>("play-online");
+  btn.disabled = gameRunning || rebuildRunning || !status.hostSupported || !status.builds?.ok || !ok || (status.onlineUpdate && !status.onlineMenus);
+}
+
+async function startOnline() {
+  const msg = $("home-msg");
+  try {
+    const r = await invoke<{ log: string; mounted: string | null; firstBoot: boolean; menus: string }>("play_online");
+    gameRunning = true;
+    msg.textContent =
+      t(r.menus === "v1.7" ? "online.started" : "online.startedUpdate", { log: tilde(r.log) }) +
+      (r.mounted ? " " + t("home.mounted", { dir: r.mounted }) : "") +
+      (r.firstBoot ? " " + t("home.firstBootShort") : "");
+  } catch (e) {
+    const err = String(e);
+    if (err === "online-id") msg.textContent = t("online.needId");
+    else if (err === "online-build") msg.textContent = t("online.updateReady");
+    else if (err === "no-disc") msg.textContent = t("block.discText");
+    else msg.textContent = err;
+  }
+  await refreshStatus();
+}
+$("play-online").addEventListener("click", startOnline);
+
+async function buildOnlineMenus() {
+  showView("advanced", "install");
+  progress.reset(["eboot"]);
+  $("log").textContent = "";
+  $("install-msg").textContent = "";
+  try {
+    await invoke("build_online_menus");
+    rebuildRunning = true;
+  } catch (e) {
+    $("install-msg").textContent = String(e);
+  }
+  renderProgress();
+  renderHome();
+}
+$("online-build").addEventListener("click", buildOnlineMenus);
+$("online-rules").addEventListener("click", () => invoke("open_url", { url: "https://psrewired.com/" }));
+listen("online-update-ready", () => {
+  $("home-msg").textContent = t("online.updateReady");
+  refreshStatus();
 });
 
 $("make-shortcut").addEventListener("click", async () => {
