@@ -343,10 +343,109 @@ static void quit_install(void)
     sigaction(SIGINT, &sa, nullptr);
     sigaction(SIGHUP, &sa, nullptr);
 }
+/* The hang report (RES_HANG_SECS=<s>, 30 by default, 0 turns it off). Once
+ * the game has flipped a frame, a thread checks the flip count every second;
+ * when it has not moved for <s> seconds the game is reported as stuck, once
+ * per stall (and at most three times a run): every guest thread's last
+ * direct call site, the threads inside an HLE call, then a 3-second host
+ * `sample` of the whole process (SPU threads included), all on stderr, so it
+ * lands in the launcher's log and in a Debug mode report. Nothing is
+ * stopped: a long load that ends on its own only leaves a report behind.
+ * Loading screens and movies flip, so 30 s without a frame is not normal. */
+#include <spawn.h>
+#include <sys/wait.h>
+extern "C" unsigned cellGcm_flip_request_count(void);
+extern "C" void ppu_report_guest_lrs(void);
+extern "C" const char* g_hle_inflight[64];
+extern "C" void spu_coh_report(void);
+extern char** environ;
+
+static void hang_report(unsigned secs, unsigned flips)
+{
+    fprintf(stderr, "[hang] no new frame for %u s (flip %u); guest threads, by the last direct call:\n",
+            secs, flips);
+    ppu_report_guest_lrs();
+    int any = 0;
+    for (int t = 0; t < 64; t++) {
+        const char* n = g_hle_inflight[t];
+        if (!n) continue;
+        fprintf(stderr, "[hang]   guest-tid %-3d inside %s\n", t, n);
+        any = 1;
+    }
+    if (!any) fprintf(stderr, "[hang]   no guest thread is inside an HLE call\n");
+    fprintf(stderr, "[hang] SPU contexts (where each one is and what it waits for):\n");
+    spu_coh_report();
+    char pid[16], out[64];
+    snprintf(pid, sizeof pid, "%d", (int)getpid());
+    snprintf(out, sizeof out, "/tmp/res-hang-%d.txt", (int)getpid());
+    unlink(out);
+    char* argv[] = { (char*)"/usr/bin/sample", pid, (char*)"3", (char*)"-mayDie",
+                     (char*)"-file", out, nullptr };
+    pid_t child;
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    const int rc = posix_spawn(&child, argv[0], &fa, nullptr, argv, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    int st = 0;
+    if (rc != 0 || waitpid(child, &st, 0) < 0) {
+        fprintf(stderr, "[hang] could not run /usr/bin/sample (%d)\n", rc);
+        fflush(stderr);
+        return;
+    }
+    FILE* f = fopen(out, "r");
+    if (!f) { fprintf(stderr, "[hang] sample wrote nothing\n"); fflush(stderr); return; }
+    fprintf(stderr, "[hang] ---- host sample (every thread, 3 s) ----\n");
+    char line[1024];
+    while (fgets(line, sizeof line, f)) fputs(line, stderr);
+    fclose(f);
+    unlink(out);
+    fprintf(stderr, "[hang] ---- end of the host sample ----\n");
+    fflush(stderr);
+}
+
+static void* hang_thread(void* arg)
+{
+    const unsigned limit = (unsigned)(uintptr_t)arg;
+    unsigned last = cellGcm_flip_request_count(), still = 0, reports = 0;
+    int reported = 0;
+    for (;;) {
+        sleep(1);
+        const unsigned now = cellGcm_flip_request_count();
+        if (now != last) {
+            if (reported) fprintf(stderr, "[hang] frames again (flip %u) after %u s\n", now, still);
+            last = now; still = 0; reported = 0;
+            continue;
+        }
+        if (now == 0 || g_quit_started) continue;   /* still booting, or quitting */
+        if (++still >= limit && !reported && reports < 3) {
+            hang_report(still, now);
+            reported = 1;
+            reports++;
+        }
+    }
+    return nullptr;
+}
+
+static void hang_install(void)
+{
+    const char* e = getenv("RES_HANG_SECS");
+    const long secs = e && *e ? strtol(e, nullptr, 10) : 30;
+    if (secs <= 0) return;
+    pthread_t th;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&th, &attr, hang_thread, (void*)(uintptr_t)secs) != 0)
+        fprintf(stderr, "[hang] could not start the hang report thread\n");
+    pthread_attr_destroy(&attr);
+}
 #else
 static bool clean_exit_on(void) { return false; }
 static void quit_request_window_closed(void) {}
 static void quit_install(void) {}
+static void hang_install(void) {}
 extern "C" void ps3_host_quit(const char* why) { (void)why; fflush(stdout); fflush(stderr); _exit(0); }
 #endif
 
@@ -601,6 +700,7 @@ int main(int argc, char** argv)
      * (PS3_CLEAN_EXIT). First, before the backend or anything else can
      * initialise SDL and take the signals over. */
     quit_install();
+    hang_install();
 
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "Resistance: Fall of Man";

@@ -29764,10 +29764,10 @@ index 59f5e4b8..02805344 100644
              return;
          }
 diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
-index bc7017da..f6ea3455 100644
+index bc7017da..0054df4a 100644
 --- a/runtime/spu/spu_coherency.c
 +++ b/runtime/spu/spu_coherency.c
-@@ -52,9 +52,32 @@ void spu_lockline_lock(void)
+@@ -52,9 +52,33 @@ void spu_lockline_lock(void)
  void spu_lockline_unlock(void) { _InterlockedExchange(&g_lockline, 0); }
  #else
  #include <stdatomic.h>
@@ -29775,6 +29775,7 @@ index bc7017da..f6ea3455 100644
 -void spu_lockline_lock(void)   { while (atomic_flag_test_and_set_explicit(&g_lockline, memory_order_acquire)) { } }
 -void spu_lockline_unlock(void) { atomic_flag_clear_explicit(&g_lockline, memory_order_release); }
 +#include <sched.h>
++#include <time.h>
 +/* The same test-and-test-and-set as above. This side was still the bare
 + * exchange loop, and on a many-core host it cost the most: every waiter wrote
 + * the lock's line on every spin, so the holder's release and the next
@@ -29803,7 +29804,56 @@ index bc7017da..f6ea3455 100644
  #endif
  
  /* ===========================================================================
-@@ -207,7 +230,7 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
+@@ -168,6 +192,48 @@ void spu_coh_forget_range(uintptr_t lo, uintptr_t hi)
+     spu_lockline_unlock();
+ }
+ 
++/* The hang report's SPU half (a game's watchdog calls it when frames stop):
++ * one line per context that has ever reserved a line -- where it is, what it
++ * waits for (event mask and status, a parked DMA list, mailboxes) and the
++ * reservation it holds. The walk needs the lock-line lock; a thread wedged
++ * while holding it would wedge the report too, so give up after ~200 ms and
++ * say so (that is itself the answer). */
++void spu_coh_report(void)
++{
++    int got = 0;
++    for (int i = 0; i < 200 && !got; i++) {
++#if defined(_WIN32)
++        got = _InterlockedExchange(&g_lockline, 1) == 0;
++        if (!got) Sleep(1);
++#else
++        got = atomic_exchange_explicit(&g_lockline, 1, memory_order_acquire) == 0;
++        if (!got) { struct timespec ts = { 0, 1000000 }; nanosleep(&ts, NULL); }
++#endif
++    }
++    if (!got) {
++        fprintf(stderr, "[hang] SPU contexts: the lock-line lock has been held for 200 ms\n");
++        fflush(stderr);
++        return;
++    }
++    int n = 0;
++    for (spu_coh_entry* e = s_coh_ctxs; e; e = e->next) {
++        const spu_context* c = e->ctx;
++        if (!c) continue;
++        fprintf(stderr, "[hang]   spu=%X img=%d pc=0x%05X status=0x%X events=0x%X mask=0x%X int=%u "
++                "list parked=0x%X notify=0x%X inmbox=%u outmbox=%u sig=%u/%u resv[%d 0x%08X]\n",
++                c->spu_id, c->image_id, c->pc & SPU_LS_MASK, c->status,
++                c->event_status, c->event_mask, c->int_enable,
++                c->list_stall_mask, c->list_stall_stat,
++                c->ch_in_mbox.count, c->ch_out_mbox.count,
++                c->ch_sig_notify[0].count, c->ch_sig_notify[1].count,
++                c->resv_valid, c->resv_ea);
++        n++;
++    }
++    fprintf(stderr, "[hang] SPU contexts: %d, lost-reservation events so far %lu\n", n, g_spu_lr_raise);
++    fflush(stderr);
++    spu_lockline_unlock();
++}
++
+ int spu_coh_is_reserved(uint32_t addr)
+ {
+     if (!s_coh_armed) return 0;
+@@ -207,7 +273,7 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
          spu_context* c = entry->ctx;
          if (!c || (const void*)c == self) continue;
          if (c->resv_valid && (c->resv_ea & ~127u) == line) {
@@ -29812,7 +29862,7 @@ index bc7017da..f6ea3455 100644
              c->resv_valid = 0;
              g_spu_lr_raise++;
              spu_ch_wake(c);
-@@ -223,7 +246,7 @@ void spu_coh_notify_write(uint32_t ea)
+@@ -223,7 +289,7 @@ void spu_coh_notify_write(uint32_t ea)
          spu_context* c = entry->ctx;
          if (!c) continue;
          if (c->resv_valid && (c->resv_ea & ~127u) == line) {
@@ -29821,6 +29871,29 @@ index bc7017da..f6ea3455 100644
              c->resv_valid = 0;          /* reservation lost, PUTLLC must fail */
              /* SPU_PUTLLC_WHY=1: name the agent that killed it. A PUTLLC that
               * always fails for "no reservation" is useless without knowing who
+diff --git a/runtime/spu/spu_coherency.h b/runtime/spu/spu_coherency.h
+index ca76ccd1..f84aaad9 100644
+--- a/runtime/spu/spu_coherency.h
++++ b/runtime/spu/spu_coherency.h
+@@ -65,7 +65,7 @@ void spu_coh_notify_write(uint32_t ea);
+ /* Remove a context from the reserving set. MUST be called before a
+  * transient (stack-allocated) spu_context goes out of scope. */
+ void spu_coh_unregister(spu_context* ctx);
+-void spu_coh_forget_range(uintptr_t lo, uintptr_t hi);  /* thread exit */
++void spu_coh_forget_range(uintptr_t lo, uintptr_t hi);  /* thread exit */
+ /* As above, but leaves `self`'s own reservation alone: an SPU's own MFC
+  * write does not cost it its reservation on hardware. */
+ void spu_coh_notify_write_except(uint32_t ea, const void* self);
+@@ -74,6 +74,9 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self);
+  * this at zero is a coherence miss; nonzero moves the question downstream. */
+ extern unsigned long g_spu_lr_raise;
+ 
++/* One line per reserving SPU context on stderr (the hang report). */
++void spu_coh_report(void);
++
+ #ifdef __cplusplus
+ }
+ #endif
 diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
 index f46d415f..3ad0f384 100644
 --- a/runtime/spu/spu_context.h
@@ -31420,6 +31493,71 @@ index 00000000..6433225e
 +    printf("%llu conversions, %llu mismatches\n", n, bad);
 +    return bad != 0;
 +}
+diff --git a/runtime/spu/tests/test_spu_coherency.c b/runtime/spu/tests/test_spu_coherency.c
+index 5d747030..13134a33 100644
+--- a/runtime/spu/tests/test_spu_coherency.c
++++ b/runtime/spu/tests/test_spu_coherency.c
+@@ -419,6 +419,52 @@ static void test_many_contexts(void)
+     spu_coh_unregister(&g_spu_a);
+ }
+ 
++/* ===========================================================================
++ * The hang report: one line per reserving context, and no wedge when the
++ * lock-line lock is held by somebody stuck
++ * ===========================================================================*/
++#include <unistd.h>
++static void report_into(char* buf, size_t cap)
++{
++    char path[] = "/tmp/test_spu_coh_report_XXXXXX";
++    int fd = mkstemp(path);
++    fflush(stderr);
++    int saved = dup(2);
++    dup2(fd, 2);
++    spu_coh_report();
++    fflush(stderr);
++    dup2(saved, 2);
++    close(saved);
++    lseek(fd, 0, SEEK_SET);
++    ssize_t n = read(fd, buf, cap - 1);
++    buf[n > 0 ? n : 0] = 0;
++    close(fd);
++    unlink(path);
++}
++
++static void test_hang_report(void)
++{
++    static char buf[8192];
++    TEST("hang report: a parked context is listed with its wait");
++    spu_reset(&g_spu_a, 3);
++    g_spu_a.pc = 0x0D64C;
++    g_spu_a.event_mask = 0x400u;
++    spu_getllar(&g_spu_a, LINE_A);
++    report_into(buf, sizeof buf);
++    CHECK(strstr(buf, "spu=3 ") != NULL);
++    CHECK(strstr(buf, "pc=0x0D64C") != NULL);
++    CHECK(strstr(buf, "mask=0x400") != NULL);
++    CHECK(strstr(buf, "resv[1 0x00040000]") != NULL);
++    CHECK(strstr(buf, "SPU contexts: ") != NULL);
++
++    TEST("hang report: gives up when the lock-line lock stays held");
++    spu_lockline_lock();
++    report_into(buf, sizeof buf);
++    spu_lockline_unlock();
++    CHECK(strstr(buf, "has been held") != NULL);
++    CHECK(strstr(buf, "spu=3 ") == NULL);
++}
++
+ /* ===========================================================================
+  * main: run all and report
+  * ===========================================================================*/
+@@ -430,6 +476,7 @@ int main(void)
+     test_all_store_widths();
+     test_store_conditional();
+     test_block_stores();
++    test_hang_report();
+     spu_coh_unregister(&g_spu_a);
+     spu_coh_unregister(&g_spu_b);
+     test_many_contexts();
 diff --git a/runtime/spu/tests/test_spu_decrementer.c b/runtime/spu/tests/test_spu_decrementer.c
 new file mode 100644
 index 00000000..9c984d26
