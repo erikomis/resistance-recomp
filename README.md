@@ -2,6 +2,8 @@
 
 🌐 **English** · [Português (BR)](README.pt-BR.md)
 
+<a href="https://recomplauncher.com/game/resistance-recomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 A native port of **Resistance: Fall of Man** (PS3, disc `BCUS98107`) to
 **macOS/arm64**, built with static recompilation: the game's PowerPC and SPU
 code is translated to C/C++ and compiled into native executables, with
