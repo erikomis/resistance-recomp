@@ -283,6 +283,82 @@ moment from the player's own `ICON0.PNG` and `PIC1.PNG`; the entry runs
 `--play --exit-with-game`, so Steam sees the game exactly as long as it runs.
 **Remove from Steam** takes it out again.
 
+## RecompLauncher
+
+[RecompLauncher](https://recomplauncher.com) (third party) installs recomps
+from their GitHub releases. It reads `recomplauncher.json` (the repository's
+root) from the top of the release zip: the player picks their own disc in
+it, it runs this launcher's setup without a window, shows the settings below
+on the game's page, and Play starts the game. The launcher works as before
+for everyone else; the code is `src-tauri/src/recomplauncher.rs`, decided
+in `run()` before Tauri starts, so neither mode opens a window, runs the
+event loop or checks for an app update.
+
+- **The disc** (`game`): an `.iso` or a folder; RecompLauncher checks an
+  image for `PS3_DISC.SFB`, then the launcher checks the copy itself (the
+  `.iso` is read without mounting it: `PS3_GAME/PARAM.SFO` must say
+  `BCUS98107`; a folder may be the disc's top or `PS3_GAME`).
+- **The setup** (`prepare`, timeout 2 h):
+  `Resistance Launcher.app/Contents/MacOS/resistance-launcher --prepare --game <disc>`.
+  It does what Home's **Install the game** does, with the same code
+  (`install_job`, `pump_child`): the disc checked and remembered in
+  `launcher.json` (an image attached, as **Pick the disc** does), Apple's
+  Command Line Tools (their installer is opened, and the setup stops with
+  code 11 for the player to finish it), `git pull --ff-only` in the
+  install's own sources (`src/`; a checkout of your own is left alone),
+  then `tools/install.sh`, which skips what is done. It prints
+  `progress <0..1> <text>` lines (the install's `==> <step>` lines, weighted
+  as the window's bar) and the install's output, writes `install.log` like
+  the window, and holds `install.lock` in the data folder, which the window's
+  install also takes, so the two never run at once. Exit 0 only when the
+  game's builds are there afterwards.
+- **Play** (`start`): `--play --game <disc>`. RecompLauncher sets
+  `RECOMPLAUNCHER=1`, and then Play runs without the window: the same
+  checks, save backup and settings as the Play button, and the launcher
+  then *becomes* the game (exec), so RecompLauncher waits on the game and
+  gets its exit code (`caffeinate -w` keeps the Mac awake while it runs).
+  Without `RECOMPLAUNCHER=1`, `--play` is the Play shortcut's as before, and
+  `--game` only picks and remembers the disc first.
+- **Settings** (`config`, `settings`): display mode and window size, the
+  frame-rate readout, internal resolution, upscaling, anti-aliasing,
+  sharpening, anisotropic filtering, input mode, mouse sensitivity and
+  inversion, vibration, adaptive triggers, volume and mute, written as JSON
+  values into `launcher.json` (a test checks every value still reads as the
+  launcher's settings). Nothing that changes the frame rate (60 fps, V-Sync,
+  the frame clock) is offered there, since those would follow into online
+  play; online play, the v1.7 campaign and the update files stay in the
+  launcher window.
+- **Saves and logs**: `gamedata/dev_hdd0/home/00000001/savedata` and the
+  data folder (`last.log`, `install.log`).
+
+Exit codes of `--prepare` and of a headless `--play` that cannot start (the
+game's own codes otherwise; `exit_codes` gives the player's text for each):
+
+| Code | Meaning |
+| --- | --- |
+| 0 | done (setup), or the game quit normally |
+| 2 | a malformed command line |
+| 10 | no disc given, not found, or not the US disc BCUS98107 |
+| 11 | Apple's Command Line Tools missing: their installer was opened |
+| 12 | the sources or the build's downloads failed (network) |
+| 13 | the build failed, or ended without the game built |
+| 14 | an install, or the game, is already running |
+| 15 | not enough free disk space |
+| 16 | not a Mac |
+| 17 | `--play` before the game is built |
+| 18 | `--play` with the v1.7 update's files in the play folder (the window moves them aside) |
+
+`RES_LAUNCHER_DATA=<dir>` moves the launcher's data folder (settings, lock,
+logs), for trying these modes without touching a player's own.
+
+**The zip.** `scripts/package-recomplauncher.sh [--app <.app>] [--out <dir>]`
+builds the app (or takes one built already), checks it (version, the
+program the profile names, `check_bundle.py`) and writes
+`resistance-recomp-<version>-macos-arm64.zip` with the `.app` and
+`recomplauncher.json` on top into `out/recomplauncher/`. It uploads nothing:
+attaching it to a release, and what the listing on recomplauncher.com
+installs, are separate, manual steps.
+
 ## Development
 
 Needs Node 20+, Rust (stable) and the Xcode Command Line Tools.

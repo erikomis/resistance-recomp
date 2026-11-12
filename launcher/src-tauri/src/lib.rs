@@ -17,6 +17,7 @@ mod app_icon;
 mod input_map;
 mod mods;
 mod play_shortcut;
+mod recomplauncher;
 mod report;
 mod saves;
 mod steam;
@@ -277,7 +278,11 @@ fn appdata() -> PathBuf {
 
 /// The launcher's own folder: launcher.json, backups, reports, the shader
 /// cache. Also the default play folder (tools/play.sh's RES_DATA).
+/// RES_LAUNCHER_DATA overrides it (tests, a second setup beside the player's).
 fn data_root() -> PathBuf {
+    if let Some(d) = std::env::var_os("RES_LAUNCHER_DATA").filter(|v| !v.is_empty()) {
+        return PathBuf::from(d);
+    }
     if cfg!(target_os = "macos") {
         home().join("Library/Application Support/resistance-recomp")
     } else if cfg!(windows) {
@@ -312,6 +317,27 @@ fn src_dir() -> PathBuf {
 /// The last install's output, as the window showed it.
 fn install_log_path() -> PathBuf {
     data_root().join("install.log")
+}
+
+/// Held (flock) while an install runs, the window's or a headless
+/// `--prepare`'s (recomplauncher.rs), so two never run at once; released
+/// when the holder exits, however it exits.
+fn install_lock_path() -> PathBuf {
+    data_root().join("install.lock")
+}
+
+/// The install lock, taken: Ok(None) when another install holds it.
+fn install_lock() -> Result<Option<fs::File>, String> {
+    let p = install_lock_path();
+    if let Some(d) = p.parent() {
+        fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    let f = fs::OpenOptions::new().create(true).truncate(false).write(true).open(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    match f.try_lock() {
+        Ok(()) => Ok(Some(f)),
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", p.display())),
+    }
 }
 
 /// The port's repository ("Install the game" clones it; RES_SOURCES_URL
@@ -1373,45 +1399,87 @@ pub struct PlayStarted {
     campaign: String,
 }
 
-/// Start the game. `diagnostic`: debug mode (report.rs), with its log and
-/// dumps in a new report folder.
-#[tauri::command]
-fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) -> Result<PlayStarted, String> {
-    require_supported_host()?;
-    refuse_while_updating(&state)?;
-    let mut slot = state.game.lock().unwrap();
-    if slot.is_some() {
-        return Err("the game is already running".into());
+/// Why the game cannot start. The window explains NoDisc and UpdateFiles
+/// itself; a headless `--play` (recomplauncher.rs) turns each into an exit code.
+#[derive(Debug)]
+pub(crate) enum LaunchError {
+    /// No disc set or mounted (and no image to attach).
+    NoDisc,
+    /// The disc in use is another game's.
+    WrongDisc(String),
+    /// The v1.7 update's files are in the play folder (see update_files).
+    UpdateFiles,
+    /// No port folder, or its builds are incomplete.
+    NotBuilt(String),
+    Other(String),
+}
+
+impl LaunchError {
+    /// The window's form: "no-disc" and "update-files" as codes, else the message.
+    fn window(self) -> String {
+        match self {
+            LaunchError::NoDisc => "no-disc".into(),
+            LaunchError::UpdateFiles => "update-files".into(),
+            LaunchError::WrongDisc(m) | LaunchError::NotBuilt(m) | LaunchError::Other(m) => m,
+        }
     }
-    let s = load_settings_file();
-    let root = port_root(&s).ok_or("no port folder: pick it in Advanced > Install / rebuild")?;
+}
+
+impl From<String> for LaunchError {
+    fn from(e: String) -> Self {
+        LaunchError::Other(e)
+    }
+}
+
+/// Everything Play does before the game starts, shared by the window's Play
+/// and the headless `--play`: the checks, the disc (attached when needed), the
+/// log, the saves' backup, and the game's command line, not started yet.
+pub(crate) struct Launch {
+    cmd: Command,
+    argv: Vec<String>,
+    env: Vec<(String, String)>,
+    log_path: PathBuf,
+    report_dir: Option<PathBuf>,
+    backup: Option<String>,
+    backup_error: Option<String>,
+    mounted: Option<String>,
+    first_boot: bool,
+    builds: Builds,
+    disc: PathBuf,
+}
+
+/// `diagnostic`: debug mode (report.rs). `keep_awake_wrapper`: `caffeinate -i`
+/// in front of the game when the setting asks for it (the headless `--play`
+/// keeps the Mac awake its own way, since it replaces itself with the game).
+pub(crate) fn prepare_launch(s: &Settings, diagnostic: bool, keep_awake_wrapper: bool) -> Result<Launch, LaunchError> {
+    let root = port_root(s).ok_or_else(|| LaunchError::NotBuilt("no port folder: pick it in Advanced > Install / rebuild".into()))?;
     let b = resolve_builds(&root);
     if !b.ok {
-        return Err(format!("missing in {}: {}", b.root, b.missing.join(", ")));
+        return Err(LaunchError::NotBuilt(format!("missing in {}: {}", b.root, b.missing.join(", "))));
     }
-    let play = play_dir(&s);
+    let play = play_dir(s);
     let stray = update_files(&play);
     if !stray.is_empty() {
-        return Err("update-files".into()); // the window explains and offers to move them aside
+        return Err(LaunchError::UpdateFiles); // the window explains and offers to move them aside
     }
     let mut mounted = None;
-    let disc = match find_disc(&s) {
+    let disc = match find_disc(s) {
         Some(d) => d,
         None if s.auto_mount && !s.disc_image.trim().is_empty() => {
             let d = attach_image(Path::new(s.disc_image.trim()))?;
             mounted = Some(self::s(&d));
             d
         }
-        None => return Err("no-disc".into()),
+        None => return Err(LaunchError::NoDisc),
     };
     if disc_title_id(&disc).as_deref() != Some(TITLE_ID) {
-        return Err(format!("{}: not a {TITLE_ID} disc", disc.display()));
+        return Err(LaunchError::WrongDisc(format!("{}: not a {TITLE_ID} disc", disc.display())));
     }
     for d in ["dev_hdd0", "dev_hdd1"] {
         fs::create_dir_all(play.join(d)).map_err(|e| format!("{}: {e}", play.display()))?;
     }
     let first = first_boot(&play);
-    let report_dir = if diagnostic.unwrap_or(false) { Some(report::create(&reports_dir(), &saves::stamp(now_secs()))?) } else { None };
+    let report_dir = if diagnostic { Some(report::create(&reports_dir(), &saves::stamp(now_secs()))?) } else { None };
     let log_path = match &report_dir {
         Some(d) => d.join(report::LOG),
         None => play.join("last.log"),
@@ -1420,13 +1488,13 @@ fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) ->
     let log2 = log.try_clone().map_err(|e| e.to_string())?;
 
     // the saves as they are now, before the game can touch them
-    let (backup, backup_error) = match saves::backup_before_play(&save_locations(&s), s.save_backups_keep, now_secs()) {
+    let (backup, backup_error) = match saves::backup_before_play(&save_locations(s), s.save_backups_keep, now_secs()) {
         Ok(b) => (b.map(|b| b.id), None),
         Err(e) => (None, Some(e)),
     };
 
-    let argv = launch_argv(&s, &b)?;
-    let mut env = launch_env(&s, &disc, &play, &input_env());
+    let argv = if keep_awake_wrapper { launch_argv(s, &b)? } else { launch_argv(&Settings { keep_awake: false, ..s.clone() }, &b)? };
+    let mut env = launch_env(s, &disc, &play, &input_env());
     if let Some(d) = &report_dir {
         env.extend(report::env(d)); // after the extra variables: the report's paths win
     }
@@ -1444,6 +1512,22 @@ fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) ->
     for (k, v) in &env {
         cmd.env(k, v);
     }
+    Ok(Launch { cmd, argv, env, log_path, report_dir, backup, backup_error, mounted, first_boot: first, builds: b, disc })
+}
+
+/// Start the game. `diagnostic`: debug mode (report.rs), with its log and
+/// dumps in a new report folder.
+#[tauri::command]
+fn play(app: AppHandle, state: State<'_, AppState>, diagnostic: Option<bool>) -> Result<PlayStarted, String> {
+    require_supported_host()?;
+    refuse_while_updating(&state)?;
+    let mut slot = state.game.lock().unwrap();
+    if slot.is_some() {
+        return Err("the game is already running".into());
+    }
+    let s = load_settings_file();
+    let Launch { mut cmd, argv, env, log_path, report_dir, backup, backup_error, mounted, first_boot: first, builds: b, disc } =
+        prepare_launch(&s, diagnostic.unwrap_or(false), true).map_err(LaunchError::window)?;
     own_process_group(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| format!("{}: {e}", argv[0]))?;
     *slot = Some(child.id());
@@ -2530,35 +2614,65 @@ fn install_clt() -> Result<(), String> {
 /// Stream a child's stdout and stderr to the window as `<event>-line`, and
 /// its exit code as `<event>-exit`; `slot` holds its pid while it runs.
 fn stream_child(app: &AppHandle, child: std::process::Child, event: &'static str, which: fn(&AppState) -> &Mutex<Option<u32>>) {
-    stream_child_logged(app, child, event, which, None)
+    stream_child_logged(app, child, event, which, None, None)
 }
 
-/// stream_child, each line also written to `log` (the install's log file).
-fn stream_child_logged(app: &AppHandle, mut child: std::process::Child, event: &'static str, which: fn(&AppState) -> &Mutex<Option<u32>>, log: Option<fs::File>) {
+/// Where a child's output lines go: the window's events, or the headless
+/// `--prepare`'s standard output (recomplauncher.rs).
+pub(crate) type LineSink = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
+
+/// Read a child's stdout and stderr line by line into `sink` (each line also
+/// written to `log`), then wait for it. The handle gives its exit code (-1
+/// when it was killed by a signal) once its output has been read: the pipes
+/// are given up to two seconds after it exits, in case something it started
+/// still holds them.
+pub(crate) fn pump_child(mut child: std::process::Child, sink: LineSink, log: Option<fs::File>) -> thread::JoinHandle<i32> {
     use std::io::Write;
     let log = std::sync::Arc::new(Mutex::new(log));
-    let (stdout, stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let (a1, l1) = (app.clone(), log.clone());
-    thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if let Some(f) = l1.lock().unwrap().as_mut() {
-                let _ = writeln!(f, "{line}");
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let mut readers = 0;
+    let pipes: [Option<Box<dyn Read + Send>>; 2] =
+        [child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>), child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>)];
+    for pipe in pipes.into_iter().flatten() {
+        let (sink, log, tx) = (sink.clone(), log.clone(), tx.clone());
+        readers += 1;
+        thread::spawn(move || {
+            for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                if let Some(f) = log.lock().unwrap().as_mut() {
+                    let _ = writeln!(f, "{line}");
+                }
+                sink(&line);
             }
-            let _ = a1.emit(&format!("{event}-line"), line);
-        }
-    });
-    let (a2, l2) = (app.clone(), log);
-    thread::spawn(move || {
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            if let Some(f) = l2.lock().unwrap().as_mut() {
-                let _ = writeln!(f, "{line}");
-            }
-            let _ = a2.emit(&format!("{event}-line"), line);
-        }
-    });
-    let a3 = app.clone();
+            let _ = tx.send(());
+        });
+    }
     thread::spawn(move || {
         let code = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        for _ in 0..readers {
+            if rx.recv_timeout(std::time::Duration::from_secs(2)).is_err() {
+                break;
+            }
+        }
+        code
+    })
+}
+
+/// stream_child, each line also written to `log` (the install's log file);
+/// `guard` (the install lock) is held until the child has exited.
+fn stream_child_logged(app: &AppHandle, child: std::process::Child, event: &'static str, which: fn(&AppState) -> &Mutex<Option<u32>>, log: Option<fs::File>, guard: Option<fs::File>) {
+    let a1 = app.clone();
+    let line_event = format!("{event}-line");
+    let done = pump_child(
+        child,
+        std::sync::Arc::new(move |line: &str| {
+            let _ = a1.emit(&line_event, line.to_string());
+        }),
+        log,
+    );
+    let a3 = app.clone();
+    thread::spawn(move || {
+        let code = done.join().unwrap_or(-1);
+        drop(guard);
         *which(&a3.state::<AppState>()).lock().unwrap() = None;
         let _ = a3.emit(&format!("{event}-exit"), code);
     });
@@ -2747,25 +2861,50 @@ fn install_script(root: Option<&Path>, src: &Path, url: &str, tag: &str) -> Stri
     sc
 }
 
-/// "Install the game": everything from the disc to Play, in one go (see
-/// install_script). Errors the window explains itself: "clt" (the Command
-/// Line Tools are missing), "no-disc". Returns the port folder it works in.
-#[tauri::command]
-fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    require_supported_host()?;
-    refuse_while_updating(&state)?;
+/// Why "Install the game" cannot start. The window explains Clt and NoDisc
+/// itself; the headless `--prepare` (recomplauncher.rs) turns each into an
+/// exit code.
+#[derive(Debug)]
+pub(crate) enum InstallError {
+    /// Apple's Command Line Tools are missing (their installer is the player's).
+    Clt,
+    /// No disc to decrypt from, and the ELFs are not there yet.
+    NoDisc,
+    Other(String),
+}
+
+impl InstallError {
+    /// The window's form: "clt" and "no-disc" as codes, else the message.
+    fn window(self) -> String {
+        match self {
+            InstallError::Clt => "clt".into(),
+            InstallError::NoDisc => "no-disc".into(),
+            InstallError::Other(m) => m,
+        }
+    }
+}
+
+/// "Install the game", ready to start: the zsh script's command (stdout and
+/// stderr piped, not in a process group of its own yet), the port folder it
+/// works in, its first log line (already in the log file), and the log file.
+pub(crate) struct InstallJob {
+    cmd: Command,
+    at: PathBuf,
+    first: String,
+    log: Option<fs::File>,
+}
+
+/// Everything "Install the game" does before its script starts, shared by the
+/// window's button and the headless `--prepare`: the Command Line Tools, the
+/// port folder (a hand-set one that cannot be rebuilt gives way to the
+/// install's own sources), the disc (the remembered image attached when it
+/// is not mounted), and the script (see install_script).
+pub(crate) fn install_job() -> Result<InstallJob, InstallError> {
     if !cfg!(target_os = "macos") {
-        return Err("the one-click install is for macOS; use Advanced > Install / rebuild".into());
-    }
-    if state.game.lock().unwrap().is_some() {
-        return Err("the game is running: close it first".into());
-    }
-    let mut slot = state.rebuild.lock().unwrap();
-    if slot.is_some() {
-        return Err("an install or a rebuild is already running".into());
+        return Err(InstallError::Other("the one-click install is for macOS; use Advanced > Install / rebuild".into()));
     }
     if !clt_installed() {
-        return Err("clt".into());
+        return Err(InstallError::Clt);
     }
     let mut st = load_settings_file();
     let root = port_root(&st).filter(|r| r.join("tools/rebuild.sh").is_file());
@@ -2773,7 +2912,7 @@ fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, S
         // a port folder set by hand that cannot be rebuilt: the install's own
         // sources take over (found on their own once the setting is empty)
         st.port_dir.clear();
-        write_settings(&st)?;
+        write_settings(&st).map_err(InstallError::Other)?;
     }
     let b = root.as_deref().map(resolve_builds);
     let elfs = b.as_ref().is_some_and(|b| b.eboot_elf.is_some() && b.game_elf.is_some());
@@ -2783,10 +2922,10 @@ fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, S
         None => None,
     };
     if disc.is_none() && !elfs {
-        return Err("no-disc".into());
+        return Err(InstallError::NoDisc);
     }
     let data = data_root();
-    fs::create_dir_all(&data).map_err(|e| format!("{}: {e}", data.display()))?;
+    fs::create_dir_all(&data).map_err(|e| InstallError::Other(format!("{}: {e}", data.display())))?;
     let script = install_script(root.as_deref(), &src_dir(), &sources_url(), &format!("v{}", env!("CARGO_PKG_VERSION")));
     let mut cmd = Command::new("/usr/bin/nice");
     cmd.args(["-n", "10", "/bin/zsh", "-c", &script])
@@ -2807,19 +2946,47 @@ fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, S
     if st.jobs > 0 {
         cmd.env("JOBS", st.jobs.to_string());
     }
-    own_process_group(&mut cmd);
     let log = fs::File::create(install_log_path()).ok();
-    let child = cmd.spawn().map_err(|e| format!("zsh: {e}"))?;
-    *slot = Some(child.id());
-    drop(slot);
     let at = root.unwrap_or_else(src_dir);
     let first = format!("$ tools/install.sh   # in {}", at.display());
     if let Some(mut f) = log.as_ref().and_then(|f| f.try_clone().ok()) {
         use std::io::Write;
         let _ = writeln!(f, "{first}");
     }
+    Ok(InstallJob { cmd, at, first, log })
+}
+
+/// "Install the game": everything from the disc to Play, in one go (see
+/// install_job). Errors the window explains itself: "clt" (the Command
+/// Line Tools are missing), "no-disc". Returns the port folder it works in.
+#[tauri::command]
+fn start_install(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    require_supported_host()?;
+    refuse_while_updating(&state)?;
+    if !cfg!(target_os = "macos") {
+        return Err("the one-click install is for macOS; use Advanced > Install / rebuild".into());
+    }
+    if state.game.lock().unwrap().is_some() {
+        return Err("the game is running: close it first".into());
+    }
+    let mut slot = state.rebuild.lock().unwrap();
+    if slot.is_some() {
+        return Err("an install or a rebuild is already running".into());
+    }
+    // an install started outside this window (RecompLauncher's setup, a
+    // second launcher); a lock that cannot be taken at all does not stop it
+    let lock = match install_lock() {
+        Ok(Some(f)) => Some(f),
+        Ok(None) => return Err("an install is already running outside this window (RecompLauncher's setup?): wait for it to finish".into()),
+        Err(_) => None,
+    };
+    let InstallJob { mut cmd, at, first, log } = install_job().map_err(InstallError::window)?;
+    own_process_group(&mut cmd);
+    let child = cmd.spawn().map_err(|e| format!("zsh: {e}"))?;
+    *slot = Some(child.id());
+    drop(slot);
     let _ = app.emit("rebuild-line", first);
-    stream_child_logged(&app, child, "rebuild", |s| &s.rebuild, log);
+    stream_child_logged(&app, child, "rebuild", |s| &s.rebuild, log, lock);
     Ok(s(&at))
 }
 
@@ -2854,6 +3021,21 @@ async fn check_updates(app: AppHandle, online: bool) -> UpdateInfo {
     .unwrap_or_default()
 }
 
+/// `git pull --ff-only` in the port folder, output piped (Updates' "Get the
+/// new sources", and the headless `--prepare` on the install's own sources).
+pub(crate) fn pull_command(root: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(root)
+        .args(["pull", "--ff-only"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("PATH", tool_path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    cmd
+}
+
 /// "Get the new sources": git pull --ff-only in the port folder, streamed as
 /// rebuild-line / rebuild-exit (the Install tab's log).
 #[tauri::command]
@@ -2864,15 +3046,7 @@ fn pull_sources(app: AppHandle, state: State<'_, AppState>) -> Result<(), String
         return Err("a rebuild is running".into());
     }
     let root = port_root(&load_settings_file()).ok_or("no port folder")?;
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(&root)
-        .args(["pull", "--ff-only"])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("PATH", tool_path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    let mut cmd = pull_command(&root);
     own_process_group(&mut cmd);
     let child = cmd.spawn().map_err(|e| format!("git: {e}"))?;
     *slot = Some(child.id());
@@ -3364,6 +3538,25 @@ async fn saves_import_zip(state: State<'_, AppState>, path: String) -> Result<sa
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // RecompLauncher's way in (recomplauncher.rs): `--prepare` and, started
+    // by it (RECOMPLAUNCHER=1), `--play` never open the window, and are
+    // decided here, before Tauri (its event loop, the updater) starts at all.
+    let args: Vec<String> = std::env::args().collect();
+    match recomplauncher::mode(&args, std::env::var("RECOMPLAUNCHER").is_ok_and(|v| v == "1")) {
+        Ok(recomplauncher::Mode::Prepare { game }) => std::process::exit(recomplauncher::prepare(game.as_deref()).code()),
+        Ok(recomplauncher::Mode::PlayHeadless { game }) => std::process::exit(recomplauncher::play(game.as_deref())),
+        Ok(recomplauncher::Mode::Window { game: Some(g) }) => {
+            // `--play --game <disc>` from another program: that disc, remembered
+            if let Err(e) = recomplauncher::use_disc(&g) {
+                eprintln!("--game {}: {}", g.display(), e.message());
+            }
+        }
+        Ok(recomplauncher::Mode::Window { game: None }) => {}
+        Err(e) => {
+            eprintln!("{e}\n{}", recomplauncher::USAGE);
+            std::process::exit(recomplauncher::Exit::Usage.code());
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
