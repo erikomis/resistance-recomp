@@ -4146,7 +4146,7 @@ index 49e13905..24f12d08 100644
  s32 cellKbSetReadMode(u32 port_no, u32 rmode);
  s32 cellKbSetCodeType(u32 port_no, u32 codetype);
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 7fa8cab9..8892c57e 100644
+index 7fa8cab9..dcffe8f4 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -4,10 +4,37 @@
@@ -4408,10 +4408,14 @@ index 7fa8cab9..8892c57e 100644
 +    if (v > 200) v = 200;
 +    return (int)v;
 +}
-+
+ 
+-/* The two host motor levels (0-65535) for a PS3 actuator request. */
+-static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
 +static int s_rumble_pct = -1;
 +static int pad_rumble_strength(void)
-+{
+ {
+-    *lo = (u16)(large * 257u);
+-    *hi = small_on ? 0xFFFFu : 0u;
 +    int s = s_rumble_pct;
 +    if (s < 0) {
 +        s = pad_rumble_strength_from(getenv("PS3_RUMBLE"), getenv("PS3_RUMBLE_STRENGTH"));
@@ -4423,15 +4427,11 @@ index 7fa8cab9..8892c57e 100644
 +/* The in-game menu (ps3_overlay.mm): rumble strength in percent, 0 = off. */
 +int  cellPad_host_rumble_strength(void)       { return pad_rumble_strength(); }
 +void cellPad_host_set_rumble_strength(int pct) { s_rumble_pct = pct < 0 ? 0 : pct > 200 ? 200 : pct; }
- 
--/* The two host motor levels (0-65535) for a PS3 actuator request. */
--static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
++
 +/* The two host motor levels (0-65535) for a PS3 actuator request, at `pct`
 + * percent strength. */
 +static void pad_rumble_levels(u8 small_on, u8 large, int pct, u16* lo, u16* hi)
- {
--    *lo = (u16)(large * 257u);
--    *hi = small_on ? 0xFFFFu : 0u;
++{
 +    unsigned long l = (unsigned long)large * 257ul * (unsigned long)pct / 100ul;
 +    unsigned long h = small_on ? 65535ul * (unsigned long)pct / 100ul : 0;
 +    *lo = (u16)(l > 65535ul ? 65535ul : l);
@@ -4997,7 +4997,7 @@ index 7fa8cab9..8892c57e 100644
      memset(s_rumble, 0, sizeof s_rumble);
  }
  
-@@ -485,6 +1066,350 @@ static unsigned long long pad_now_ms(void)
+@@ -485,6 +1066,392 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -5165,6 +5165,38 @@ index 7fa8cab9..8892c57e 100644
 +static uint32_t s_menu_keys[4], s_menu_mouse;
 +static int s_menu_was_open;
 +
++/* Direct mouse look, for a port that hooks its title's camera (the stick is
++ * a turn rate with the title's own speed cap and ramp; a hook can turn the
++ * view by the mouse's motion itself, as a PC shooter does):
++ *   cellPad_host_mouse_look_state(&rx, &ry)  1 while the mouse drives port 0's
++ *       right stick (it moved in the last 200 ms, no look keys held, the
++ *       camera on, not controller-only); rx, ry = the deflection it fed this
++ *       poll (-127..127, 0 = none), whose sign tells the hook which way the
++ *       title turns for a positive motion.
++ *   cellPad_host_mouse_look_take(&dx, &dy)  the motion since the last take, in
++ *       points times PS3_MOUSE_SENS, inverted as the stick is; returns the
++ *       state above. The poll keeps feeding the stick as well: the hook zeroes
++ *       the rate the title derives from it.
++ * The poll fills these; the hook drains them on the title's thread. */
++static _Atomic int32_t s_look_dx, s_look_dy;
++static _Atomic int s_look_fed_rx, s_look_fed_ry, s_look_keys;
++static _Atomic unsigned long long s_look_ms;
++int cellPad_host_mouse_look_state(int* fed_rx, int* fed_ry)
++{
++    if (fed_rx) *fed_rx = atomic_load(&s_look_fed_rx);
++    if (fed_ry) *fed_ry = atomic_load(&s_look_fed_ry);
++    const unsigned long long t = atomic_load(&s_look_ms);
++    return t && !atomic_load(&s_look_keys) && pad_now_ms() - t < 200;
++}
++int cellPad_host_mouse_look_take(float* dx, float* dy)
++{
++    const int32_t x = atomic_exchange(&s_look_dx, 0), y = atomic_exchange(&s_look_dy, 0);
++    const float k = s_mouse_sens > 0.0f ? s_mouse_sens / 16.0f : 1.0f / 16.0f;
++    *dx = (float)x * k;
++    *dy = (float)y * k;
++    return cellPad_host_mouse_look_state(NULL, NULL);
++}
++
 +/* Mouse buttons and wheel -> controls in *ctl; motion -> *mrx and *mry (-1
 + * when the mouse is not moving, so the keys keep the right stick). */
 +static void pad_poll_mouse(ps3_host_input* in, uint32_t* ctl, int* mrx, int* mry)
@@ -5207,6 +5239,11 @@ index 7fa8cab9..8892c57e 100644
 +    if (sy > -0.5f && sy < 0.5f) sy = 0.0f;
 +    if (sx != 0.0f) *mrx = pad_mouse_axis(sx, s_mouse_dz);
 +    if (sy != 0.0f) *mry = pad_mouse_axis(sy, s_mouse_dz);   /* deltaY > 0 = down, as the stick */
++    /* Direct look (cellPad_host_mouse_look_take): the raw motion, inverted as the stick is */
++    if (dx || dy) {
++        atomic_fetch_add(&s_look_dx, s_mouse_invert_x ? -dx : dx);
++        atomic_fetch_add(&s_look_dy, s_mouse_invert_y ? -dy : dy);
++    }
 +    if (s_mouse_log) {
 +        static int logged; static int lrx = -1, lry = -1; static uint32_t lb;
 +        if (logged < 400 && (*mrx != lrx || *mry != lry || b != lb)) {
@@ -5263,6 +5300,11 @@ index 7fa8cab9..8892c57e 100644
 +    int ly = pad_dir_axis(ctl, PIM_LS_UP, PIM_LS_DOWN, 128);
 +    int rx = pad_dir_axis(ctl, PIM_RS_LEFT, PIM_RS_RIGHT, 128);
 +    int ry = pad_dir_axis(ctl, PIM_RS_UP, PIM_RS_DOWN, 128);
++    atomic_store(&s_look_keys, rx != 128 || ry != 128);
++    atomic_store(&s_look_fed_rx, mrx >= 0 ? mrx - 128 : 0);
++    atomic_store(&s_look_fed_ry, mry >= 0 ? mry - 128 : 0);
++    if (mrx >= 0 || mry >= 0) atomic_store(&s_look_ms, pad_now_ms());
++    else if (mrx < 0 && mry < 0 && pad_input_mode() == PAD_MODE_CONTROLLER) atomic_store(&s_look_ms, 0);
 +    if (mrx >= 0) rx = mrx;   /* mouse motion wins over I/J/K/L while it moves */
 +    if (mry >= 0) ry = mry;
 +    PadHostState* hs = &s_host_state[0];
@@ -5348,7 +5390,7 @@ index 7fa8cab9..8892c57e 100644
  static void pad_poll_backend(void)
  {
      /* Benign race: two threads may poll in the same tick. That costs one extra
-@@ -492,6 +1417,7 @@ static void pad_poll_backend(void)
+@@ -492,6 +1459,7 @@ static void pad_poll_backend(void)
      static unsigned long long s_last_ms = 0;
      unsigned long long now = pad_now_ms();
      if (s_last_ms && now - s_last_ms < PAD_POLL_INTERVAL_MS) return;
@@ -5356,7 +5398,7 @@ index 7fa8cab9..8892c57e 100644
      s_last_ms = now;
      /* A real pad streams reports at roughly this rate whether or not anything
       * changed, and libpad buffers them; a fresh sweep is a fresh report for
-@@ -505,7 +1431,24 @@ static void pad_poll_backend(void)
+@@ -505,7 +1473,24 @@ static void pad_poll_backend(void)
  #endif
  #ifdef _WIN32
      if (!s_host_state[0].connected) pad_poll_keyboard();
@@ -5381,7 +5423,7 @@ index 7fa8cab9..8892c57e 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -526,15 +1469,24 @@ s32 cellPadInit(u32 max_connect)
+@@ -526,15 +1511,24 @@ s32 cellPadInit(u32 max_connect)
      if (max_connect == 0 || max_connect > 127)
          return CELL_PAD_ERROR_INVALID_PARAMETER;
  
@@ -5406,7 +5448,7 @@ index 7fa8cab9..8892c57e 100644
  
      return CELL_OK;
  }
-@@ -546,7 +1498,9 @@ s32 cellPadEnd(void)
+@@ -546,7 +1540,9 @@ s32 cellPadEnd(void)
      if (!s_pad_initialized)
          return CELL_PAD_ERROR_NOT_OPENED;
  
@@ -5416,7 +5458,7 @@ index 7fa8cab9..8892c57e 100644
  
      s_pad_initialized = 0;
      s_max_connect = 0;
-@@ -735,6 +1689,7 @@ skip_inject: ;
+@@ -735,6 +1731,7 @@ skip_inject: ;
       *   echo 0x0040 4 > pad.txt  # DOWN for 4 polls (menus auto-repeat a
       *                            # long hold; the default is 40)
       */
@@ -5424,7 +5466,7 @@ index 7fa8cab9..8892c57e 100644
      { static int s_pf = -1; static char pf_path[512];
        static unsigned held_mask = 0; static int held_n = 0;
        if (s_pf < 0) { const char* e = getenv("PAD_FILE");
-@@ -746,11 +1701,25 @@ skip_inject: ;
+@@ -746,11 +1743,25 @@ skip_inject: ;
                if (f) {
                    char buf[64]; buf[0] = 0;
                    if (fgets(buf, sizeof buf, f)) {
@@ -5455,7 +5497,7 @@ index 7fa8cab9..8892c57e 100644
                    }
                    fclose(f);
                    if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
-@@ -782,6 +1751,12 @@ skip_inject: ;
+@@ -782,6 +1793,12 @@ skip_inject: ;
        if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
                    hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
                    hs->connected = 1; }
@@ -5468,7 +5510,7 @@ index 7fa8cab9..8892c57e 100644
        /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
         * deflections instead of holding one. Guessing a single stick position and
         * re-running costs ~5 minutes a try; a sweep answers "can input move the
-@@ -896,6 +1871,21 @@ emit:
+@@ -896,6 +1913,21 @@ emit:
      }
      {
          unsigned int ea = (unsigned int)(uintptr_t)data_guest;
@@ -5490,7 +5532,7 @@ index 7fa8cab9..8892c57e 100644
          vm_write32((unsigned long long)ea + 0, (unsigned int)data->len);   /* len (s32) */
          for (int _i = 0; _i < CELL_PAD_MAX_CODES; _i++)                    /* button[] u16 */
              vm_write16((unsigned long long)ea + 4 + (unsigned int)_i * 2, data->button[_i]);
-@@ -946,7 +1936,7 @@ s32 cellPadGetInfo(CellPadInfo2* info)
+@@ -946,7 +1978,7 @@ s32 cellPadGetInfo(CellPadInfo2* info)
                    (s_host_state[i].connected || i == 0));
          vm_write16(gaddr + 0x00C + i * 2, on ? 0x054C : 0);   /* vendor: Sony  */
          vm_write16(gaddr + 0x10A + i * 2, on ? 0x0268 : 0);   /* product: DS3  */
@@ -5499,7 +5541,7 @@ index 7fa8cab9..8892c57e 100644
      }
      return CELL_OK;
  }
-@@ -973,7 +1963,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
+@@ -973,7 +2005,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
           * boot flows that block until a controller is connected can proceed even
           * with no physical device attached. */
          if (s_host_state[i].connected || i == 0) {
@@ -5508,7 +5550,7 @@ index 7fa8cab9..8892c57e 100644
              info->port_setting[i]      = s_port_setting[i];
              info->device_capability[i] = CELL_PAD_CAPABILITY_PS3_CONFORMITY
                                         | CELL_PAD_CAPABILITY_PRESS_MODE
-@@ -983,7 +1973,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
+@@ -983,7 +2015,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
              info->device_type[i]       = CELL_PAD_DEV_TYPE_STANDARD;
              connected++;
          } else {
@@ -5517,7 +5559,7 @@ index 7fa8cab9..8892c57e 100644
          }
      }
      info->now_connect = connected;
-@@ -1028,7 +2018,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+@@ -1028,7 +2060,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
          /* Same virtual-pad-on-port-0 rule as cellPadGetInfo2, so both views of
           * the ports agree (a game that cross-checks them must see one truth). */
          if ((i < PAD_MAX_HOST_PORTS && s_host_state[i].connected) || i == 0) {
@@ -5526,7 +5568,7 @@ index 7fa8cab9..8892c57e 100644
              info->port_setting[i]      = s_port_setting[i];
              info->device_capability[i] = CELL_PAD_CAPABILITY_PS3_CONFORMITY
                                         | CELL_PAD_CAPABILITY_PRESS_MODE
-@@ -1040,7 +2030,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+@@ -1040,7 +2072,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
              info->pclass_profile[i]    = 0;
              connected++;
          } else {
@@ -5535,7 +5577,7 @@ index 7fa8cab9..8892c57e 100644
          }
      }
      info->now_connect = connected;
-@@ -1104,6 +2094,39 @@ s32 cellPadSetPressMode(u32 port_no, u32 mode)
+@@ -1104,6 +2136,39 @@ s32 cellPadSetPressMode(u32 port_no, u32 mode)
      return CELL_OK;
  }
  
@@ -5575,7 +5617,7 @@ index 7fa8cab9..8892c57e 100644
  s32 cellPadGetCapabilityInfo(u32 port_no, CellPadCapabilityInfo* info)
  {
      if (!s_pad_initialized)
-@@ -1136,29 +2159,43 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1136,29 +2201,43 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
  
      param = GUEST_PTR(param, CellPadActParam*);
  
@@ -5628,7 +5670,7 @@ index 7fa8cab9..8892c57e 100644
  }
  
 diff --git a/libs/input/cellPad.h b/libs/input/cellPad.h
-index 89c58ab6..b35fcb6d 100644
+index 89c58ab6..d70fd5f0 100644
 --- a/libs/input/cellPad.h
 +++ b/libs/input/cellPad.h
 @@ -187,6 +187,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info);
@@ -5640,6 +5682,20 @@ index 89c58ab6..b35fcb6d 100644
  
  /* NID: 0x578E3C98 */
  s32 cellPadGetCapabilityInfo(u32 port_no, CellPadCapabilityInfo* info);
+@@ -200,6 +202,13 @@ s32 cellPadClearBuf(u32 port_no);
+ /* Internal: call once per frame to update pad state from host input */
+ void cellPad_poll(void);
+ 
++/* Direct mouse look for a port that hooks its title's camera (cellPad.c,
++ * "Direct mouse look"; not on Windows): 1 while the mouse drives port 0's
++ * right stick. _state gives the deflection it fed (-127..127); _take drains
++ * the motion since the last take (points x PS3_MOUSE_SENS). */
++int cellPad_host_mouse_look_state(int* fed_rx, int* fed_ry);
++int cellPad_host_mouse_look_take(float* dx, float* dy);
++
+ #ifdef __cplusplus
+ }
+ #endif
 diff --git a/libs/input/host_input_cocoa.h b/libs/input/host_input_cocoa.h
 new file mode 100644
 index 00000000..dc9af50c
@@ -7688,10 +7744,10 @@ index 00000000..4eef8a5a
 +}
 diff --git a/libs/input/tests/test_pad_keymap.c b/libs/input/tests/test_pad_keymap.c
 new file mode 100644
-index 00000000..8f2c06e5
+index 00000000..9d74a62e
 --- /dev/null
 +++ b/libs/input/tests/test_pad_keymap.c
-@@ -0,0 +1,426 @@
+@@ -0,0 +1,474 @@
 +/* cellPad's keyboard/mouse pad: the window's ps3_host_input block -> port 0
 + * through the built-in FPS layout or PS3_INPUT_MAP; the mouse camera on the
 + * right stick; wheel notches as presses; what the game tells the window
@@ -7871,6 +7927,53 @@ index 00000000..8f2c06e5
 +    pad_poll_keys(0);
 +    assert(atomic_load(&s_win.game_flags) == (PS3_HOST_INPUT_ACTIVE | PS3_HOST_INPUT_MOUSE_CAMERA));
 +    unsetenv("PS3_MOUSE_CAPTURE");
++    s_mouse_on = -1;
++}
++
++/* Direct mouse look (cellPad_host_mouse_look_*): the raw motion for a port's
++ * camera hook, x PS3_MOUSE_SENS, inverted as the stick is; "the mouse drives
++ * the right stick" for 200 ms after it moves, not while the look keys do. */
++static void test_mouse_look(void)
++{
++    unsetenv("PS3_INPUT_MAP");
++    unsetenv("PS3_MOUSE_INVERT_Y");
++    setenv("PS3_MOUSE_SENS", "2", 1);
++    reload_settings();
++    press_only(NULL, 0);
++    float dx, dy;
++    for (int i = 0; i < 50; i++) { usleep(5 * 1000); pad_poll_keys(0); }
++    cellPad_host_mouse_look_take(&dx, &dy);           /* start empty */
++    atomic_store(&s_win.mouse_dx, 10 * 16);
++    atomic_store(&s_win.mouse_dy, -4 * 16);
++    pad_poll_keys(0);
++    atomic_store(&s_win.mouse_dx, 5 * 16);
++    pad_poll_keys(0);
++    int frx, fry;
++    assert(cellPad_host_mouse_look_state(&frx, &fry) == 1);
++    assert(frx > 16);                                 /* what it fed the stick */
++    assert(cellPad_host_mouse_look_take(&dx, &dy) == 1);
++    assert(dx == 30.0f && dy == -8.0f);               /* 15 and -4 points, x2 */
++    cellPad_host_mouse_look_take(&dx, &dy);
++    assert(dx == 0.0f && dy == 0.0f);                 /* drained */
++    /* inverted Y, as the stick */
++    setenv("PS3_MOUSE_INVERT_Y", "1", 1);
++    s_mouse_on = -1;
++    atomic_store(&s_win.mouse_dy, -4 * 16);
++    pad_poll_keys(0);
++    cellPad_host_mouse_look_take(&dx, &dy);
++    assert(dy == 8.0f);
++    unsetenv("PS3_MOUSE_INVERT_Y");
++    s_mouse_on = -1;
++    /* the look keys hold the stick: not the mouse's */
++    const unsigned vk_l = 0x25;   /* L: look right in the built-in layout */
++    press_only(&vk_l, 1);
++    pad_poll_keys(0);
++    if (s_host_state[0].analog_rx != 128) assert(cellPad_host_mouse_look_state(NULL, NULL) == 0);
++    press_only(NULL, 0);
++    /* 200 ms without motion: no longer the mouse */
++    for (int i = 0; i < 50; i++) { usleep(5 * 1000); pad_poll_keys(0); }
++    assert(cellPad_host_mouse_look_state(NULL, NULL) == 0);
++    unsetenv("PS3_MOUSE_SENS");
 +    s_mouse_on = -1;
 +}
 +
@@ -8106,6 +8209,7 @@ index 00000000..8f2c06e5
 +    ps3_pad_host_input_attach(&s_win);
 +    test_fps_layout();
 +    test_mouse_camera();
++    test_mouse_look();
 +    test_mapped_layout();
 +    test_input_mode_and_merge();
 +    test_attach();
@@ -111366,15 +111470,17 @@ index 1c07c887..3a945d5e 100644
  
  def emit_register(manifest, REGISTER_C, sym_prefix):
 diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
-index 9d9df717..9dcbc093 100644
+index 9d9df717..74cfa9a6 100644
 --- a/tools/ppu_lifter.py
 +++ b/tools/ppu_lifter.py
-@@ -657,6 +657,80 @@ _CRSET_RE = re.compile(
+@@ -657,6 +657,89 @@ _CRSET_RE = re.compile(
      r"ctx->cr = \(ctx->cr & ~\(0xFu << (?P<shift>\d+)\)\) \| \(cr_val << (?P<shift2>\d+)\); \}$")
  _CRBR_RE = re.compile(
      r"^(?P<ind>\s*)if \((?P<neg>!)?\(+ctx->cr >> (?P<shift>\d+)\) & (?P<mask>0x[0-9A-Fa-f]+|\d+)\)+\) (?P<rest>.*)$")
 +# A line PPULifter._patched_translate wrote; group 1 is its guard symbol.
 +_INSN_PATCH_RE = re.compile(r"^if \(([A-Za-z_]\w*)\) \{ .* /\* insn patch 0x[0-9A-F]{8}: ")
++# A hook line (an --insn-patches entry with "hook"); group 1 is the function.
++_INSN_HOOK_RE = re.compile(r"^([A-Za-z_]\w*)\(ctx\); .* /\* insn patch 0x[0-9A-F]{8}: hook ")
 +
 +
 +def load_insn_patches(path: str) -> dict[int, tuple[int, int, str]]:
@@ -111384,19 +111490,26 @@ index 9d9df717..9dcbc093 100644
 +                      "new": "0x60000000", "guard": "g_port_unlock_fps",
 +                      "note": "..."}, ...]}
 +
++    An entry may instead name a hook, {"addr": ..., "orig": ..., "hook":
++    "port_fn", "note": ...}: the port's `void port_fn(ppu_context*)` is called
++    just before the instruction runs (the instruction itself is kept), so a port
++    can read or change the guest's state at that point. It comes out as
++    (orig, -1, "port_fn").
++
 +    -> {addr: (orig, new, guard)}."""
 +    with open(path) as f:
 +        spec = json.load(f)
 +    out: dict[int, tuple[int, int, str]] = {}
 +    for e in spec.get("patches", []):
 +        addr = int(str(e["addr"]), 0)
-+        guard = str(e["guard"])
++        hook = e.get("hook")
++        guard = str(hook if hook is not None else e["guard"])
 +        if not re.fullmatch(r"[A-Za-z_]\w*", guard):
 +            sys.exit(f"[ppu_lifter] {path}: guard {guard!r} is not a C identifier")
 +        if addr & 3 or addr in out:
 +            sys.exit(f"[ppu_lifter] {path}: bad or duplicate address 0x{addr:08X}")
 +        out[addr] = (int(str(e["orig"]), 0) & 0xFFFFFFFF,
-+                     int(str(e["new"]), 0) & 0xFFFFFFFF, guard)
++                     -1 if hook is not None else int(str(e["new"]), 0) & 0xFFFFFFFF, guard)
 +    return out
 +
 +
@@ -111450,7 +111563,7 @@ index 9d9df717..9dcbc093 100644
  
  
  def _crval_to_c(val: str, mask: int, decl_a: str, a_expr: str, b_expr: str) -> str:
-@@ -875,6 +949,15 @@ class PPULifter:
+@@ -875,6 +958,15 @@ class PPULifter:
          # Module primary TOC (r2). Set by main() only when the ELF yields exactly
          # one TOC candidate; enables the `ld r2, N(r1)` restore lowering below.
          self.toc_base: int = 0
@@ -111466,7 +111579,7 @@ index 9d9df717..9dcbc093 100644
          # addr(int) -> recovered name label (from Ghidra analysis). Emitted as a
          # comment above func_ADDR so dispatch stays address-based.
          self.name_map: dict[int, str] = {}
-@@ -980,7 +1063,11 @@ class PPULifter:
+@@ -980,7 +1072,11 @@ class PPULifter:
                  func.body_lines.append(f"loc_{insn.addr:08X}:")
                  emitted_labels.add(insn.addr)
  
@@ -111479,7 +111592,7 @@ index 9d9df717..9dcbc093 100644
              if c_line:
                  func.body_lines.append(f"    {c_line}")
  
-@@ -1193,9 +1280,87 @@ class PPULifter:
+@@ -1193,9 +1289,87 @@ class PPULifter:
                         for _n, _off in sorted(_mem_snap.items()) if _n not in _reg_snap]
              func.body_lines = _decls + func.body_lines
  
@@ -111567,7 +111680,7 @@ index 9d9df717..9dcbc093 100644
      # ------------------------------------------------------------------ #
      # Per-instruction translation
      # ------------------------------------------------------------------ #
-@@ -1325,6 +1490,39 @@ class PPULifter:
+@@ -1325,6 +1499,43 @@ class PPULifter:
          code2 = self._translate_op(alt, func)
          return code if code2.startswith("/* TODO") else code2
  
@@ -111595,6 +111708,10 @@ index 9d9df717..9dcbc093 100644
 +            raise ValueError(f"insn patch at 0x{insn.addr:08X}: the input has "
 +                             f"0x{(insn.raw or 0):08X}, the patch expects 0x{orig:08X} "
 +                             f"(wrong binary for this patch set?)")
++        if new == -1:   # a hook: the port's function, then the instruction
++            orig_c = self._translate(insn, func) or ";"
++            return (f"{guard}(ctx); {orig_c}"
++                    f"  /* insn patch 0x{insn.addr:08X}: hook {guard} */")
 +        if (new >> 26) in (16, 17, 18, 19):
 +            raise ValueError(f"insn patch at 0x{insn.addr:08X}: the replacement "
 +                             f"0x{new:08X} is a branch/sc/CR op; not supported")
@@ -111607,7 +111724,7 @@ index 9d9df717..9dcbc093 100644
      def _translate(self, insn: Instruction, func: LiftedFunction) -> str:
          code = self._oe_wrap(insn, self._translate_xo_base(insn, func))
          mn = insn.mnemonic
-@@ -1928,6 +2126,12 @@ class PPULifter:
+@@ -1928,6 +2139,12 @@ class PPULifter:
                  # PPC `bl` sets LR = return address (next instr). Emit it so mflr
                  # reads the correct value AND stack-saved LRs are real return
                  # addresses -> reliable back-chain unwinding for diagnostics.
@@ -111620,7 +111737,7 @@ index 9d9df717..9dcbc093 100644
                  return f"ctx->lr = 0x{insn.addr + 4:08X}; {self.prefix}func_{tgt:08X}(ctx); DRAIN_TRAMPOLINE(ctx);"
              except ValueError:
                  return f"/* bl {target} */;"
-@@ -3965,6 +4169,14 @@ class PPULifter:
+@@ -3965,6 +4182,19 @@ class PPULifter:
          if label:
              lines.append(f"/* {label} */")
          weak = "__attribute__((weak)) " if getattr(self, "weak_emit", False) else ""
@@ -111630,12 +111747,17 @@ index 9d9df717..9dcbc093 100644
 +        for g in guards:
 +            lines += ["#ifdef __cplusplus", f'extern "C" int {g};', "#else",
 +                      f"extern int {g};", "#endif"]
++        hooks = sorted({m.group(1) for bl in func.body_lines
++                        for m in [_INSN_HOOK_RE.match(bl.strip())] if m})
++        for h in hooks:
++            lines += ["#ifdef __cplusplus", f'extern "C" void {h}(ppu_context* ctx);', "#else",
++                      f"void {h}(ppu_context* ctx);", "#endif"]
 +        if any("PPU_SJLJ_ENTER(" in bl or "ppu_sjlj_longjmp(" in bl for bl in func.body_lines):
 +            lines.append('#include "ppu_sjlj.h"  /* --sjlj; runtime/ppu */')
          lines.append(f"void {weak}{func.name}(ppu_context* ctx) {{")
          for bline in _fuse_cr(func.body_lines):
              lines.append(f"    {bline}" if not bline.endswith(":") else bline)
-@@ -4660,7 +4872,7 @@ _WORKER_STATE: dict = {}
+@@ -4660,7 +4890,7 @@ _WORKER_STATE: dict = {}
  
  def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
                   function_entries=None, code_lo=0, code_hi=None, jump_tables=None,
@@ -111644,7 +111766,7 @@ index 9d9df717..9dcbc093 100644
      _WORKER_STATE["segs"] = segs
      _WORKER_STATE["be"] = big_endian
      _WORKER_STATE["names"] = name_map
-@@ -4675,6 +4887,8 @@ def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
+@@ -4675,6 +4905,8 @@ def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
      _WORKER_STATE["code_lo"] = code_lo
      _WORKER_STATE["code_hi"] = code_hi
      _WORKER_STATE["jump_tables"] = jump_tables or {}
@@ -111653,7 +111775,7 @@ index 9d9df717..9dcbc093 100644
  
  
  def _worker_lift(task):
-@@ -4690,6 +4904,8 @@ def _worker_lift(task):
+@@ -4690,6 +4922,8 @@ def _worker_lift(task):
      lifter.code_hi = _WORKER_STATE.get("code_hi", None)
      lifter.jump_tables = _WORKER_STATE.get("jump_tables", {})
      lifter.toc_base = _WORKER_STATE.get("toc_base", 0)
@@ -111662,7 +111784,7 @@ index 9d9df717..9dcbc093 100644
      results = []
      for start, end in bounds:
          blob = b""
-@@ -4724,7 +4940,9 @@ def _parallel_lift(lifter, func_bounds, segs, big_endian, jobs):
+@@ -4724,7 +4958,9 @@ def _parallel_lift(lifter, func_bounds, segs, big_endian, jobs):
                     initargs=(segs, big_endian, lifter.name_map, lifter.prefix,
                               lifter.hle_stub_nids, lifter.function_entries,
                               lifter.code_lo, lifter.code_hi, lifter.jump_tables,
@@ -111673,7 +111795,7 @@ index 9d9df717..9dcbc093 100644
      try:
          for idx0, results, ct, bt in pool.imap_unordered(_worker_lift, tasks):
              results_by_idx[idx0] = results
-@@ -4810,6 +5028,21 @@ def main() -> None:
+@@ -4810,6 +5046,21 @@ def main() -> None:
                               "instead of its literal .lib.stub trampoline, and "
                               "split out as its own 0x20-byte function so direct "
                               "calls to it dispatch to the HLE handler.")
@@ -111695,7 +111817,7 @@ index 9d9df717..9dcbc093 100644
      args = parser.parse_args()
  
      # Load firmware-import stubs (addr -> NID) up front; applied to func_bounds
-@@ -5266,6 +5499,44 @@ def main() -> None:
+@@ -5266,6 +5517,44 @@ def main() -> None:
      lifter.hle_stub_nids = hle_stubs
      lifter.function_entries = _func_entries
      lifter.jump_tables = jt_dispatchers
@@ -111740,7 +111862,7 @@ index 9d9df717..9dcbc093 100644
  
      # Optional: load a recovered-name map (from Ghidra analysis) to annotate
      # generated functions with meaningful names as comments.
-@@ -5313,6 +5584,26 @@ def main() -> None:
+@@ -5313,6 +5602,26 @@ def main() -> None:
      if total_mid:
          print(f"  Generated {total_mid} mid-function tail-entry wrappers total")
  

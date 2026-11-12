@@ -77,7 +77,7 @@ v0.17.0 or to this port), with their authors kept in the patch headers:
   under the waiter's lock and the short spin before an SPU sleeps, the
   lock-free `cellSpursReadyCountStore`, word-aligned SPU indirect branches,
   the lifted SPU code without local-store debug probes, and the speaker-layout
-  race (the menu music's varying centre/LFE).
+  race (the menu music's varying centre/LFE), and the direct mouse look (the player object's look rates and view angles, and the hooks' approach).
 
 ## Tools
 

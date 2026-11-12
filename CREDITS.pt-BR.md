@@ -79,7 +79,8 @@ v0.17.0 ou a este port), com os autores mantidos nos cabeçalhos do patch:
   SPU dormir, o `cellSpursReadyCountStore` sem trava, os saltos indiretos das
   SPUs alinhados à palavra, o código SPU traduzido sem as sondas de depuração
   da local store, e a corrida no layout das caixas de som (o centro/LFE
-  variando na música do menu).
+  variando na música do menu), e a mira direta com o mouse (as velocidades de
+  mira e os ângulos da visão no objeto do jogador, e a abordagem dos ganchos).
 
 ## Ferramentas
 

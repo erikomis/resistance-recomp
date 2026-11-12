@@ -179,6 +179,7 @@ add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
     patches.cpp
+    mouselook.cpp
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}
