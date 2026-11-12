@@ -23,6 +23,20 @@
     "program": ["Resistance Launcher.app/Contents/MacOS/resistance-launcher"],
     "args": ["--play", "--game", "{game}"]
   },
+  "games": [
+    {
+      "id": "offline",
+      "name": "Resistance: Fall of Man",
+      "args": ["--offline"],
+      "saves": ["{home}/Library/Application Support/resistance-recomp/gamedata/dev_hdd0/home/00000001/savedata"]
+    },
+    {
+      "id": "online",
+      "name": "Resistance: Fall of Man — Online (PS Rewired)",
+      "args": ["--play-online"],
+      "saves": ["{home}/Library/Application Support/resistance-recomp/online/gamedata/dev_hdd0/home/00000001/savedata"]
+    }
+  ],
   "config": [
     {
       "id": "main",
@@ -194,8 +208,24 @@
   ],
   "folders": {
     "saves": [{ "path": "{home}/Library/Application Support/resistance-recomp/gamedata/dev_hdd0/home/00000001/savedata" }],
-    "logs": [{ "path": "{home}/Library/Application Support/resistance-recomp" }]
+    "logs": [{ "path": "{home}/Library/Application Support/resistance-recomp" }],
+    "online": [{ "path": "{home}/Library/Application Support/resistance-recomp/online" }],
+    "launcher": [{ "path": "{install}" }]
   },
+  "actions": [
+    {
+      "id": "online_id",
+      "label": "Online ID (Resistance Launcher)",
+      "help": "Online play signs in with your online ID, typed once in the Resistance Launcher: this opens its folder. Open the app, type the ID under Online (PS Rewired) on Home, and close it.",
+      "open": "launcher"
+    },
+    {
+      "id": "online_folder",
+      "label": "Online play's folder",
+      "help": "Online play's own saves, the v1.7 update the game downloads there, and its last.log.",
+      "open": "online"
+    }
+  ],
   "exit_codes": {
     "0": "ok",
     "2": "The launcher was started with arguments it does not understand. Update RecompLauncher and the game, then try again.",
@@ -203,10 +233,12 @@
     "11": "Apple's Command Line Tools are needed to build the game. Their installer has opened: finish it, then run the setup again.",
     "12": "The game's sources or build tools could not be downloaded. Check the internet connection and run the setup again; it continues where it stopped.",
     "13": "Building the game failed. Run the setup again; if it fails the same way, report it with install.log from the logs folder.",
-    "14": "Resistance is already being installed or played. Wait for it to finish (or quit the game), then try again.",
+    "14": "Resistance is already being installed, played or its online menus built. Wait for it to finish (or quit the game), then try again.",
     "15": "There is not enough free disk space. The build needs about 4 GB: free some space and run the setup again.",
     "16": "This recomp runs on Macs only.",
     "17": "The game is not built yet. Run the setup on the game's page first.",
-    "18": "Files of the game's v1.7 update are in the offline play folder. Open the Resistance Launcher once: it moves them aside."
+    "18": "Files of the game's v1.7 update are in the offline play folder. Open the Resistance Launcher once: it moves them aside.",
+    "19": "Online play needs your online ID (your name on PS Rewired: 3 to 16 letters, digits, - or _, starting with a letter), set once in the Resistance Launcher window. It opens for it (or use Online ID on this page): type the ID under Online (PS Rewired) on Home, close the window, then press Play on the Online tile again.",
+    "20": "The game downloaded its v1.7 update, but the online menus could not be built from it. Press Play on the Online tile again; if it fails the same way, report it with online-menus.log from the logs folder. An update other than the one the port was tested with is never built."
   }
 }
