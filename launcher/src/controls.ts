@@ -7,6 +7,7 @@
 // no file and the game uses its built-in layout (the one in DEFAULTS).
 import { invoke } from "@tauri-apps/api/core";
 import { Key, t } from "./i18n";
+import { applyLayout, MODERN } from "./layout";
 import { flashSaved } from "./ui";
 
 export type Device = "keyboard" | "mouseButtons" | "controller";
@@ -20,24 +21,28 @@ interface InputMapView {
 const DEVICES: Device[] = ["keyboard", "mouseButtons", "controller"];
 
 /** PS3 controls, in the screen's order, with the label shown for each and
- * what it does in Resistance (the default layout's actions). */
+ * what it does in Resistance (the game's Options > Controls screen, preset
+ * "Default Controls": R1 primary fire, L1 alt. fire, L2 crouch, R2 weapon
+ * select, ✕ jump, ○ use grenade, □ reload, △ action/melee, R3 toggle zoom,
+ * L3 voice chat, START pause, SELECT journal; d-pad ↑ next grenade, ↓
+ * previous grenade, ← find partner, → spotlight). */
 const CONTROLS: { id: string; label: string | Key; act?: Key }[] = [
   { id: "r1", label: "R1", act: "act.fire" },
-  { id: "l1", label: "L1", act: "act.aim" },
-  { id: "l2", label: "L2", act: "act.grenade" },
-  { id: "r2", label: "R2" },
+  { id: "l1", label: "L1", act: "act.altFire" },
+  { id: "l2", label: "L2", act: "act.crouch" },
+  { id: "r2", label: "R2", act: "act.weapon" },
   { id: "cross", label: "✕", act: "act.jump" },
-  { id: "circle", label: "○", act: "act.crouch" },
+  { id: "circle", label: "○", act: "act.grenade" },
   { id: "square", label: "□", act: "act.reload" },
-  { id: "triangle", label: "△", act: "act.weapon" },
-  { id: "l3", label: "L3" },
-  { id: "r3", label: "R3" },
+  { id: "triangle", label: "△", act: "act.action" },
+  { id: "l3", label: "L3", act: "act.voice" },
+  { id: "r3", label: "R3", act: "act.zoom" },
   { id: "start", label: "START", act: "act.pause" },
-  { id: "select", label: "SELECT" },
-  { id: "up", label: "controls.dpad" },
-  { id: "down", label: "controls.dpad" },
-  { id: "left", label: "controls.dpad" },
-  { id: "right", label: "controls.dpad" },
+  { id: "select", label: "SELECT", act: "act.journal" },
+  { id: "up", label: "controls.dpad", act: "act.nextGrenade" },
+  { id: "down", label: "controls.dpad", act: "act.prevGrenade" },
+  { id: "left", label: "controls.dpad", act: "act.partner" },
+  { id: "right", label: "controls.dpad", act: "act.spotlight" },
   { id: "ls_up", label: "controls.ls", act: "act.move" },
   { id: "ls_down", label: "controls.ls" },
   { id: "ls_left", label: "controls.ls" },
@@ -450,7 +455,8 @@ export function initControls() {
     renderPath();
   });
   // the PS5 layout: the controller's L1/R1 and L2/R2 bindings trade places
-  // (R2 fires, L2 aims); pressed again, they trade back
+  // (R2 fires, L2 alt. fire: the game's own Alpha preset); pressed again,
+  // they trade back
   $("controls-triggers").addEventListener("click", async () => {
     const c = bindings.controller;
     [c.l1, c.l2] = [c.l2 ?? [], c.l1 ?? []];
@@ -458,7 +464,18 @@ export function initControls() {
     endCapture();
     renderControls();
     await save();
-    note(t((c.r1 ?? []).includes("righttrigger") ? "controls.triggersOn" : "controls.triggersOff"));
+    const r1 = c.r1 ?? [];
+    note(t(r1.includes("righttrigger") ? "controls.triggersOn"
+      : r1.includes("rightshoulder") ? "controls.triggersOff" : "controls.triggersSwapped"));
+  });
+  // the full modern layout (layout.ts) over the controller's bindings;
+  // Restore defaults is the way back
+  $("controls-modern").addEventListener("click", async () => {
+    bindings.controller = applyLayout(bindings.controller, MODERN);
+    endCapture();
+    renderControls();
+    await save();
+    note(t("controls.modernOn"));
   });
   // without a file yet this shows the folder it will be written to
   $("controls-open").addEventListener("click", () => mapPath && invoke("reveal", { path: mapPath }));

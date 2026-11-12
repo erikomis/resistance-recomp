@@ -239,6 +239,33 @@ mod tests {
         assert!(back.has_mouse_section);
     }
 
+    /// The Controls page's "Modern layout" (src/layout.ts): a control with two
+    /// inputs and an unbound one are written as the game reads them.
+    #[test]
+    fn modern_layout_is_written_as_the_game_reads_it() {
+        let mut f = InputFile::default();
+        let c = &mut f.bindings.controller;
+        for (k, v) in [
+            ("r1", &["righttrigger"][..]),
+            ("r3", &["lefttrigger"]),
+            ("l1", &["leftshoulder"]),
+            ("r2", &["rightshoulder"]),
+            ("l2", &["leftstick"]),
+            ("triangle", &["y", "rightstick"]),
+            ("l3", &[]),
+            ("circle", &["b"]),
+        ] {
+            c.insert(k.into(), v.iter().map(|s| s.to_string()).collect());
+        }
+        assert!(validate(&f.bindings).is_ok());
+        let text = render(&f);
+        assert!(text.contains("\n[controller]\n"));
+        assert!(text.contains("triangle = \"y, rightstick\"\n"));
+        assert!(text.contains("r3       = \"lefttrigger\"\n"));
+        assert!(text.contains("l3       = \"\"\n"));
+        assert_eq!(parse(&text).bindings, f.bindings);
+    }
+
     #[test]
     fn names_are_checked() {
         let mut b = Bindings::default();

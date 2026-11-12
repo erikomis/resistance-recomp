@@ -116,9 +116,17 @@ next time the game starts.
   part of its name; empty = the system's default; macOS only, the Windows
   backend has no device choice); the **saves manager** (below).
 - **Controls / Controles**: the bindings table, PS3 control by keyboard,
-  mouse button and controller, with what each does in Resistance (R1 fire,
-  L1 aim, L2 grenade, ✕ jump, ○ crouch, □ reload/use, △ switch weapon,
-  START pause, left stick move, right stick look). Click a cell and press
+  mouse button and controller, with what each does in Resistance, as the
+  game's Options > Controls screen shows its Default Controls (R1 fire, L1
+  alt. fire, L2 crouch, R2 switch weapon, ✕ jump, ○ grenade, □ reload, △
+  action/melee, R3 zoom on/off, L3 voice chat, START pause, SELECT journal,
+  d-pad ↑/↓ next/previous grenade, ← find partner, → spotlight, left stick
+  move, right stick look). **Fire with R2 (PS5 style)** swaps the
+  controller's L1/R1 and L2/R2 bindings (again swaps back); **Modern
+  layout** sets the controller to R2 fire, L2 zoom (the game's zoom is a
+  toggle), L1 alt. fire, R1 switch weapon, L3 crouch, R3 melee/action (△
+  too), the face buttons left as they are for the menus (`src/layout.ts`).
+  Click a cell and press
   the input; it is written at once to `<data>/input.toml` (the toolkit's
   `libs/input/pad_input_map.h` format, the same file the inFAMOUS 2 launcher
   writes: `[keyboard]`, `[mouse_buttons]`, `[controller]`, any other section
