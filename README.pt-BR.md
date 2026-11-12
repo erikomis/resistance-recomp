@@ -8,8 +8,9 @@ jogo é traduzido para C/C++ e compilado como executáveis nativos, com
 gráficos em Metal. Não é um emulador.
 
 **Ele é jogável.** A campanha já foi jogada com controle de York, passando
-por Grimsby e Manchester, até Nottingham ("Viper's Nest"), a uns 30 fps, a
-meta do próprio jogo, e todas as 30 fases dela carregam até o gameplay.
+por Grimsby, Manchester e Nottingham, até Cheshire ("Secrets"), a uns 30 fps
+no começo e 43–54 fps depois das otimizações do engine de desenho, e todas
+as 30 fases dela carregam até o gameplay.
 Baixe o app na
 [página de releases](https://github.com/erikomis/resistance-recomp/releases):
 você escolhe a imagem do seu disco e ele monta o jogo a partir dela
@@ -32,8 +33,8 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 
 > [!WARNING]
 > **Alpha, ainda não jogado até o fim.** A campanha foi jogada até
-> Nottingham; dali em diante (de Cheshire em diante) as fases carregam, mas
-> ninguém as jogou na mão. Só macOS com
+> Cheshire ("Secrets"); dali em diante (de Somerset em diante) as fases
+> carregam, mas ninguém as jogou na mão. Só macOS com
 > Apple silicon. O controle é o jeito testado de jogar. O que falta está no
 > [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md).
 
@@ -49,8 +50,8 @@ do mesmo autor. Veja [CREDITS.pt-BR.md](CREDITS.pt-BR.md).
 | | |
 | --- | --- |
 | Boot, telas legais, instalação da primeira execução, tela de título, menus | ✅ |
-| Campanha: York, Grimsby, Manchester e Nottingham, jogados com um DualSense | ✅ primeira pessoa, HUD, inimigos, morrer e renascer, Salvar e Sair e Continuar (até "Viper's Nest", 2026-11-10) |
-| O resto da campanha (de Cheshire à Chimeran Tower) | 🧪 todas as fases carregam até o gameplay sem erros; ainda não jogadas na mão |
+| Campanha: York, Grimsby, Manchester, Nottingham e Cheshire, jogados com um DualSense | ✅ primeira pessoa, HUD, inimigos, morrer e renascer, Salvar e Sair e Continuar (até "Secrets", 2026-11-11) |
+| O resto da campanha (de "Angel", em Cheshire, à Chimeran Tower) | 🧪 todas as fases carregam até o gameplay sem erros; ainda não jogadas na mão |
 | Desempenho | ✅ uns 30 fps jogando, a meta do jogo; ✅ o combate pesado em "Outgunned" foi de 23–29 para uns 40 fps sem janela (2026-11-11, o trabalho do engine de desenho do port do Resistance 2), falta confirmar jogando; 🧪 um patch opcional de 60 fps (~88 fps em York; as três fases mais pesadas agora rodam a 44–56 fps sem limite, 2026-11-11) |
 | Vídeos, música e som (AC3 5.1, mixado para a sua saída) | ✅ |
 | Gráficos | ✅ as cores do mundo, sombras, névoa, água e a camada de grama; ⚠️ os pontos escuros em algumas árvores ainda precisam ser conferidos |
@@ -188,8 +189,8 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
 
 O que está sendo feito agora (detalhes no [ROADMAP.pt-BR.md](ROADMAP.pt-BR.md)):
 
-- **Jogar a campanha inteira:** jogada até Nottingham ("Viper's Nest"); a
-  próxima é Cheshire.
+- **Jogar a campanha inteira:** jogada até Cheshire ("Secrets"); as
+  próximas são "Angel" e Somerset.
 - **Velocidade nas cenas pesadas:** o trabalho do engine de desenho do
   Resistance 2 entrou (uns +40% em "Outgunned"); o que limita agora é a CPU
   decodificando os comandos e preparando os draws na thread do RSX.

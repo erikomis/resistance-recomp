@@ -8,9 +8,9 @@ code is translated to C/C++ and compiled into native executables, with
 graphics on Metal. It is not an emulator.
 
 **It is playable.** The campaign has been played with a controller from York
-through Grimsby and Manchester into Nottingham ("Viper's Nest"), at about
-30 fps, the game's own target, and every one of its 30 levels loads to
-gameplay.
+through Grimsby, Manchester and Nottingham into Cheshire ("Secrets"), at
+about 30 fps at first and 43–54 fps since the draw-engine speed-ups, and
+every one of its 30 levels loads to gameplay.
 Get the app from the
 [releases page](https://github.com/erikomis/resistance-recomp/releases): you
 pick your disc image and it builds the game from it ([how](#download-and-play)).
@@ -32,8 +32,8 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 
 > [!WARNING]
 > **Alpha, not played to the end yet.** The campaign has been played into
-> Nottingham; past that (Cheshire onwards), the levels load but nobody has
-> played them by hand.
+> Cheshire ("Secrets"); past that (Somerset onwards), the levels load but
+> nobody has played them by hand.
 > Apple-silicon macOS only. A controller is the tested way to play. What is
 > missing is in [ROADMAP.md](ROADMAP.md).
 
@@ -49,8 +49,8 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 | | |
 | --- | --- |
 | Boot, legal screens, first-run install, title screen, menus | ✅ |
-| Campaign: York, Grimsby, Manchester and Nottingham, played with a DualSense | ✅ first person, HUD, enemies, dying and respawning, Save & Quit and Continue (into "Viper's Nest", 2026-11-10) |
-| The rest of the campaign (Cheshire to the Chimeran Tower) | 🧪 every level loads to gameplay with no errors; not played by hand yet |
+| Campaign: York, Grimsby, Manchester, Nottingham and Cheshire, played with a DualSense | ✅ first person, HUD, enemies, dying and respawning, Save & Quit and Continue (into "Secrets", 2026-11-11) |
+| The rest of the campaign (Cheshire's "Angel" to the Chimeran Tower) | 🧪 every level loads to gameplay with no errors; not played by hand yet |
 | Performance | ✅ about 30 fps in play, the game's target; ✅ the heavy fight in "Outgunned" went from 23–29 to about 40 fps headless (2026-11-11, the Resistance 2 port's draw-engine work), to confirm in play; 🧪 an optional 60 fps patch (~88 fps in York; the three heaviest levels now run at 44–56 fps uncapped, 2026-11-11) |
 | Movies, music and sound (AC3 5.1, mixed to your output) | ✅ |
 | Graphics | ✅ the world's colours, shadows, fog, water and the grass layer; ⚠️ dark speckles in some trees still to re-check |
@@ -180,8 +180,8 @@ save. What you change is kept for the next start. Details in
 
 What is being worked on now (details in [ROADMAP.md](ROADMAP.md)):
 
-- **Playing the whole campaign:** played into Nottingham ("Viper's Nest");
-  next is Cheshire.
+- **Playing the whole campaign:** played into Cheshire ("Secrets"); next
+  are "Angel" and Somerset.
 - **Speed in the heavy scenes:** the Resistance 2 port's draw-engine work is
   in (about +40% in "Outgunned"); what limits now is the CPU decoding the
   command stream and preparing draws on the RSX thread.
