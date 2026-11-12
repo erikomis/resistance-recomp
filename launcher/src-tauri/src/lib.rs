@@ -135,6 +135,10 @@ pub struct Settings {
     pub mouse_deadzone: u32,
     /// PS3_MOUSE_CAPTURE: a click captures the cursor (Esc/Cmd releases it).
     pub mouse_capture: bool,
+    /// RES_MOUSE_LOOK=1 when on (experimental, off by default): the mouse
+    /// turns the campaign's view by its own motion instead of driving the
+    /// right stick (port/mouselook.cpp).
+    pub mouse_direct: bool,
     /// PS3_RUMBLE=0 when off; PS3_RUMBLE_STRENGTH in percent (0-200).
     pub rumble: bool,
     pub rumble_strength: u32,
@@ -234,6 +238,7 @@ impl Default for Settings {
             mouse_invert_x: false,
             mouse_deadzone: 30,
             mouse_capture: true,
+            mouse_direct: false,
             rumble: true,
             rumble_strength: 100,
             adaptive_triggers: true,
@@ -1291,6 +1296,9 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path, input: &InputEnv) -> Vec<(
         if all || !s.mouse_capture {
             set("PS3_MOUSE_CAPTURE", if s.mouse_capture { "1" } else { "0" }.into());
         }
+        if s.mouse_direct {
+            set("RES_MOUSE_LOOK", "1".into());
+        }
     }
     if !s.rumble {
         set("PS3_RUMBLE", "0".into());
@@ -2038,6 +2046,7 @@ const FEATURE_MARKERS: &[&str] = &[
     "RES_MENU_60FPS",
     "RES_FOV",
     "PS3_PAD_ADAPTIVE",  // DualSense adaptive triggers
+    "RES_MOUSE_LOOK",    // direct mouse look (port/mouselook.cpp)
 ];
 
 /// The markers found in `data` (a NUL-terminated C string in the binary).
@@ -4025,7 +4034,7 @@ mod tests {
             "PS3_MOUSE_DEADZONE", "PS3_MOUSE_CAPTURE", "PS3_RUMBLE", "PS3_RUMBLE_STRENGTH", "PS3_WINDOW_MODE", "PS3_WINDOW_SIZE",
             "PS3_DISPLAY", "PS3_VSYNC", "PS3_UPSCALE", "PS3_VIBRANCE", "PS3_CONTRAST", "PS3_VIGNETTE", "PS3_GRAIN", "PS3_LUT",
             "PS3_LUT_STRENGTH", "PS3_MODS", "PS3_MODS_DIR", "PS3_MODS_DUMP", "PS3_RES_SCALE", "RES_UNLOCK_FPS", "RES_MENU_60FPS",
-            "RES_FOV", "PS3_AUDIO_VOLUME", "PS3_AUDIO_MUTE", "PS3_AUDIO_DEVICE", "PS3_PAD_ADAPTIVE",
+            "RES_FOV", "PS3_AUDIO_VOLUME", "PS3_AUDIO_MUTE", "PS3_AUDIO_DEVICE", "PS3_PAD_ADAPTIVE", "RES_MOUSE_LOOK",
         ];
         for k in new_vars {
             assert!(!base.iter().any(|b| b == k), "{k} passed by default");
@@ -4113,6 +4122,9 @@ mod tests {
         assert_eq!(e["PS3_MOUSE_INVERT_Y"], "0");
         assert_eq!(e["PS3_MOUSE_DEADZONE"], "30");
         assert_eq!(e["PS3_MOUSE_CAPTURE"], "1");
+        assert!(!e.contains_key("RES_MOUSE_LOOK")); // experimental: off unless asked for
+        st.mouse_direct = true;
+        assert_eq!(env(&st, &InputEnv::default())["RES_MOUSE_LOOK"], "1");
         // mouse and rumble off; values out of range or unknown pass nothing
         st.mouse = false;
         st.rumble = false;
@@ -4127,6 +4139,7 @@ mod tests {
         let e = env(&st, &InputEnv::default());
         assert_eq!(e["PS3_MOUSE"], "0");
         assert!(!e.contains_key("PS3_MOUSE_SENS"));
+        assert!(!e.contains_key("RES_MOUSE_LOOK")); // no mouse, no mouse look
         assert_eq!(e["PS3_RUMBLE"], "0");
         assert_eq!(e["PS3_PAD_ADAPTIVE"], "0");
         for k in ["PS3_WINDOW_MODE", "PS3_INPUT_MODE", "PS3_AA", "PS3_RES_SCALE", "RES_FOV", "PS3_DISPLAY", "PS3_LUT_STRENGTH", "PS3_INPUT_MAP"] {

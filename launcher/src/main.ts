@@ -47,6 +47,7 @@ export interface Settings {
   mouseInvertX: boolean;
   mouseDeadzone: number;
   mouseCapture: boolean;
+  mouseDirect: boolean;
   rumble: boolean;
   rumbleStrength: number;
   adaptiveTriggers: boolean;
@@ -497,6 +498,7 @@ function bindSettings() {
   bindCheck("mouse-invert", "mouseInvertY");
   bindCheck("mouse-invert-x", "mouseInvertX");
   bindCheck("mouse-capture", "mouseCapture");
+  bindCheck("mouse-direct", "mouseDirect");
   bindCheck("rumble-on", "rumble");
   bindCheck("adaptive-on", "adaptiveTriggers");
   bindCheck("audio-mute", "audioMute");
@@ -642,6 +644,7 @@ const DEFAULTS: Partial<Settings> = {
   mouseInvertX: false,
   mouseDeadzone: 30,
   mouseCapture: true,
+  mouseDirect: false,
   rumble: true,
   rumbleStrength: 100,
   adaptiveTriggers: true,

@@ -1,5 +1,7 @@
 /*
- * Direct mouse look for the campaign (game.self 01.00 and v1.7).
+ * Direct mouse look for the campaign (game.self 01.00 and v1.7). EXPERIMENTAL
+ * and off by default: RES_MOUSE_LOOK=1 (the launcher's "Direct mouse look"
+ * switch) turns it on.
  *
  * The keyboard-and-mouse layer turns the mouse into the right stick
  * (libs/input/cellPad.c). A stick is a turn RATE: the game caps it at its
@@ -32,7 +34,7 @@
  * the game's own stick handling.
  *
  * Settings:
- *   RES_MOUSE_LOOK=0      the old stick emulation
+ *   RES_MOUSE_LOOK=1      on (off by default: the mouse drives the stick)
  *   RES_MOUSE_DEG=<f>     degrees per point of mouse motion at sensitivity 1
  *                         (0.07)
  *   RES_MOUSE_ZOOM=<f>    how much zoom slows the mouse: 1 = matched to the
@@ -86,12 +88,13 @@ Cfg& cfg()
     static Cfg c;
     if (c.on < 0) {
         const char* e = getenv("RES_MOUSE_LOOK");
-        c.on = !(e && e[0] == '0');
+        c.on = e && *e && e[0] != '0';
         if ((e = getenv("RES_MOUSE_DEG")) && atof(e) > 0.0) c.deg = atof(e);
         if ((e = getenv("RES_MOUSE_ZOOM"))) { c.zoom = atof(e); if (c.zoom < 0) c.zoom = 0; if (c.zoom > 2) c.zoom = 2; }
         c.log = getenv("RES_MOUSE_LOOK_LOG") ? 1 : 0;
-        fprintf(stderr, "[mouselook] %s (%.3f deg per point, zoom %.1f)\n",
-                c.on ? "direct mouse look" : "off: the mouse drives the stick", c.deg, c.zoom);
+        if (c.on)
+            fprintf(stderr, "[mouselook] direct mouse look, experimental (%.3f deg per point, zoom %.1f)\n",
+                    c.deg, c.zoom);
     }
     return c;
 }
