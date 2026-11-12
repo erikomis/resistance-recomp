@@ -127,6 +127,13 @@ save, status), Graphics, Performance, Game, Controls and Advanced.
   (their rules), reaching only their servers. The first time the game
   downloads its v1.7 update and Home offers **Prepare the online menus**
   (details in [launcher/README.md](launcher/README.md#play-online-ps-rewired)).
+  In [RecompLauncher](https://recomplauncher.com) online play is its own
+  tile, **Resistance: Fall of Man — Online (PS Rewired)**: type your online
+  ID once in the Resistance Launcher window (the tile opens it when there is
+  none), then press Play on the tile. The first time, choose Multiplayer >
+  Online Game so the game downloads its update; the next start builds the
+  online menus by itself (a few minutes) and goes online
+  ([details](launcher/README.md#recomplauncher)).
 
 **In the game,** F1 (fn+F1), Insert, Cmd+, or L3+R3 opens the **in-game
 menu** (from the inFAMOUS 2 port): image (gamma, sharpening, FXAA/SMAA,
@@ -174,7 +181,7 @@ save. What you change is kept for the next start. Details in
 - **Keyboard and mouse, an Xbox pad, the DualSense's adaptive triggers:**
   implemented, not play-tested (rumble on a DualSense is).
 - **Online multiplayer** on the community server
-  [PS Rewired](https://psrewired.com) (the app's Play online): login, the
+  [PS Rewired](https://psrewired.com) (the app's Play online, or RecompLauncher's Online tile): login, the
   lobby, the game list and creating a game work; a full match with other
   players and voice chat are not tested yet. Offline split-screen works.
 

@@ -1967,9 +1967,13 @@ async function main() {
   if (status && !status.builds) void findPortDirs();
   // opened by the Play shortcut (--play): start the game as the Play button would
   const playNow = await invoke<boolean>("take_play_request").catch(() => false);
+  // --play-online: start online play as the Play online button would (its
+  // message says what is missing: the online ID, the online menus' build)
+  const onlineNow = await invoke<boolean>("take_online_request").catch(() => false);
   // --view <page> on the command line (docs screenshots)
   const view = await invoke<string | null>("take_start_view").catch(() => null);
-  if (playNow && status?.builds?.ok && status.hostSupported && !gameRunning && !rebuildRunning) await startGame(false);
+  if (onlineNow && status?.builds?.ok && status.hostSupported && !gameRunning && !rebuildRunning) await startOnline();
+  else if (playNow && status?.builds?.ok && status.hostSupported && !gameRunning && !rebuildRunning) await startGame(false);
   else if (status && !status.builds?.ok && !installCard()) showView("advanced", "install");
   else if (view && ["home", "graphics", "performance", "game", "controls", "advanced"].includes(view)) showView(view);
 }

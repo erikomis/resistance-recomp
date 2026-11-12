@@ -107,6 +107,7 @@
     read_game_log: () => ({ path: `${data}/last.log`, exists: true, size: log.length, modified: now - 120, text: log, truncated: false }),
     log_paths: () => ({ game: `${data}/last.log`, saves: "/x/savedata", play: data, data }),
     take_play_request: () => false,
+    take_online_request: () => false,
     take_start_view: () => null,
     get_input_map: () => ({ path: `${data}/input.toml`, exists: false, bindings: { keyboard: {}, mouseButtons: {}, controller: {} } }),
     save_input_map: () => `${data}/input.toml`,

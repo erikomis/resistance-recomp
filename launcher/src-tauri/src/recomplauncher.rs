@@ -14,18 +14,36 @@
 //!   window. The launcher replaces itself with the game (exec), so the
 //!   process RecompLauncher waits for is the game and its exit code is the
 //!   game's; a check that fails first exits with an `Exit` code.
+//! - `--play-online [--game <disc>]` with RECOMPLAUNCHER=1 (the profile's
+//!   second tile, "Online (PS Rewired)", adds it after `--play`): Home's Play
+//!   online without the window, the same checks and online environment
+//!   (never a frame-rate setting). When the game has downloaded its v1.7
+//!   update and the v1.7 menus are not built yet, they are built first
+//!   (`progress` lines); before the update is there, the disc's menus run so
+//!   that Multiplayer > Online Game downloads it.
+//!
+//! `--prepare` also builds the v1.7 menus after the campaign when the update
+//! is already in the online folder; that part failing still exits 0 (the
+//! campaign is ready), with a line saying so, and `--play-online` tries again.
 //!
 //! The profile that tells RecompLauncher all this is recomplauncher.json at
 //! the repository's root; launcher/scripts/package-recomplauncher.sh puts it
 //! beside the .app in the release zip.
 //!
 //! Without RECOMPLAUNCHER=1, `--play` stays the Play shortcut's (the window
-//! opens and starts the game); `--game <disc>` is remembered first.
+//! opens and starts the game) and `--play-online` opens the window and
+//! starts online play as its button; `--game <disc>` is remembered first.
 
 use super::*;
 use std::io::Write;
 
-pub const USAGE: &str = "usage: resistance-launcher [--prepare --game <disc .iso or folder>] [--play [--game <disc>]]";
+pub const USAGE: &str =
+    "usage: resistance-launcher [--prepare --game <disc .iso or folder>] [--play [--offline | --play-online] [--game <disc>]] [--play-online [--game <disc>]]";
+
+/// Online play (PS Rewired) instead of the offline game.
+pub const ONLINE_ARG: &str = "--play-online";
+/// The offline game, said explicitly (the profile's first tile).
+pub const OFFLINE_ARG: &str = "--offline";
 
 /// The headless modes' exit codes (recomplauncher.json `exit_codes` has the
 /// player's text for each; launcher/README.md lists them).
@@ -54,12 +72,31 @@ pub enum Exit {
     /// `--play`: the v1.7 update's files are in the play folder; the launcher
     /// window moves them aside (it asks first).
     UpdateFiles = 18,
+    /// `--play-online` without a valid online ID: it is typed once in the
+    /// launcher window (which is opened for it).
+    OnlineId = 19,
+    /// `--play-online`: the v1.7 update is downloaded, and building the v1.7
+    /// menus from it failed (or it is not the tested EBOOT.BIN).
+    OnlineBuild = 20,
 }
 
 impl Exit {
     #[cfg(test)]
-    pub const ALL: [Exit; 11] =
-        [Exit::Ok, Exit::Usage, Exit::GameCopy, Exit::NeedsTools, Exit::Network, Exit::Build, Exit::Running, Exit::Disk, Exit::Unsupported, Exit::NotInstalled, Exit::UpdateFiles];
+    pub const ALL: [Exit; 13] = [
+        Exit::Ok,
+        Exit::Usage,
+        Exit::GameCopy,
+        Exit::NeedsTools,
+        Exit::Network,
+        Exit::Build,
+        Exit::Running,
+        Exit::Disk,
+        Exit::Unsupported,
+        Exit::NotInstalled,
+        Exit::UpdateFiles,
+        Exit::OnlineId,
+        Exit::OnlineBuild,
+    ];
 
     pub fn code(self) -> i32 {
         self as i32
@@ -90,23 +127,31 @@ impl Fail {
 #[derive(Debug, PartialEq)]
 pub enum Mode {
     /// The window, as always (`--play` there is the Play shortcut's); `game`:
-    /// a disc to use and remember first.
-    Window { game: Option<PathBuf> },
+    /// a disc to use and remember first; `online`: start online play once
+    /// the window is up (`--play-online`).
+    Window { game: Option<PathBuf>, online: bool },
     Prepare { game: Option<PathBuf> },
     PlayHeadless { game: Option<PathBuf> },
+    PlayOnlineHeadless { game: Option<PathBuf> },
 }
 
 /// What the command line (argv, program first) asks for. `recomplauncher`:
-/// RECOMPLAUNCHER=1 is set (only then is `--play` headless). Arguments it
-/// does not know are left to the window (macOS's own `-psn_...`, `--view`).
+/// RECOMPLAUNCHER=1 is set (only then are `--play` and `--play-online`
+/// headless). `--play-online` alone, or after `--play`, is online play.
+/// Arguments it does not know are left to the window (macOS's own
+/// `-psn_...`, `--view`).
 pub fn mode(args: &[String], recomplauncher: bool) -> Result<Mode, String> {
-    let (mut prepare, mut play, mut game) = (false, false, None::<PathBuf>);
+    let (mut prepare, mut play, mut online, mut offline, mut game) = (false, false, false, false, None::<PathBuf>);
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
         if a == "--prepare" {
             prepare = true;
         } else if a == play_shortcut::ARG {
             play = true;
+        } else if a == ONLINE_ARG {
+            online = true;
+        } else if a == OFFLINE_ARG {
+            offline = true;
         } else if let Some(v) = a.strip_prefix("--game=") {
             game = Some(PathBuf::from(v));
         } else if a == "--game" {
@@ -118,11 +163,15 @@ pub fn mode(args: &[String], recomplauncher: bool) -> Result<Mode, String> {
     }
     // an empty path (a blank {game}) is no path
     let game = game.filter(|g| !g.as_os_str().is_empty());
-    match (prepare, play) {
+    if online && offline {
+        return Err(format!("{ONLINE_ARG} and {OFFLINE_ARG} are two different games"));
+    }
+    match (prepare, play || online) {
         (true, true) => Err("--prepare and --play are two separate runs".into()),
         (true, false) => Ok(Mode::Prepare { game }),
+        (false, true) if recomplauncher && online => Ok(Mode::PlayOnlineHeadless { game }),
         (false, true) if recomplauncher => Ok(Mode::PlayHeadless { game }),
-        _ => Ok(Mode::Window { game }),
+        _ => Ok(Mode::Window { game, online }),
     }
 }
 
@@ -259,10 +308,27 @@ const STEPS: &[(&str, f64, &str)] = &[
     ("build", 37.0, "Compiling the game"),
 ];
 
+/// The v1.7 menus' build (tools/rebuild.sh toolkit, then eboot17, whose
+/// tools/v17/regen_eboot_v17.sh says "==> v1.7 menus: <step>"), as
+/// online_menus_script runs it. One build target.
+const ONLINE_STEPS: &[(&str, f64, &str)] = &[
+    ("deps", 8.0, "Installing the build tools and libraries"),
+    ("toolkit", 2.0, "Setting up the recompiler"),
+    ("venv", 2.0, "Making the Python environment"),
+    ("decrypt", 1.0, "Decrypting the online menus from the game's v1.7 update"),
+    ("analyse", 6.0, "Analysing the online menus' code"),
+    ("lift", 40.0, "Recompiling the online menus"),
+    ("spu", 6.0, "Recompiling the online menus' SPU programs"),
+    ("build", 35.0, "Compiling the online menus"),
+];
+
 /// Where the install's share starts and how much of 0..1 it takes: before it
 /// come the copy, the tools and the sources' update; 1.0 is "ready".
 const INSTALL_FROM: f64 = 0.03;
 const INSTALL_SPAN: f64 = 0.96;
+/// With the v1.7 menus to build after the campaign (the update is already
+/// in the online folder): the install takes up to here, they take the rest.
+const ONLINE_FROM: f64 = 0.80;
 
 fn strip_esc(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
@@ -295,9 +361,14 @@ fn counter(s: &str) -> Option<(u64, u64)> {
 /// The install's progress, read from its output: the step from "==> <step>",
 /// inside it "==> [k/n]" (the build tools) and ninja's "[k/n]" (the build's
 /// two or more targets), and otherwise time (half the step after two minutes,
-/// never past 90% of it) as the window does.
-#[derive(Default)]
+/// never past 90% of it) as the window does. Default: the install's steps;
+/// Tracker::online: the v1.7 menus' build.
 pub(crate) struct Tracker {
+    steps: &'static [(&'static str, f64, &'static str)],
+    /// The builds ninja runs in the build step, one after the other.
+    targets: u32,
+    /// What it says before the first step.
+    idle: &'static str,
     cur: Option<usize>,
     /// The step's "==> done" (tools/rebuild.sh ends each run with one).
     cur_done: bool,
@@ -307,13 +378,29 @@ pub(crate) struct Tracker {
     ninja_last: u64,
 }
 
+impl Default for Tracker {
+    fn default() -> Self {
+        Tracker::new(STEPS, 2, "Starting the install")
+    }
+}
+
 impl Tracker {
+    fn new(steps: &'static [(&'static str, f64, &'static str)], targets: u32, idle: &'static str) -> Self {
+        Tracker { steps, targets, idle, cur: None, cur_done: false, sub: 0.0, since: 0.0, ninja_runs: 0, ninja_last: 0 }
+    }
+
+    pub fn online() -> Self {
+        Tracker::new(ONLINE_STEPS, 1, "Starting the online menus' build")
+    }
+
     /// Read one output line (at `now` seconds); true when a step started.
     pub fn feed(&mut self, raw: &str, now: f64) -> bool {
         let line = strip_esc(raw);
         let line = line.trim_end();
         if let Some(rest) = line.strip_prefix("==>") {
             let rest = rest.trim_start();
+            // tools/v17/regen_eboot_v17.sh's steps
+            let rest = rest.strip_prefix("v1.7 menus:").map(str::trim_start).unwrap_or(rest);
             if let Some((k, n)) = counter(rest) {
                 self.sub = self.sub.max((k.saturating_sub(1)) as f64 / n as f64);
                 return false;
@@ -323,10 +410,10 @@ impl Tracker {
                 self.cur_done = true;
                 return false;
             }
-            if let Some(i) = STEPS.iter().position(|(id, _, _)| *id == word) {
+            if let Some(i) = self.steps.iter().position(|(id, _, _)| *id == word) {
                 // never back to an earlier step: the bar only moves on
                 if self.cur.is_none_or(|c| i > c) {
-                    *self = Tracker { cur: Some(i), since: now, ..Default::default() };
+                    *self = Tracker { cur: Some(i), since: now, ..Tracker::new(self.steps, self.targets, self.idle) };
                     return true;
                 }
             }
@@ -338,33 +425,33 @@ impl Tracker {
                     self.ninja_runs += 1;
                 }
                 self.ninja_last = k;
-                // two targets as a rule (the menus, the campaign)
-                self.sub = self.sub.max(((self.ninja_runs as f64 + k as f64 / n as f64) / 2.0).min(0.98));
+                // the install: two targets as a rule (the menus, the campaign)
+                self.sub = self.sub.max(((self.ninja_runs as f64 + k as f64 / n as f64) / self.targets.max(1) as f64).min(0.98));
             }
         }
         false
     }
 
     pub fn step(&self) -> Option<&'static str> {
-        self.cur.map(|i| STEPS[i].0)
+        self.cur.map(|i| self.steps[i].0)
     }
 
     pub fn text(&self) -> &'static str {
-        self.cur.map_or("Starting the install", |i| STEPS[i].2)
+        self.cur.map_or(self.idle, |i| self.steps[i].2)
     }
 
-    /// The install's share done, 0..1.
+    /// The run's share done, 0..1.
     pub fn fraction(&self, now: f64) -> f64 {
-        let total: f64 = STEPS.iter().map(|s| s.1).sum();
+        let total: f64 = self.steps.iter().map(|s| s.1).sum();
         let Some(i) = self.cur else { return 0.0 };
-        let before: f64 = STEPS[..i].iter().map(|s| s.1).sum();
+        let before: f64 = self.steps[..i].iter().map(|s| s.1).sum();
         let part = if self.cur_done {
             1.0
         } else {
             let el = (now - self.since).max(0.0);
             self.sub.max((el / (el + 120.0)).min(0.9))
         };
-        ((before + STEPS[i].1 * part) / total).clamp(0.0, 1.0)
+        ((before + self.steps[i].1 * part) / total).clamp(0.0, 1.0)
     }
 }
 
@@ -552,16 +639,57 @@ fn prepare_with(out: &Out, game: Option<&Path>) -> Result<(), Fail> {
         InstallError::NoDisc => Fail::new(Exit::GameCopy, "the disc is not mounted"),
         InstallError::Other(m) => Fail::new(Exit::Build, m),
     })?;
+    // the game's v1.7 update already in the online folder (downloaded by an
+    // earlier online start) and its menus not built: they follow the campaign
+    let online_after = online_menus_pending(&load_settings_file(), &at);
+    let span = if online_after { ONLINE_FROM - INSTALL_FROM } else { INSTALL_SPAN };
     out.progress(INSTALL_FROM, "Starting the install");
     out.line(&first);
+    let (code, step, tail) = run_tracked(out, &mut cmd, Tracker::default(), INSTALL_FROM, span, log).map_err(|e| Fail::new(Exit::Build, e))?;
+    if code != 0 {
+        let exit = classify_failure(&tail, step);
+        return Err(Fail::new(exit, stopped("the install", code, step, &tail, &install_log_path())));
+    }
+    let b = resolve_builds(&at);
+    if !b.ok {
+        return Err(Fail::new(Exit::Build, format!("the install finished, but the game is not all there in {}: {}", b.root, b.missing.join(", "))));
+    }
+    out.line(&format!("the game: {}", b.eboot.as_deref().unwrap_or(&b.root)));
+    if online_after && online_menus_pending(&load_settings_file(), &at) {
+        // the campaign is ready whatever happens here: a failure is said,
+        // and --play-online builds them again
+        if let Err(f) = build_online_menus(out, ONLINE_FROM, 0.99 - ONLINE_FROM) {
+            out.line(&format!("WARNING: the online menus were not built: {}", f.message()));
+            out.progress(1.0, &format!("Ready to play. The online menus were not built ({}): starting Online tries again", first_line(f.message())));
+            return Ok(());
+        }
+        out.progress(1.0, "Ready to play, offline and online");
+        return Ok(());
+    }
+    out.progress(1.0, "Ready to play");
+    Ok(())
+}
+
+/// "the install stopped in its lift step (exit 1): <its last ERROR: line>",
+/// or the log's path when it printed none.
+fn stopped(what: &str, code: i32, step: Option<&str>, tail: &str, log: &Path) -> String {
+    let at = step.map(|s| format!(" in its {s} step")).unwrap_or_default();
+    match tail.lines().rev().find(|l| l.starts_with("ERROR:")).map(|l| l.trim_start_matches("ERROR:").trim()) {
+        Some(e) => format!("{what} stopped{at} (exit {code}): {e}"),
+        None => format!("{what} stopped{at} (exit {code}); its log: {}", log.display()),
+    }
+}
+
+/// Run `cmd` (its output piped) in its own process group, as from the
+/// window, to its end: its lines printed and written to `log`, and read by
+/// `tracker` into `progress` lines from `from` over `span`. Its exit code
+/// (-1 for a signal), the step it was in, and its last lines.
+fn run_tracked(out: &Out, cmd: &mut Command, tracker: Tracker, from: f64, span: f64, log: Option<fs::File>) -> Result<(i32, Option<&'static str>, String), String> {
     let started = std::time::Instant::now();
-    let tracker = std::sync::Arc::new(Mutex::new(Tracker::default()));
+    let tracker = std::sync::Arc::new(Mutex::new(tracker));
     let tail = std::sync::Arc::new(Tail::default());
     let shown = std::sync::Arc::new(Out::default());
-    {
-        let mut l = shown.last.lock().unwrap();
-        *l = out.at();
-    }
+    *shown.last.lock().unwrap() = out.at();
     let sink: LineSink = {
         let (tracker, tail, shown) = (tracker.clone(), tail.clone(), shown.clone());
         std::sync::Arc::new(move |line: &str| {
@@ -570,37 +698,64 @@ fn prepare_with(out: &Out, game: Option<&Path>) -> Result<(), Fail> {
             let now = started.elapsed().as_secs_f64();
             let mut t = tracker.lock().unwrap();
             let new_step = t.feed(line, now);
-            let f = INSTALL_FROM + INSTALL_SPAN * t.fraction(now);
+            let f = from + span * t.fraction(now);
             // a new step always; otherwise every half percent
             if new_step || f - shown.at() >= 0.005 {
                 shown.progress(f, t.text());
             }
         })
     };
-    // its own process group, as from the window: a stop reaches all of it
-    own_process_group(&mut cmd);
-    let child = cmd.spawn().map_err(|e| Fail::new(Exit::Build, format!("zsh: {e}")))?;
+    // a stop reaches all of it
+    own_process_group(cmd);
+    let child = cmd.spawn().map_err(|e| format!("zsh: {e}"))?;
     let code = pump_child(child, sink, log).join().unwrap_or(-1);
     *out.last.lock().unwrap() = shown.at();
     let step = tracker.lock().unwrap().step();
+    Ok((code, step, tail.text()))
+}
+
+// ---------------------------------------------------------------------------
+// The v1.7 menus (online play)
+// ---------------------------------------------------------------------------
+
+/// What a failed online-menus build's output says went wrong: the network
+/// and the disk as for the install; anything else is the build's.
+fn online_failure(log: &str, step: Option<&str>) -> Exit {
+    match classify_failure(log, step.or(Some("build"))) {
+        e @ (Exit::Network | Exit::Disk | Exit::Running) => e,
+        _ => Exit::OnlineBuild,
+    }
+}
+
+/// The game has downloaded its v1.7 update into the online folder, and the
+/// v1.7 menus are not built from it yet (in the port folder `root`).
+fn online_menus_pending(s: &Settings, root: &Path) -> bool {
+    online_update_eboot(s).is_file() && resolve_builds(root).eboot_v17.is_none()
+}
+
+/// Build the v1.7 menus from the update in the online folder, as Home's
+/// "Prepare the online menus" (online_menus_job), with `progress` lines from
+/// `from` over `span` and its output in online-menus.log. The caller holds
+/// the install lock.
+fn build_online_menus(out: &Out, from: f64, span: f64) -> Result<(), Fail> {
+    let st = load_settings_file();
+    let (mut cmd, first) = online_menus_job(&st).map_err(|m| Fail::new(Exit::OnlineBuild, m))?;
+    out.progress(from, "Building the online menus from the game's v1.7 update (once, a few minutes)");
+    out.line(&first);
+    let log_path = online_menus_log_path();
+    let log = fs::File::create(&log_path).ok();
+    let (code, step, tail) = run_tracked(out, &mut cmd, Tracker::online(), from, span, log).map_err(|m| Fail::new(Exit::OnlineBuild, m))?;
     if code != 0 {
-        let exit = classify_failure(&tail.text(), step);
-        let last_error = tail.text().lines().rev().find(|l| l.starts_with("ERROR:")).map(|l| l.trim_start_matches("ERROR:").trim().to_string());
-        return Err(Fail::new(
-            exit,
-            match last_error {
-                Some(e) => format!("the install stopped{} (exit {code}): {e}", step.map(|s| format!(" in its {s} step")).unwrap_or_default()),
-                None => format!("the install stopped{} (exit {code}); its log: {}", step.map(|s| format!(" in its {s} step")).unwrap_or_default(), install_log_path().display()),
-            },
-        ));
+        return Err(Fail::new(online_failure(&tail, step), stopped("the online menus' build", code, step, &tail, &log_path)));
     }
-    let b = resolve_builds(&at);
-    if !b.ok {
-        return Err(Fail::new(Exit::Build, format!("the install finished, but the game is not all there in {}: {}", b.root, b.missing.join(", "))));
+    let root = port_root(&st).ok_or_else(|| Fail::new(Exit::NotInstalled, "no port folder"))?;
+    match resolve_builds(&root).eboot_v17 {
+        Some(e) => {
+            out.line(&format!("the online menus: {e}"));
+            Ok(())
+        }
+        None => Err(Fail::new(Exit::OnlineBuild, format!("the online menus' build finished, but {} has no build/{TITLE_ID}_eboot_v17", root.display()))),
     }
-    out.line(&format!("the game: {}", b.eboot.as_deref().unwrap_or(&b.root)));
-    out.progress(1.0, "Ready to play");
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -612,11 +767,6 @@ fn prepare_with(out: &Out, game: Option<&Path>) -> Result<(), Fail> {
 /// process becomes the game. Returns only when it could not start (the code
 /// to exit with).
 pub fn play(game: Option<&Path>) -> i32 {
-    let fail = |f: Fail| {
-        eprintln!("ERROR: {}", f.message());
-        println!("ERROR: {}", f.message());
-        f.exit.code()
-    };
     if !cfg!(target_os = "macos") {
         return fail(Fail::new(Exit::Unsupported, format!("the game runs on macOS only; this is {}", std::env::consts::OS)));
     }
@@ -642,21 +792,39 @@ pub fn play(game: Option<&Path>) -> i32 {
     let s = load_settings_file();
     let mut l = match prepare_launch(&s, false, false) {
         Ok(l) => l,
-        Err(e) => {
-            return fail(match e {
-                LaunchError::NoDisc => Fail::new(Exit::GameCopy, format!("no {TITLE_ID} disc: pick your copy again")),
-                LaunchError::WrongDisc(m) => Fail::new(Exit::GameCopy, m),
-                LaunchError::UpdateFiles => Fail::new(Exit::UpdateFiles, "the v1.7 update's files are in the play folder: open the Resistance Launcher once, it moves them aside"),
-                LaunchError::NotBuilt(m) => Fail::new(Exit::NotInstalled, format!("the game is not installed yet ({m}): run the setup")),
-                LaunchError::Other(m) => Fail::new(Exit::Build, m),
-            })
-        }
+        Err(e) => return fail(launch_fail(e)),
     };
     println!("{} -> {}", l.argv.join(" "), l.log_path.display());
     if let Some(e) = &l.backup_error {
         println!("the saves' backup before playing failed: {e}");
     }
-    // keep the Mac awake for exactly as long as this process (the game) lives
+    keep_awake(&s);
+    exec(&mut l.cmd, &l.argv[0])
+}
+
+/// A headless start that could not start: said on stderr and stdout, and the
+/// code to exit with.
+fn fail(f: Fail) -> i32 {
+    eprintln!("ERROR: {}", f.message());
+    println!("ERROR: {}", f.message());
+    f.exit.code()
+}
+
+fn launch_fail(e: LaunchError) -> Fail {
+    match e {
+        LaunchError::NoDisc => Fail::new(Exit::GameCopy, format!("no {TITLE_ID} disc: pick your copy again")),
+        LaunchError::WrongDisc(m) => Fail::new(Exit::GameCopy, m),
+        LaunchError::UpdateFiles => Fail::new(Exit::UpdateFiles, "the v1.7 update's files are in the play folder: open the Resistance Launcher once, it moves them aside"),
+        LaunchError::NotBuilt(m) => Fail::new(Exit::NotInstalled, format!("the game is not installed yet ({m}): run the setup")),
+        LaunchError::OnlineId => Fail::new(Exit::OnlineId, NEEDS_ONLINE_ID),
+        LaunchError::OnlineBuild => Fail::new(Exit::OnlineBuild, "the v1.7 update is downloaded and the online menus are not built from it yet"),
+        LaunchError::Other(m) => Fail::new(Exit::Build, m),
+    }
+}
+
+/// Keep the Mac awake for exactly as long as this process (the game) lives,
+/// when the setting asks for it.
+fn keep_awake(s: &Settings) {
     if s.keep_awake && Path::new("/usr/bin/caffeinate").is_file() {
         let _ = Command::new("/usr/bin/caffeinate")
             .args(["-i", "-w", &std::process::id().to_string()])
@@ -665,6 +833,97 @@ pub fn play(game: Option<&Path>) -> i32 {
             .stderr(Stdio::null())
             .spawn();
     }
+}
+
+// ---------------------------------------------------------------------------
+// --play-online (RECOMPLAUNCHER=1)
+// ---------------------------------------------------------------------------
+
+const NEEDS_ONLINE_ID: &str = "online play needs your online ID, set once in the Resistance Launcher window: type it under Online (PS Rewired) on Home, close the window, then start Online again";
+
+/// What the player does the first time, when the disc's menus start so the
+/// game can download its update.
+pub(crate) const FIRST_ONLINE: &str = "Online, first time: the game starts with the disc's menus. Choose Multiplayer > Online Game: the game downloads its v1.7 update (PS Rewired's servers require it) into the online folder. Quit the game when it has finished; the next start of Online builds the online menus from it (once, a few minutes), then plays online.";
+
+/// The launcher's own window, for the online ID (`open` on this .app, so a
+/// window that is already open comes to the front). False when this is not
+/// a bundled app (development builds, tests) or it could not be opened.
+fn open_launcher_window() -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let Some(bundle) = app_icon::app_bundle() else { return false };
+    Command::new("/usr/bin/open")
+        .arg(&bundle)
+        .args(["--args", "--view", "home"])
+        .env_remove("RECOMPLAUNCHER")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// `--play-online [--game <disc>]` started by RecompLauncher: Home's Play
+/// online (the same checks and online environment, prepare_online_launch),
+/// then this process becomes the game. With the update downloaded and the
+/// v1.7 menus not built, they are built first. Returns only when it could
+/// not start (the code to exit with).
+pub fn play_online(game: Option<&Path>) -> i32 {
+    if !cfg!(target_os = "macos") {
+        return fail(Fail::new(Exit::Unsupported, format!("the game runs on macOS only; this is {}", std::env::consts::OS)));
+    }
+    if let Some(g) = game {
+        // checked before anything is written
+        if let Err(f) = check_copy(g) {
+            return fail(f);
+        }
+    }
+    // nothing happens online without the ID (typed in the window, never here)
+    if !valid_online_id(load_settings_file().online_id.trim()) {
+        let opened = open_launcher_window();
+        return fail(Fail::new(Exit::OnlineId, if opened { format!("{NEEDS_ONLINE_ID} (the window has opened)") } else { NEEDS_ONLINE_ID.to_string() }));
+    }
+    let lock = match install_lock() {
+        Ok(Some(lock)) => Some(lock),
+        Ok(None) => return fail(Fail::new(Exit::Running, "the game is being installed, or its online menus built: wait for that to finish")),
+        Err(_) => None,
+    };
+    if game_running() {
+        return fail(Fail::new(Exit::Running, "the game is already running"));
+    }
+    if let Some(g) = game {
+        if let Err(f) = use_disc(g) {
+            return fail(f);
+        }
+    }
+    let s = load_settings_file();
+    if let Some(root) = port_root(&s).filter(|r| resolve_builds(r).ok) {
+        if online_menus_pending(&s, &root) {
+            let out = Out::default();
+            if let Err(f) = build_online_menus(&out, 0.0, 0.99) {
+                out.progress(out.at(), &format!("The online menus could not be built: {}", first_line(f.message())));
+                return fail(f);
+            }
+            out.progress(1.0, "The online menus are built: starting online play");
+        }
+    }
+    drop(lock);
+    let mut l = match prepare_online_launch(&load_settings_file(), &input_env(), false) {
+        Ok(l) => l,
+        Err(e) => return fail(launch_fail(e)),
+    };
+    println!("{} -> {}", l.argv.join(" "), l.log_path.display());
+    if let Some(m) = &l.mounted {
+        println!("the disc: mounted at {m}");
+    }
+    if !l.v17 {
+        // the game's own window takes over now (its output goes to the
+        // online folder's last.log): said before it does
+        println!("{FIRST_ONLINE}");
+        eprintln!("{FIRST_ONLINE}");
+    }
+    keep_awake(&s);
     exec(&mut l.cmd, &l.argv[0])
 }
 
@@ -706,7 +965,7 @@ mod tests {
     #[test]
     fn command_line_modes() {
         let p = |v: &[&str], env: bool| mode(&args(v), env);
-        assert_eq!(p(&["l"], false), Ok(Mode::Window { game: None }));
+        assert_eq!(p(&["l"], false), Ok(Mode::Window { game: None, online: false }));
         assert_eq!(p(&["l", "--prepare", "--game", "/a b/x.iso"], false), Ok(Mode::Prepare { game: Some("/a b/x.iso".into()) }));
         assert_eq!(p(&["l", "--prepare", "--game=/d"], true), Ok(Mode::Prepare { game: Some("/d".into()) }));
         assert_eq!(p(&["l", "--game", "/d", "--prepare"], false), Ok(Mode::Prepare { game: Some("/d".into()) }));
@@ -716,14 +975,28 @@ mod tests {
         assert!(p(&["l", "--prepare", "--game", "--play"], false).is_err());
         assert!(p(&["l", "--prepare", "--play"], true).is_err());
         // --play is headless only when RecompLauncher started it
-        assert_eq!(p(&["l", "--play"], false), Ok(Mode::Window { game: None }));
-        assert_eq!(p(&["l", "--play", "--game", "/d"], false), Ok(Mode::Window { game: Some("/d".into()) }));
+        assert_eq!(p(&["l", "--play"], false), Ok(Mode::Window { game: None, online: false }));
+        assert_eq!(p(&["l", "--play", "--game", "/d"], false), Ok(Mode::Window { game: Some("/d".into()), online: false }));
         assert_eq!(p(&["l", "--play", "--game", "/d"], true), Ok(Mode::PlayHeadless { game: Some("/d".into()) }));
         assert_eq!(p(&["l", "--play", "--exit-with-game", "-psn_0_123"], true), Ok(Mode::PlayHeadless { game: None }));
         // without --play or --prepare, RECOMPLAUNCHER=1 changes nothing
-        assert_eq!(p(&["l", "--view", "controls"], true), Ok(Mode::Window { game: None }));
+        assert_eq!(p(&["l", "--view", "controls"], true), Ok(Mode::Window { game: None, online: false }));
         // the program name is not an argument
-        assert_eq!(p(&["--prepare"], true), Ok(Mode::Window { game: None }));
+        assert_eq!(p(&["--prepare"], true), Ok(Mode::Window { game: None, online: false }));
+        // online play: alone or after --play (the Online tile adds it to start.args)
+        assert_eq!(p(&["l", "--play-online"], true), Ok(Mode::PlayOnlineHeadless { game: None }));
+        assert_eq!(p(&["l", "--play", "--game", "/d", "--play-online"], true), Ok(Mode::PlayOnlineHeadless { game: Some("/d".into()) }));
+        assert_eq!(p(&["l", "--play-online", "--game=/d"], true), Ok(Mode::PlayOnlineHeadless { game: Some("/d".into()) }));
+        // without RecompLauncher: the window, which starts online play itself
+        assert_eq!(p(&["l", "--play-online"], false), Ok(Mode::Window { game: None, online: true }));
+        assert_eq!(p(&["l", "--play", "--game", "/d", "--play-online"], false), Ok(Mode::Window { game: Some("/d".into()), online: true }));
+        // the offline tile's --offline is the offline game, as --play alone
+        assert_eq!(p(&["l", "--play", "--game", "/d", "--offline"], true), Ok(Mode::PlayHeadless { game: Some("/d".into()) }));
+        assert_eq!(p(&["l", "--play", "--offline"], false), Ok(Mode::Window { game: None, online: false }));
+        assert!(p(&["l", "--play", "--offline", "--play-online"], true).is_err());
+        assert!(p(&["l", "--prepare", "--play-online"], true).is_err());
+        assert!(p(&["l", "--play-online", "--game"], true).is_err());
+        assert_eq!(p(&["l", "--prepare", "--offline", "--game", "/d"], true), Ok(Mode::Prepare { game: Some("/d".into()) }));
     }
 
     #[test]
@@ -855,6 +1128,116 @@ mod tests {
         }
         assert_eq!(v["prepare"]["args"], serde_json::json!(["--prepare", "--game", "{game}"]));
         assert_eq!(v["start"]["args"][0], "--play");
+    }
+
+    /// The profile's two tiles: the offline game and online play, each with
+    /// its own saves, and their arguments (after start.args, as RecompLauncher
+    /// passes them) start what the tile says, headless only under it.
+    #[test]
+    fn profile_tiles_start_offline_and_online() {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../recomplauncher.json");
+        let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
+        let games = v["games"].as_array().unwrap();
+        assert_eq!(games.len(), 2);
+        let start: Vec<String> = v["start"]["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().replace("{game}", "/Volumes/RES")).collect();
+        let argv = |g: &serde_json::Value| -> Vec<String> {
+            let mut a = vec!["resistance-launcher".to_string()];
+            a.extend(start.iter().cloned());
+            a.extend(g["args"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()));
+            a
+        };
+        let disc = Some(PathBuf::from("/Volumes/RES"));
+        let (off, on) = (&games[0], &games[1]);
+        assert_eq!(off["id"], "offline");
+        assert_eq!(on["id"], "online");
+        assert!(on["name"].as_str().unwrap().contains("Online (PS Rewired)"));
+        assert_eq!(mode(&argv(off), true), Ok(Mode::PlayHeadless { game: disc.clone() }));
+        assert_eq!(mode(&argv(on), true), Ok(Mode::PlayOnlineHeadless { game: disc.clone() }));
+        assert_eq!(mode(&argv(on), false), Ok(Mode::Window { game: disc.clone(), online: true }));
+        // the online folder's own saves (its cwd-relative gamedata), never the offline ones
+        let saves = |g: &serde_json::Value| g["saves"][0].as_str().unwrap().to_string();
+        assert_eq!(saves(off), v["saves"][0].as_str().unwrap());
+        assert!(saves(on).ends_with("/resistance-recomp/online/gamedata/dev_hdd0/home/00000001/savedata"), "{}", saves(on));
+        assert_eq!(saves(on).replace("/online/", "/"), saves(off));
+        // the online ID action opens the folder the launcher app is in
+        let act = v["actions"].as_array().unwrap().iter().find(|a| a["id"] == "online_id").unwrap();
+        let folder = act["open"].as_str().unwrap();
+        assert_eq!(v["folders"][folder][0]["path"], "{install}");
+        assert!(v["start"]["program"][0].as_str().unwrap().starts_with("Resistance Launcher.app/"));
+        assert_eq!(v["folders"]["online"][0]["path"].as_str().unwrap(), saves(on).trim_end_matches("/gamedata/dev_hdd0/home/00000001/savedata"));
+        // no setting can carry the online ID (it is typed in the window only)
+        assert!(!fs::read_to_string(&p).unwrap().contains("onlineId"));
+    }
+
+    #[test]
+    fn online_menus_output_maps_to_rising_fractions() {
+        // online_menus_script's output with the deps step, roughly
+        let lines = [
+            "$ cd /x/src && tools/rebuild.sh eboot17   # the v1.7 menus, for online play",
+            "==> deps",
+            "==> [3/8] ninja",
+            "\x1b[1m==> toolkit (the ps3recomp checkout)\x1b[0m",
+            "\x1b[1m==> done\x1b[0m",
+            "==> venv",
+            "\x1b[1m==> eboot17 (the v1.7 menus, for online play: decrypt, analyse, lift, spu, build)\x1b[0m",
+            "\x1b[1m==> v1.7 menus: decrypt\x1b[0m",
+            "  from /x/online/dev_hdd0/game/BCUS98107/USRDIR/EBOOT.BIN",
+            "\x1b[1m==> v1.7 menus: analyse\x1b[0m",
+            "\x1b[1m==> v1.7 menus: lift\x1b[0m",
+            "\x1b[1m==> v1.7 menus: spu\x1b[0m",
+            "\x1b[1m==> v1.7 menus: build\x1b[0m",
+            "[1/500] Building CXX object a.o",
+            "[250/500] Building CXX object b.o",
+            "[500/500] Linking CXX executable ResistanceRecomp",
+            "\x1b[1m==> done\x1b[0m",
+        ];
+        let mut t = Tracker::online();
+        assert_eq!(t.text(), "Starting the online menus' build");
+        let (mut last, mut steps) = (-1.0, Vec::new());
+        for (i, l) in lines.iter().enumerate() {
+            if t.feed(l, i as f64) {
+                steps.push(t.step().unwrap());
+            }
+            let f = t.fraction(i as f64);
+            assert!((0.0..=1.0).contains(&f) && f >= last, "{l}: {f} after {last}");
+            last = f;
+        }
+        assert_eq!(steps, ["deps", "toolkit", "venv", "decrypt", "analyse", "lift", "spu", "build"]);
+        assert!((last - 1.0).abs() < 1e-9, "{last}");
+        // one build target: ninja half way is half of the build step
+        let mut t = Tracker::online();
+        t.feed("==> v1.7 menus: build", 0.0);
+        let at = |t: &Tracker| t.fraction(0.0);
+        let start = at(&t);
+        t.feed("[250/500] x", 0.0);
+        let total: f64 = ONLINE_STEPS.iter().map(|s| s.1).sum();
+        assert!((at(&t) - start - 0.5 * 35.0 / total).abs() < 1e-9);
+        // the install's tracker does not take the online steps' names
+        let mut t = Tracker::default();
+        assert!(!t.feed("==> eboot17 (x)", 0.0));
+        assert_eq!(t.text(), "Starting the install");
+    }
+
+    #[test]
+    fn online_build_failures_and_messages() {
+        assert_eq!(online_failure("ERROR: the downloaded EBOOT.BIN is not the tested v1.7 one", Some("decrypt")), Exit::OnlineBuild);
+        assert_eq!(online_failure("error: use of undeclared identifier", Some("build")), Exit::OnlineBuild);
+        assert_eq!(online_failure("Traceback ...", None), Exit::OnlineBuild);
+        assert_eq!(online_failure("fatal: unable to access 'https://github.com/x': Could not resolve host", Some("toolkit")), Exit::Network);
+        assert_eq!(online_failure("ld: write failed: No space left on device", Some("build")), Exit::Disk);
+        let log = Path::new("/d/online-menus.log");
+        assert_eq!(stopped("the online menus' build", 1, Some("lift"), "x\nERROR: boom\ny", log), "the online menus' build stopped in its lift step (exit 1): boom");
+        assert_eq!(stopped("the install", 2, None, "x", log), "the install stopped (exit 2); its log: /d/online-menus.log");
+        // what the player is told the first time names the menu to pick
+        assert!(FIRST_ONLINE.contains("Multiplayer > Online Game") && FIRST_ONLINE.contains("next start"));
+        assert!(NEEDS_ONLINE_ID.contains("Resistance Launcher window"));
+        // the start's own exit codes for online play
+        assert_eq!(launch_fail(LaunchError::OnlineId).exit, Exit::OnlineId);
+        assert_eq!(launch_fail(LaunchError::OnlineBuild).exit, Exit::OnlineBuild);
+        assert_eq!(launch_fail(LaunchError::NoDisc).exit, Exit::GameCopy);
+        assert_eq!(launch_fail(LaunchError::NotBuilt("x".into())).exit, Exit::NotInstalled);
+        // the install's progress leaves room for the online menus, and they end before 1.0
+        const { assert!(INSTALL_FROM < ONLINE_FROM && ONLINE_FROM < 0.99) };
     }
 
     /// Every value the profile's settings write into launcher.json (as
