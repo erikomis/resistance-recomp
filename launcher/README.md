@@ -311,7 +311,13 @@ event loop or checks for an app update.
   as the window's bar) and the install's output, writes `install.log` like
   the window, and holds `install.lock` in the data folder, which the window's
   install also takes, so the two never run at once. Exit 0 only when the
-  game's builds are there afterwards.
+  game's builds are there afterwards. When the game's v1.7 update is
+  already in the online folder (an earlier online start downloaded it) and
+  the v1.7 menus are not built, the setup builds them after the campaign
+  (the install's bar then stops at 0.80 and the menus take the rest, into
+  `online-menus.log`). That part failing still exits 0, since the campaign
+  is ready: the last `progress` line and a `WARNING:` line say why, and the
+  Online tile's start tries again.
 - **Play** (`start`): `--play --game <disc>`. RecompLauncher sets
   `RECOMPLAUNCHER=1`, and then Play runs without the window: the same
   checks, save backup and settings as the Play button, and the launcher
@@ -319,6 +325,33 @@ event loop or checks for an app update.
   gets its exit code (`caffeinate -w` keeps the Mac awake while it runs).
   Without `RECOMPLAUNCHER=1`, `--play` is the Play shortcut's as before, and
   `--game` only picks and remembers the disc first.
+- **Two tiles** (`games`, RecompLauncher 0.90 Beta 36 and newer; older ones
+  show one tile, the offline game): **Resistance: Fall of Man** adds
+  `--offline` (the offline game, the same as `--play` alone) and
+  **Resistance: Fall of Man — Online (PS Rewired)** adds `--play-online`,
+  each with its own saves (the online folder has its own `gamedata`).
+- **Online** (`--play --game <disc> --play-online`, or `--play-online`
+  alone): Home's **Play online** without the window, with the same code
+  (`prepare_online_launch`): the online ID from `launcher.json`, the online
+  folder, `online_env` and never a frame-rate variable, even from the
+  environment RecompLauncher passes (a test runs it on a fake port and disc
+  with every frame-rate setting on). Then, as the window:
+  - the v1.7 menus built: they start, and the process becomes the game;
+  - the update downloaded, the menus not built: they are built first
+    (`tools/rebuild.sh eboot17`, as **Prepare the online menus**, the same
+    SHA-256 check of the downloaded `EBOOT.BIN`), with `progress` lines and
+    `online-menus.log`, then the game starts;
+  - nothing downloaded yet: the disc's menus start in the online folder,
+    after a line telling the player to choose Multiplayer > Online Game so
+    the game downloads its v1.7 update; the next start builds the menus.
+
+  The online ID has no place in RecompLauncher (its settings are choices,
+  sliders and key bindings, not text), so it stays in the window: without
+  one, `--play-online` opens the launcher's window (`open` on its own .app)
+  and exits with 19, whose text says where to type it; the **Online ID**
+  action on the game's page opens the folder with the app as well. Without
+  `RECOMPLAUNCHER=1`, `--play-online` opens the window, which starts online
+  play as its button does.
 - **Settings** (`config`, `settings`): display mode and window size, the
   frame-rate readout, internal resolution, upscaling, anti-aliasing,
   sharpening, anisotropic filtering, input mode, mouse sensitivity and
@@ -329,10 +362,13 @@ event loop or checks for an app update.
   play; online play, the v1.7 campaign and the update files stay in the
   launcher window.
 - **Saves and logs**: `gamedata/dev_hdd0/home/00000001/savedata` and the
-  data folder (`last.log`, `install.log`).
+  data folder (`last.log`, `install.log`, `online-menus.log`); online play's
+  `online/gamedata/dev_hdd0/home/00000001/savedata`, and its folder (with
+  its `last.log`) behind the **Online play's folder** action.
 
-Exit codes of `--prepare` and of a headless `--play` that cannot start (the
-game's own codes otherwise; `exit_codes` gives the player's text for each):
+Exit codes of `--prepare` and of a headless `--play` or `--play-online`
+that cannot start (the game's own codes otherwise; `exit_codes` gives the
+player's text for each):
 
 | Code | Meaning |
 | --- | --- |
@@ -342,11 +378,16 @@ game's own codes otherwise; `exit_codes` gives the player's text for each):
 | 11 | Apple's Command Line Tools missing: their installer was opened |
 | 12 | the sources or the build's downloads failed (network) |
 | 13 | the build failed, or ended without the game built |
-| 14 | an install, or the game, is already running |
+| 14 | an install, a build of the online menus, or the game, is already running |
 | 15 | not enough free disk space |
 | 16 | not a Mac |
-| 17 | `--play` before the game is built |
+| 17 | `--play` or `--play-online` before the game is built |
 | 18 | `--play` with the v1.7 update's files in the play folder (the window moves them aside) |
+| 19 | `--play-online` without a valid online ID (the window was opened to type it) |
+| 20 | `--play-online`: the update is downloaded, and building the v1.7 menus from it failed (or it is not the tested `EBOOT.BIN`) |
+
+A failed online-menus build can also end with 12 or 15 (the network, the
+disk), as the install's.
 
 `RES_LAUNCHER_DATA=<dir>` moves the launcher's data folder (settings, lock,
 logs), for trying these modes without touching a player's own.
@@ -534,6 +575,10 @@ the online ID typed in Home's Online card (PSN's rules: 3-16 letters, digits,
   online then passes `PS3_MIC=1`, and the computer's microphone is the PS3
   headset. macOS asks for the microphone the first time (the app's
   Info.plist has the text); offline Play never opens it.
+- **From RecompLauncher**: its **Online (PS Rewired)** tile runs the same
+  start without the window (`--play-online`), and builds the v1.7 menus by
+  itself once the update is downloaded (see [RecompLauncher](#recomplauncher));
+  the online ID is still typed here, once.
 
 ## Not done (from the inFAMOUS 2 launcher)
 

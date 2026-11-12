@@ -133,6 +133,13 @@ isso sem terminal: Início (a arte do seu disco, JOGAR, ajustes rápidos,
   60 fps (regra deles), alcançando só os servidores deles. Na primeira vez o
   jogo baixa a atualização v1.7 e o Início oferece **Preparar os menus
   online** (detalhes em [launcher/README.md](launcher/README.md#play-online-ps-rewired)).
+  No [RecompLauncher](https://recomplauncher.com) o online é um bloco
+  próprio, **Resistance: Fall of Man — Online (PS Rewired)**: digite o seu
+  online ID uma vez na janela do Resistance Launcher (o bloco a abre quando
+  não há nenhum) e aperte Play no bloco. Na primeira vez, escolha
+  Multiplayer > Online Game para o jogo baixar a atualização; o próximo
+  início compila os menus online sozinho (alguns minutos) e entra no online
+  ([detalhes](launcher/README.md#recomplauncher)).
 
 **No jogo,** F1 (fn+F1), Insert, Cmd+, ou L3+R3 abre o **menu do jogo**
 (vindo do port do inFAMOUS 2): imagem (gama, nitidez, FXAA/SMAA, vibração das
@@ -182,7 +189,7 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
 - **Teclado e mouse, controle de Xbox, gatilhos adaptáveis do DualSense:**
   implementados, ainda não testados jogando (a vibração num DualSense já foi).
 - **Multiplayer online** no servidor da comunidade
-  [PS Rewired](https://psrewired.com) (o Jogar online do app): login, lobby,
+  [PS Rewired](https://psrewired.com) (o Jogar online do app, ou o bloco Online do RecompLauncher): login, lobby,
   lista de partidas e criar partida funcionam; uma partida completa com outros
   jogadores e o chat de voz ainda não foram testados. A tela dividida offline
   funciona.
