@@ -51,6 +51,10 @@ export interface Settings {
   rumble: boolean;
   rumbleStrength: number;
   adaptiveTriggers: boolean;
+  padLight: string;
+  padLightHit: boolean;
+  gyro: number;
+  gyroAlways: boolean;
   audioVolume: number;
   audioMute: boolean;
   audioDevice: string;
@@ -383,7 +387,7 @@ function bindRange(id: string, key: NumKey, fmt: (v: number) => string) {
   });
 }
 
-function bindSelect(id: string, key: StrKey | "aniso" | "frameClockUs") {
+function bindSelect(id: string, key: StrKey | "aniso" | "frameClockUs" | "gyro") {
   const el = $<HTMLSelectElement>(id);
   const sync = () => {
     el.value = String(settings[key]);
@@ -392,7 +396,7 @@ function bindSelect(id: string, key: StrKey | "aniso" | "frameClockUs") {
   syncers.push(sync);
   sync();
   el.addEventListener("change", () => {
-    if (key === "aniso" || key === "frameClockUs") settings[key] = Number(el.value);
+    if (key === "aniso" || key === "frameClockUs" || key === "gyro") settings[key] = Number(el.value);
     else settings[key] = el.value;
     syncAll();
     persist(key === "campaign" ? () => renderHome() : undefined);
@@ -519,6 +523,10 @@ function bindSettings() {
   bindCheck("mouse-direct", "mouseDirect");
   bindCheck("rumble-on", "rumble");
   bindCheck("adaptive-on", "adaptiveTriggers");
+  bindSelect("pad-light", "padLight");
+  bindCheck("pad-light-hit", "padLightHit");
+  bindSelect("gyro", "gyro");
+  bindCheck("gyro-always", "gyroAlways");
   bindCheck("audio-mute", "audioMute");
   bind60fps();
   bindSelect("window-mode", "windowMode");
@@ -666,6 +674,10 @@ const DEFAULTS: Partial<Settings> = {
   rumble: true,
   rumbleStrength: 100,
   adaptiveTriggers: true,
+  padLight: "",
+  padLightHit: true,
+  gyro: 0,
+  gyroAlways: false,
   audioVolume: 100,
   audioMute: false,
   audioDevice: "",

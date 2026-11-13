@@ -145,6 +145,16 @@ pub struct Settings {
     /// PS3_PAD_ADAPTIVE=0 when off: a DualSense's triggers get a feel (a gun
     /// click on R2, light resistance on L2, R2 buzzing while firing).
     pub adaptive_triggers: bool,
+    /// PS3_PAD_LIGHT: the DualSense / DualShock 4 light bar, "" (the game's
+    /// colour), "off", or RRGGBB.
+    pub pad_light: String,
+    /// PS3_PAD_LIGHT_HIT=0 when off: the light bar glows red with the
+    /// game's rumble (hits, explosions).
+    pub pad_light_hit: bool,
+    /// PS3_PAD_GYRO: gyro aim, percent (0 = off).
+    pub gyro: u32,
+    /// PS3_PAD_GYRO_MODE=always: gyro aim when not zoomed too.
+    pub gyro_always: bool,
     /// PS3_AUDIO_VOLUME (0-100, 100 = the default), PS3_AUDIO_MUTE=1 when
     /// muted, PS3_AUDIO_DEVICE (the output whose name contains it; empty =
     /// the system's default; macOS/Linux).
@@ -242,6 +252,10 @@ impl Default for Settings {
             rumble: true,
             rumble_strength: 100,
             adaptive_triggers: true,
+            pad_light: String::new(),
+            pad_light_hit: true,
+            gyro: 0,
+            gyro_always: false,
             audio_volume: 100,
             audio_mute: false,
             audio_device: String::new(),
@@ -1308,6 +1322,19 @@ fn launch_env(s: &Settings, disc: &Path, play: &Path, input: &InputEnv) -> Vec<(
     if !s.adaptive_triggers {
         set("PS3_PAD_ADAPTIVE", "0".into());
     }
+    let light = s.pad_light.trim();
+    if light == "off" || (light.len() == 6 && light.chars().all(|c| c.is_ascii_hexdigit())) {
+        set("PS3_PAD_LIGHT", light.to_string());
+    }
+    if !s.pad_light_hit {
+        set("PS3_PAD_LIGHT_HIT", "0".into());
+    }
+    if s.gyro > 0 {
+        set("PS3_PAD_GYRO", s.gyro.min(400).to_string());
+        if s.gyro_always {
+            set("PS3_PAD_GYRO_MODE", "always".into());
+        }
+    }
     // Audio: only what differs from the default (full volume, the system's
     // output). The runtime mutes on any PS3_AUDIO_MUTE value, so it is
     // passed only when on.
@@ -2046,6 +2073,7 @@ const FEATURE_MARKERS: &[&str] = &[
     "RES_MENU_60FPS",
     "RES_FOV",
     "PS3_PAD_ADAPTIVE",  // DualSense adaptive triggers
+    "PS3_PAD_GYRO",      // DualSense light bar and gyro aim
     "RES_MOUSE_LOOK",    // direct mouse look (port/mouselook.cpp)
 ];
 
@@ -3779,6 +3807,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn dualsense_light_and_gyro_env() {
+        let mut st = Settings { pad_light: "1e64ff".into(), pad_light_hit: false, gyro: 150, gyro_always: true, ..Default::default() };
+        let e: BTreeMap<String, String> = launch_env(&st, Path::new("/d"), Path::new("/p"), &InputEnv::default()).into_iter().collect();
+        assert_eq!(e["PS3_PAD_LIGHT"], "1e64ff");
+        assert_eq!(e["PS3_PAD_LIGHT_HIT"], "0");
+        assert_eq!(e["PS3_PAD_GYRO"], "150");
+        assert_eq!(e["PS3_PAD_GYRO_MODE"], "always");
+        st.pad_light = "off".into();
+        st.gyro = 0;
+        let e: BTreeMap<String, String> = launch_env(&st, Path::new("/d"), Path::new("/p"), &InputEnv::default()).into_iter().collect();
+        assert_eq!(e["PS3_PAD_LIGHT"], "off");
+        assert!(!e.contains_key("PS3_PAD_GYRO") && !e.contains_key("PS3_PAD_GYRO_MODE"));
+    }
+
+    #[test]
     fn audio_outputs_from_system_profiler() {
         let json = r#"{"SPAudioDataType":[{"_items":[
             {"_name":"Alto-falantes (MacBook Pro)","coreaudio_device_output":2},
@@ -4088,6 +4131,7 @@ mod tests {
             "PS3_DISPLAY", "PS3_VSYNC", "PS3_UPSCALE", "PS3_VIBRANCE", "PS3_CONTRAST", "PS3_VIGNETTE", "PS3_GRAIN", "PS3_LUT",
             "PS3_LUT_STRENGTH", "PS3_MODS", "PS3_MODS_DIR", "PS3_MODS_DUMP", "PS3_RES_SCALE", "RES_UNLOCK_FPS", "RES_MENU_60FPS",
             "RES_FOV", "PS3_AUDIO_VOLUME", "PS3_AUDIO_MUTE", "PS3_AUDIO_DEVICE", "PS3_PAD_ADAPTIVE", "RES_MOUSE_LOOK",
+            "PS3_PAD_LIGHT", "PS3_PAD_LIGHT_HIT", "PS3_PAD_GYRO", "PS3_PAD_GYRO_MODE",
         ];
         for k in new_vars {
             assert!(!base.iter().any(|b| b == k), "{k} passed by default");
@@ -4182,6 +4226,7 @@ mod tests {
         st.mouse = false;
         st.rumble = false;
         st.adaptive_triggers = false;
+        st.pad_light = "zz0000".into(); // not a colour: nothing passed
         st.window_mode = "windowed".into();
         st.input_mode = "both".into();
         st.aa = "msaa".into();

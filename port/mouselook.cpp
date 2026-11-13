@@ -25,7 +25,11 @@
  *                       f3 = horizontal FOV in degrees, 82 in play): zooming
  *                       in narrows the player's camera, and the mouse slows by
  *                       the same magnification, so a move covers the same part
- *                       of the screen zoomed or not.
+ *                       of the screen zoomed or not. It also tells cellPad
+ *                       when the player is zoomed: the game's zoom is a toggle
+ *                       (R3, or L2 in the modern layout), so a DualSense's gyro
+ *                       aim (PS3_PAD_GYRO) follows the zoom instead of a held
+ *                       left trigger.
  *
  * The scale also follows the game's own Look Sensitivity (Options, 0-9; the
  * stick turns at 0.5x to 1.5x of its speed) and PS3_MOUSE_SENS (the
@@ -58,6 +62,7 @@ extern "C" {
 extern uint8_t* vm_base;
 int cellPad_host_mouse_look_state(int* fed_rx, int* fed_ry);
 int cellPad_host_mouse_look_take(float* dx, float* dy);
+void cellPad_host_set_aiming(int aiming);
 }
 
 namespace {
@@ -199,4 +204,11 @@ extern "C" void res_mouselook_fov(ppu_context* ctx)
     const uint32_t v = s_view_cam.load();
     if (!v || cam != v) return;
     s_zoom = std::tan(f * 0.5 * kPi / 180.0) / std::tan(82.0 * 0.5 * kPi / 180.0);
+    static int aiming = -1;
+    const int now_aiming = f < 81.0;
+    if (now_aiming != aiming) {
+        aiming = now_aiming;
+        cellPad_host_set_aiming(aiming);
+        if (cfg().log) fprintf(stderr, "[mouselook] zoom %s (fov %.1f)\n", aiming ? "on" : "off", f);
+    }
 }

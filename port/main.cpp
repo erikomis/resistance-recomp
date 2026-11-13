@@ -720,6 +720,13 @@ int main(int argc, char** argv)
 #endif
     }
 
+    /* The DualSense / DualShock 4 light bar in the series' orange (the
+     * launcher's "game's colour"); PS3_PAD_LIGHT=off or another RRGGBB
+     * overrides it. */
+#ifndef _WIN32
+    setenv("PS3_PAD_LIGHT", "ff5a00", 0);
+#endif
+
     /* SIGTERM/SIGINT/SIGHUP and the window closing end the process
      * (PS3_CLEAN_EXIT). First, before the backend or anything else can
      * initialise SDL and take the signals over. */
