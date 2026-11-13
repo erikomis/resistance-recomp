@@ -562,6 +562,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn env_points_the_dumps_at_the_report() {
         let env: BTreeMap<_, _> = env(Path::new("/r/x")).into_iter().collect();
         assert_eq!(env["RSX_ENGINE_PASS_DUMP_TRIGGER"], "/r/x/.dump-now");

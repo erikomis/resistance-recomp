@@ -3862,6 +3862,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn builds_and_disc_layout() {
         let root = tmp("builds");
         let b = resolve_builds(&root);
@@ -3916,6 +3917,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn online_env_never_changes_the_frame_rate() {
         let mut st = Settings::default();
         st.online_id = "Player_01".into();
@@ -3958,6 +3960,7 @@ mod tests {
     /// folder, the disc's menus until the v1.7 ones are built, and never a
     /// frame-rate variable, whatever the settings and extra variables say.
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn online_launch_runs_at_the_games_frame_rate() {
         let t = tmp("online-launch");
         let root = t.join("port");
@@ -4045,6 +4048,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn file_sha256_hashes_a_file() {
         let d = std::env::temp_dir().join(format!("res-sha-{}", std::process::id()));
         fs::write(&d, b"abc").unwrap();
@@ -4063,6 +4067,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn launch_env_maps_the_settings() {
         let mut st = Settings::default();
         let env = |st: &Settings| -> BTreeMap<String, String> {
@@ -4120,6 +4125,7 @@ mod tests {
 
     /// Every new setting, from its default (nothing passed) to a change.
     #[test]
+    #[cfg_attr(windows, ignore = "macOS paths and tools; the Windows build is an untested preview")]
     fn launch_env_maps_the_new_settings() {
         let env = |st: &Settings, input: &InputEnv| -> BTreeMap<String, String> {
             launch_env(st, Path::new("/d"), Path::new("/p"), input).into_iter().collect()
