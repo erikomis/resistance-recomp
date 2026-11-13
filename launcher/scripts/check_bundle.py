@@ -10,7 +10,9 @@ first) and rejects, by name: executables and archives of the game (EBOOT*,
 BCUS98107*), keys and licences (*.rap, *.rif, act.dat, *.edat), the game's
 art and sound (ICON0*, PIC0*, PIC1*, PIC2*, SND0*), saves (*.sav), lifted
 output (recompiled/, jobmods/, spu_recomp.*); by content: SCE/PSF/PKG/PSAR
-headers and PowerPC or SPU ELF files; and any file over 16 MB.
+headers and PowerPC or SPU ELF files; and any file over 16 MB (48 MB for the
+launcher's own executable, Contents/MacOS/resistance-launcher or
+resistance-launcher.exe, which is code and grows with it).
 Standard library only.
 """
 import fnmatch, os, subprocess, sys, tempfile
@@ -22,6 +24,8 @@ DIRS = ["recompiled", "jobmods", "dev_hdd0", "dev_flash", "ps3_game", "usrdir"]
 MAGIC = [b"SCE\0", b"\0PSF", b"\x7fPKG", b"PSAR"]
 EM_PPC64, EM_SPU = 21, 23
 MAX = 16 << 20
+MAX_LAUNCHER = 48 << 20          # the launcher's own executable
+LAUNCHER_NAMES = ("resistance-launcher", "resistance-launcher.exe")
 
 
 def problems(root):
@@ -41,7 +45,7 @@ def problems(root):
                     head = f.read(64)
             except OSError:
                 continue
-            if size > MAX:
+            if size > (MAX_LAUNCHER if low in LAUNCHER_NAMES else MAX):
                 yield p, f"{size >> 20} MB"
             if any(head.startswith(m) for m in MAGIC):
                 yield p, "PS3 file header"
