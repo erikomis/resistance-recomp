@@ -11,6 +11,9 @@
  * (ppu_lifter.py --insn-patches, "hook"; port/patches/game_100.insn.json and
  * game_v17.insn.json):
  *
+ * (res_mouselook_pre also runs patches.cpp's res_campaign_frame, whatever the
+ * setting: it is the place that runs every frame the player has control.)
+ *
  *   res_mouselook_pre   the player's look code (func_002A4D14 in 01.00), just
  *                       before it integrates the look rates at player+0x3D0
  *                       (pitch) and +0x3D4 (yaw) into the view. While the
@@ -63,6 +66,7 @@ extern uint8_t* vm_base;
 int cellPad_host_mouse_look_state(int* fed_rx, int* fed_ry);
 int cellPad_host_mouse_look_take(float* dx, float* dy);
 void cellPad_host_set_aiming(int aiming);
+void res_campaign_frame(void);   /* patches.cpp */
 }
 
 namespace {
@@ -133,6 +137,7 @@ unsigned long long now_ms()
 
 extern "C" void res_mouselook_pre(ppu_context* ctx)
 {
+    res_campaign_frame();   /* the player has control: no frame cap left over (patches.cpp) */
     const uint32_t p = (uint32_t)ctx->gpr[31];
     if (!cfg().on || !sane_ptr(p)) return;
     int frx = 0, fry = 0;

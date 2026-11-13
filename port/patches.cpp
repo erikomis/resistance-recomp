@@ -23,6 +23,9 @@
  *                      sound setup that read it first mixed the whole session
  *                      in the 2ch layout. From the Resistance PC port by
  *                      Psyykosis (MIT).
+ *   RES_FRAME_CAP_FIX=0  campaign: keep the frame cap a checkpoint reload can
+ *                      leave behind (see res_campaign_frame below). On by
+ *                      default.
  *
  * A patch is two halves. The data half (timesteps, FOV) is written into guest
  * memory here, after the ELF is loaded and before the guest starts. The code
@@ -61,6 +64,7 @@ struct PatchSet {
     size_t      nsig;
     uint32_t    min_dt;     /* minimum timestep (1/30 s), 0 = none */
     uint32_t    fov;        /* field-of-view factor (1.0), 0 = none */
+    uint32_t    pace;       /* the word holding the frame-pacing block's address */
 };
 
 /* game.self v1.7 (RPCS3 PPU-a08a187d78dd68ebc15b4c6c34335ea55d8dc0f7) */
@@ -76,8 +80,8 @@ const Word kGame100[] = {
     {0x006B638C, 0xBEDBB51E}, {0x006B6390, 0x3F800000},
 };
 const PatchSet kCampaign[] = {
-    {"game.self v1.7",  kGameV17, sizeof kGameV17 / sizeof *kGameV17, 0x00688F00, 0x006C6C3C},
-    {"game.self 01.00", kGame100, sizeof kGame100 / sizeof *kGame100, 0x00678ED0, 0x006B6390},
+    {"game.self v1.7",  kGameV17, sizeof kGameV17 / sizeof *kGameV17, 0x00688F00, 0x006C6C3C, 0x00688C88},
+    {"game.self 01.00", kGame100, sizeof kGame100 / sizeof *kGame100, 0x00678ED0, 0x006B6390, 0x00678C58},
 };
 
 /* EBOOT.BIN, disc 01.00 (RPCS3 PPU-cb404d48...) */
@@ -124,6 +128,31 @@ bool env_on(const char* name)
 
 }  // namespace
 
+/* The campaign's frame-time target: the float at +4 of the frame-pacing block
+ * (0x10331FC0 in v1.7, 0x10330B40 in 01.00). The main loop's frame limiter
+ * (func_001E6EC4 in v1.7) waits until 0.9 x target has passed since the last
+ * frame. The game sets it to 1/30 s while it loads and at a checkpoint, and to
+ * 0 (no wait) when play starts and when the player respawns -- but the respawn
+ * path (func_002AD4DC) clears it in one of its states only. After the other
+ * kinds of checkpoint reload it stayed at 1/30, and the game ran at a flat 33
+ * fps (30.3 ms frames) until the next level loaded, from 50-60 before. A PS3,
+ * held to 30 by vsync, never showed it. */
+static uint32_t s_frame_target;
+
+/* Called from the player's look code every frame the player has control
+ * (mouselook.cpp's res_mouselook_pre): a 1/30 target left there is cleared,
+ * as the game itself does when play starts. */
+extern "C" void res_campaign_frame(void)
+{
+    const uint32_t a = s_frame_target;
+    if (!a || rd32(a) != 0x3D088889u) return;   /* 1/30 */
+    wr32(a, 0);
+    static int n;
+    if (n++ < 4)
+        fprintf(stderr, "[patch] frame cap: a 1/30 s frame target left by a load or a checkpoint was cleared "
+                        "(RES_FRAME_CAP_FIX=0 keeps it)\n");
+}
+
 /* Apply what the environment asks for to the ELF just loaded. */
 extern "C" void res_apply_patches(void)
 {
@@ -134,7 +163,16 @@ extern "C" void res_apply_patches(void)
         g_res_speakers = 0;
         fprintf(stderr, "[patch] RES_SPEAKERS=0: the speaker-count getter reads its global\n");
     }
-    if (!vm_base || (!unlock && !(fov_s && *fov_s) && !menu60)) return;
+    if (!vm_base) return;
+    if (const char* e = getenv("RES_FRAME_CAP_FIX"); !(e && strcmp(e, "0") == 0)) {
+        for (const PatchSet& ps : kCampaign) {
+            if (!matches(ps.sig, ps.nsig)) continue;
+            const uint32_t block = rd32(ps.pace);
+            if (block >= 0x10000000u && block < 0x20000000u) s_frame_target = block + 4;
+            break;
+        }
+    }
+    if (!unlock && !(fov_s && *fov_s) && !menu60) return;
 
     for (const PatchSet& ps : kCampaign) {
         if (!matches(ps.sig, ps.nsig)) continue;
