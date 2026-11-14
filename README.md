@@ -148,6 +148,45 @@ save. What you change is kept for the next start. Details in
 | --- | --- |
 | [<img src="launcher/docs/screenshots/home.en.png" width="420" alt="Launcher Home">](launcher/docs/screenshots/home.en.png) | [<img src="launcher/docs/screenshots/graphics.png" width="420" alt="Launcher Graphics page">](launcher/docs/screenshots/graphics.png) |
 
+## Playing with a PS5 controller (DualSense)
+
+The DualSense is the controller the campaign has been played with. Plug it in
+with a USB-C cable, or pair it over Bluetooth (System Settings > Bluetooth;
+hold PS and Create until the light bar blinks). The game picks it up at any
+time, even in the middle of a level, and when a Bluetooth controller drops
+off and comes back it takes the same player slot again.
+
+> [!WARNING]
+> **Quit Steam while you play.** With Steam Input on, Steam takes over the
+> DualSense and rewrites what the game sends it: the adaptive triggers and the
+> light bar do nothing (vibration still works). Quit Steam, or turn off
+> PlayStation controller support in Steam > Settings > Controller. The game's
+> log says so when Steam is running.
+
+**The buttons** are the PS3 pad's, in the same places: Create is SELECT (the
+journal), Options is START (pause). The **modern layout** (Controls, beside
+"Fire with R2") moves firing to R2 and zoom to L2, like recent shooters, and
+Restore defaults brings the original back. Every button can be remapped on the
+Controls page.
+
+What the DualSense adds (Controls > Vibration, unless said otherwise):
+
+| | |
+| --- | --- |
+| **Adaptive triggers** | R2 has a gun's trigger click: it fires at the click, about half way (`PS3_PAD_FIRE_AT` moves it), and buzzes while you shoot; L2 has a light resistance. |
+| **Vibration** | Strength from 0 to 200% (above 100% strengthens the weak rumbles). |
+| **Light bar** | The series' orange by default, or red, blue, white, purple, off; it glows red when you take hits and with explosions (can be switched off). |
+| **Player lights** | Show which player the controller is. |
+| **Gyro aim** | Off, Low, Medium or High. Turn and tilt the controller to fine-tune your aim while zoomed in (R3, or L2 in the modern layout); "Always on" uses it all the time. The right stick keeps working. |
+| **Mute button** | Turns the game's sound off and on; the button's own light shows it is muted, and a notice says so on screen (`PS3_PAD_MUTE_BUTTON=0` turns this off). |
+| **Touchpad click** | Opens and closes the in-game menu, like L3+R3 (`PS3_PAD_TOUCHPAD_MENU=0` turns this off). |
+| **Battery** | When the battery gets low, and again when it is almost empty, a notice says so on screen (`PS3_PAD_BATTERY=0` turns this off). |
+| **Sound through the controller** | With the USB cable the DualSense is a sound output: pick "DualSense Wireless Controller" under Game > Audio output to hear the game on its speaker or the headphones plugged into it. |
+
+The mute button and the touchpad do the above only while you have not given
+them another job on the Controls page. A DualShock 4 gets the vibration, the
+light bar and gyro aim; an Xbox controller gets the vibration.
+
 ## Known problems
 
 - **Frame drops in "Outgunned"** (Manchester): the big outdoor fight (about

@@ -154,6 +154,45 @@ um save. O que você muda fica guardado para a próxima vez. Detalhes em
 | --- | --- |
 | [<img src="launcher/docs/screenshots/home.png" width="420" alt="Início do launcher">](launcher/docs/screenshots/home.png) | [<img src="launcher/docs/screenshots/graphics.png" width="420" alt="Página de Gráficos do launcher">](launcher/docs/screenshots/graphics.png) |
 
+## Jogando com o controle de PS5 (DualSense)
+
+O DualSense é o controle com que a campanha foi jogada. Ligue-o com um cabo
+USB-C ou pareie por Bluetooth (Ajustes do Sistema > Bluetooth; segure PS e
+Create até a barra de luz piscar). O jogo reconhece o controle a qualquer
+momento, até no meio de uma fase, e quando um controle Bluetooth cai e volta
+ele retoma o mesmo lugar de jogador.
+
+> [!WARNING]
+> **Feche o Steam enquanto joga.** Com o Steam Input ligado, o Steam toma
+> conta do DualSense e reescreve o que o jogo manda para ele: os gatilhos
+> adaptáveis e a barra de luz não fazem nada (a vibração continua). Feche o
+> Steam, ou desligue o suporte a controles PlayStation em Steam > Configurações
+> > Controle. O log do jogo avisa quando o Steam está aberto.
+
+**Os botões** são os do controle de PS3, nos mesmos lugares: Create é o SELECT
+(o diário), Options é o START (pausa). O **layout moderno** (Controles, ao
+lado de "Atirar com R2") passa o tiro para o R2 e o zoom para o L2, como nos
+jogos de tiro atuais, e Restaurar padrões volta ao original. Todo botão pode
+ser remapeado na página Controles.
+
+O que o DualSense acrescenta (Controles > Vibração, a não ser quando dito):
+
+| | |
+| --- | --- |
+| **Gatilhos adaptáveis** | O R2 tem o clique de um gatilho de arma: atira no clique, mais ou menos na metade (`PS3_PAD_FIRE_AT` muda o ponto), e vibra enquanto você atira; o L2 tem uma resistência leve. |
+| **Vibração** | Intensidade de 0 a 200% (acima de 100% reforça as vibrações fracas). |
+| **Barra de luz** | Laranja da série por padrão, ou vermelha, azul, branca, roxa, desligada; fica vermelha quando você leva tiro e com explosões (dá para desligar). |
+| **Luzes de jogador** | Mostram qual jogador é o controle. |
+| **Mira por giroscópio** | Desligada, Baixa, Média ou Alta. Gire e incline o controle para ajustar a mira com o zoom ligado (R3, ou L2 no layout moderno); "Sempre ligada" usa o tempo todo. O analógico direito continua funcionando. |
+| **Botão de mudo** | Desliga e liga o som do jogo; a luz do próprio botão mostra que está mudo, e um aviso aparece na tela (`PS3_PAD_MUTE_BUTTON=0` desliga isso). |
+| **Clique no touchpad** | Abre e fecha o menu do jogo, como L3+R3 (`PS3_PAD_TOUCHPAD_MENU=0` desliga isso). |
+| **Bateria** | Quando a bateria fica fraca, e de novo quando está quase no fim, um aviso aparece na tela (`PS3_PAD_BATTERY=0` desliga isso). |
+| **Som pelo controle** | Com o cabo USB o DualSense vira uma saída de som: escolha "DualSense Wireless Controller" em Jogo > Saída de áudio para ouvir o jogo no alto-falante dele ou no fone ligado nele. |
+
+O botão de mudo e o touchpad só fazem isso enquanto você não der outra função
+a eles na página Controles. Um DualShock 4 tem a vibração, a barra de luz e a
+mira por giroscópio; um controle Xbox tem a vibração.
+
 ## Problemas conhecidos
 
 - **Quedas de fps em "Outgunned"** (Manchester): o combate grande ao ar
