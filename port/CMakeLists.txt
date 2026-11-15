@@ -180,6 +180,7 @@ add_executable(${PROJECT_NAME}
     stubs.cpp
     patches.cpp
     mouselook.cpp
+    spinwait.cpp
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}

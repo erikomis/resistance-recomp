@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/linux.yml b/.github/workflows/linux.yml
-index 67bb40b3..27d02ca7 100644
+index 67bb40b..27d02ca 100644
 --- a/.github/workflows/linux.yml
 +++ b/.github/workflows/linux.yml
 @@ -171,6 +171,24 @@ jobs:
@@ -39,7 +39,7 @@ index 67bb40b3..27d02ca7 100644
            # walk they are now computed without.
            ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }} -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.github/workflows/macos.yml b/.github/workflows/macos.yml
-index 19e9eb18..5d596586 100644
+index 19e9eb1..5d59658 100644
 --- a/.github/workflows/macos.yml
 +++ b/.github/workflows/macos.yml
 @@ -74,6 +74,8 @@ jobs:
@@ -193,7 +193,7 @@ index 19e9eb18..5d596586 100644
            # walk they are now computed without.
            clang -std=gnu17 -O2 -Wall -Wextra -Wno-unused-parameter -I include -I libs/video -o /tmp/test_vertex_fetch_plan libs/video/tests/test_vertex_fetch_plan.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c
 diff --git a/.gitignore b/.gitignore
-index 1bd8dfe5..fe14320e 100644
+index 1bd8dfe..fe14320 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -74,6 +74,8 @@ recompiled/
@@ -206,7 +206,7 @@ index 1bd8dfe5..fe14320e 100644
  # Decryption keys
  *.keys
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index bdd2f85a..e8ef941f 100644
+index bdd2f85..e8ef941 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -132,7 +132,6 @@ target_include_directories(ps3recomp_runtime PRIVATE
@@ -276,7 +276,7 @@ index bdd2f85a..e8ef941f 100644
      if(NOT WIN32)
          find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
 diff --git a/docs/DIAGNOSTICS.md b/docs/DIAGNOSTICS.md
-index 4277c3f2..dd8b2c88 100644
+index 4277c3f..dd8b2c8 100644
 --- a/docs/DIAGNOSTICS.md
 +++ b/docs/DIAGNOSTICS.md
 @@ -3,14 +3,14 @@
@@ -306,7 +306,7 @@ index 4277c3f2..dd8b2c88 100644
    `runtime/spu/spu_channels.c:289`  _(+3 more sites)_
  - **`SPU_PUTEA`** — SPU_PUTEA=1: the first few FULL destination addresses per SPU. The 1 MB bucket histogram showed spu1..3 writing only bucket 0 and spu0 buckets 1..3, with nothing in bucket 4 -- where the composite samples PS1 VRAM (RSX local + 0x400000). Buckets keep only 4 address bits, so that may be an artifact of where RSX local memory actually sits; the full EA settles it. */
 diff --git a/docs/SHADOW_COMPARISON.md b/docs/SHADOW_COMPARISON.md
-index df98ec6d..b8c05ff5 100644
+index df98ec6..b8c05ff 100644
 --- a/docs/SHADOW_COMPARISON.md
 +++ b/docs/SHADOW_COMPARISON.md
 @@ -7,8 +7,10 @@ non-depth textures and alpha-kill keep the existing raw sampling behavior.
@@ -324,7 +324,7 @@ index df98ec6d..b8c05ff5 100644
  
 diff --git a/include/ps3emu/env_cache.h b/include/ps3emu/env_cache.h
 new file mode 100644
-index 00000000..e1563838
+index 0000000..e156383
 --- /dev/null
 +++ b/include/ps3emu/env_cache.h
 @@ -0,0 +1,32 @@
@@ -362,7 +362,7 @@ index 00000000..e1563838
 +#endif /* PS3EMU_ENV_CACHE_H */
 diff --git a/include/ps3emu/hdd1_cache.h b/include/ps3emu/hdd1_cache.h
 new file mode 100644
-index 00000000..76d3b585
+index 0000000..76d3b58
 --- /dev/null
 +++ b/include/ps3emu/hdd1_cache.h
 @@ -0,0 +1,74 @@
@@ -442,7 +442,7 @@ index 00000000..76d3b585
 +#endif /* PS3EMU_HDD1_CACHE_H */
 diff --git a/include/ps3emu/host_input.h b/include/ps3emu/host_input.h
 new file mode 100644
-index 00000000..402c37df
+index 0000000..402c37d
 --- /dev/null
 +++ b/include/ps3emu/host_input.h
 @@ -0,0 +1,112 @@
@@ -560,7 +560,7 @@ index 00000000..402c37df
 +#endif /* PS3EMU_HOST_INPUT_H */
 diff --git a/include/ps3emu/ps3_env_once.h b/include/ps3emu/ps3_env_once.h
 new file mode 100644
-index 00000000..40570da2
+index 0000000..40570da
 --- /dev/null
 +++ b/include/ps3emu/ps3_env_once.h
 @@ -0,0 +1,31 @@
@@ -597,7 +597,7 @@ index 00000000..40570da2
 +#endif /* PS3EMU_PS3_ENV_ONCE_H */
 diff --git a/include/ps3emu/quit_gate.h b/include/ps3emu/quit_gate.h
 new file mode 100644
-index 00000000..46c7ac05
+index 0000000..46c7ac0
 --- /dev/null
 +++ b/include/ps3emu/quit_gate.h
 @@ -0,0 +1,45 @@
@@ -647,7 +647,7 @@ index 00000000..46c7ac05
 +
 +#endif /* PS3EMU_QUIT_GATE_H */
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 6f76df8a..3d171b86 100644
+index 6f76df8..3d171b8 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
 @@ -15,11 +15,13 @@
@@ -1382,7 +1382,7 @@ index 6f76df8a..3d171b86 100644
  {
      uint32_t tag_ea = (uint32_t)(uintptr_t)tag;
 diff --git a/libs/audio/cellAudio.h b/libs/audio/cellAudio.h
-index 696ed357..23437503 100644
+index 696ed35..2343750 100644
 --- a/libs/audio/cellAudio.h
 +++ b/libs/audio/cellAudio.h
 @@ -115,6 +115,10 @@ s32 cellAudioSetPersonalDevice(s32 iPersonalStream, s32 iDevice);
@@ -1397,7 +1397,7 @@ index 696ed357..23437503 100644
  }
  #endif
 diff --git a/libs/audio/cellMic.c b/libs/audio/cellMic.c
-index 4d2b4782..1344d6ab 100644
+index 4d2b478..1344d6a 100644
 --- a/libs/audio/cellMic.c
 +++ b/libs/audio/cellMic.c
 @@ -1,23 +1,135 @@
@@ -1732,7 +1732,7 @@ index 4d2b4782..1344d6ab 100644
 +    return CELL_OK;
 +}
 diff --git a/libs/audio/cellMic.h b/libs/audio/cellMic.h
-index 626aa14d..ad9b4303 100644
+index 626aa14..ad9b430 100644
 --- a/libs/audio/cellMic.h
 +++ b/libs/audio/cellMic.h
 @@ -53,7 +53,7 @@ s32 cellMicClose(s32 devNum);
@@ -1754,7 +1754,7 @@ index 626aa14d..ad9b4303 100644
  }
 diff --git a/libs/audio/tests/test_audio_pacing.c b/libs/audio/tests/test_audio_pacing.c
 new file mode 100644
-index 00000000..daa96822
+index 0000000..daa9682
 --- /dev/null
 +++ b/libs/audio/tests/test_audio_pacing.c
 @@ -0,0 +1,124 @@
@@ -1884,7 +1884,7 @@ index 00000000..daa96822
 +#endif
 diff --git a/libs/audio/tests/test_audio_settings.c b/libs/audio/tests/test_audio_settings.c
 new file mode 100644
-index 00000000..d1c283a7
+index 0000000..d1c283a
 --- /dev/null
 +++ b/libs/audio/tests/test_audio_settings.c
 @@ -0,0 +1,52 @@
@@ -1942,7 +1942,7 @@ index 00000000..d1c283a7
 +}
 diff --git a/libs/audio/tests/test_mic.c b/libs/audio/tests/test_mic.c
 new file mode 100644
-index 00000000..0f626b0e
+index 0000000..0f626b0
 --- /dev/null
 +++ b/libs/audio/tests/test_mic.c
 @@ -0,0 +1,100 @@
@@ -2048,7 +2048,7 @@ index 00000000..0f626b0e
 +}
 diff --git a/libs/codec/adec_ffmpeg.c b/libs/codec/adec_ffmpeg.c
 new file mode 100644
-index 00000000..d547c332
+index 0000000..d547c33
 --- /dev/null
 +++ b/libs/codec/adec_ffmpeg.c
 @@ -0,0 +1,390 @@
@@ -2444,7 +2444,7 @@ index 00000000..d547c332
 +#endif /* PS3RECOMP_FFMPEG_RUNTIME */
 diff --git a/libs/codec/adec_ffmpeg.h b/libs/codec/adec_ffmpeg.h
 new file mode 100644
-index 00000000..05e8357e
+index 0000000..05e8357
 --- /dev/null
 +++ b/libs/codec/adec_ffmpeg.h
 @@ -0,0 +1,94 @@
@@ -2543,7 +2543,7 @@ index 00000000..05e8357e
 +
 +#endif /* PS3RECOMP_ADEC_FFMPEG_H */
 diff --git a/libs/codec/cellAdec.c b/libs/codec/cellAdec.c
-index 9bacce2d..35d330ed 100644
+index 9bacce2..35d330e 100644
 --- a/libs/codec/cellAdec.c
 +++ b/libs/codec/cellAdec.c
 @@ -1,15 +1,22 @@
@@ -3274,7 +3274,7 @@ index 9bacce2d..35d330ed 100644
 +    return (s32)CELL_ADEC_ERROR_EMPTY;
  }
 diff --git a/libs/codec/cellVdec.c b/libs/codec/cellVdec.c
-index 204a0055..05f1c434 100644
+index 204a005..05f1c43 100644
 --- a/libs/codec/cellVdec.c
 +++ b/libs/codec/cellVdec.c
 @@ -18,6 +18,28 @@
@@ -3568,7 +3568,7 @@ index 204a0055..05f1c434 100644
  
  s32 cellVdecSetFrameRate(CellVdecHandle handle, u32 frameRateCode)
 diff --git a/libs/codec/ffmpeg_runtime.h b/libs/codec/ffmpeg_runtime.h
-index 6ec3bbcc..93eefc0d 100644
+index 6ec3bbc..93eefc0 100644
 --- a/libs/codec/ffmpeg_runtime.h
 +++ b/libs/codec/ffmpeg_runtime.h
 @@ -1,7 +1,7 @@
@@ -3581,7 +3581,7 @@ index 6ec3bbcc..93eefc0d 100644
   * with dlopen / LoadLibrary the first time a decoder is created, and only the
   * handful of functions the modules call are resolved into a table. So
 diff --git a/libs/codec/tests/CMakeLists.txt b/libs/codec/tests/CMakeLists.txt
-index 935169b1..1a0ed0a2 100644
+index 935169b..1a0ed0a 100644
 --- a/libs/codec/tests/CMakeLists.txt
 +++ b/libs/codec/tests/CMakeLists.txt
 @@ -1,4 +1,5 @@
@@ -3648,7 +3648,7 @@ index 935169b1..1a0ed0a2 100644
 +set_tests_properties(adec_decode_ac3 adec_disabled_ac3 PROPERTIES FIXTURES_REQUIRED adec_media)
 diff --git a/libs/codec/tests/test_adec_decode.c b/libs/codec/tests/test_adec_decode.c
 new file mode 100644
-index 00000000..b95def5f
+index 0000000..b95def5
 --- /dev/null
 +++ b/libs/codec/tests/test_adec_decode.c
 @@ -0,0 +1,383 @@
@@ -4036,7 +4036,7 @@ index 00000000..b95def5f
 +    return 2;
 +}
 diff --git a/libs/filesystem/cellFs.c b/libs/filesystem/cellFs.c
-index 4d916ac7..ef6c960f 100644
+index 4d916ac..ef6c960 100644
 --- a/libs/filesystem/cellFs.c
 +++ b/libs/filesystem/cellFs.c
 @@ -137,6 +137,28 @@ static int translate_path(const char* ps3_path, char* host_buf, size_t buf_size)
@@ -4070,7 +4070,7 @@ index 4d916ac7..ef6c960f 100644
      size_t best_len = 0;
 diff --git a/libs/filesystem/tests/test_cellfs_hdd0_root.c b/libs/filesystem/tests/test_cellfs_hdd0_root.c
 new file mode 100644
-index 00000000..aec42f78
+index 0000000..aec42f7
 --- /dev/null
 +++ b/libs/filesystem/tests/test_cellfs_hdd0_root.c
 @@ -0,0 +1,65 @@
@@ -4140,7 +4140,7 @@ index 00000000..aec42f78
 +    return 0;
 +}
 diff --git a/libs/input/cellKb.c b/libs/input/cellKb.c
-index 6b4cdbc7..cf830214 100644
+index 6b4cdbc..cf83021 100644
 --- a/libs/input/cellKb.c
 +++ b/libs/input/cellKb.c
 @@ -206,6 +206,15 @@ s32 cellKbGetData(u32 port_no, CellKbData* data)
@@ -4160,7 +4160,7 @@ index 6b4cdbc7..cf830214 100644
   * now_connect u32, +0x08 info u32, +0x0C status[] u8 PER KEYBOARD (bytes,
   * not u32s -- SDK/RPCS3 layout). */
 diff --git a/libs/input/cellKb.h b/libs/input/cellKb.h
-index 49e13905..24f12d08 100644
+index 49e1390..24f12d0 100644
 --- a/libs/input/cellKb.h
 +++ b/libs/input/cellKb.h
 @@ -148,6 +148,7 @@ typedef struct CellKbInfo {
@@ -4172,7 +4172,7 @@ index 49e13905..24f12d08 100644
  s32 cellKbSetReadMode(u32 port_no, u32 rmode);
  s32 cellKbSetCodeType(u32 port_no, u32 codetype);
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 7fa8cab9..31517fd2 100644
+index 7fa8cab..31517fd 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -4,10 +4,43 @@
@@ -5959,7 +5959,7 @@ index 7fa8cab9..31517fd2 100644
  }
  
 diff --git a/libs/input/cellPad.h b/libs/input/cellPad.h
-index 89c58ab6..ac062cc9 100644
+index 89c58ab..ac062cc 100644
 --- a/libs/input/cellPad.h
 +++ b/libs/input/cellPad.h
 @@ -187,6 +187,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info);
@@ -5992,7 +5992,7 @@ index 89c58ab6..ac062cc9 100644
  #endif
 diff --git a/libs/input/host_input_cocoa.h b/libs/input/host_input_cocoa.h
 new file mode 100644
-index 00000000..dc9af50c
+index 0000000..dc9af50
 --- /dev/null
 +++ b/libs/input/host_input_cocoa.h
 @@ -0,0 +1,245 @@
@@ -6243,7 +6243,7 @@ index 00000000..dc9af50c
 +#endif /* PS3RECOMP_HOST_INPUT_COCOA_H */
 diff --git a/libs/input/pad_input_map.h b/libs/input/pad_input_map.h
 new file mode 100644
-index 00000000..9b83edab
+index 0000000..9b83eda
 --- /dev/null
 +++ b/libs/input/pad_input_map.h
 @@ -0,0 +1,708 @@
@@ -6957,7 +6957,7 @@ index 00000000..9b83edab
 +#endif /* PS3RECOMP_PAD_INPUT_MAP_H */
 diff --git a/libs/input/tests/test_host_input_cocoa.m b/libs/input/tests/test_host_input_cocoa.m
 new file mode 100644
-index 00000000..0531374b
+index 0000000..0531374
 --- /dev/null
 +++ b/libs/input/tests/test_host_input_cocoa.m
 @@ -0,0 +1,236 @@
@@ -7199,7 +7199,7 @@ index 00000000..0531374b
 +}
 diff --git a/libs/input/tests/test_host_input_cocoa_pad.c b/libs/input/tests/test_host_input_cocoa_pad.c
 new file mode 100644
-index 00000000..e67a13cd
+index 0000000..e67a13c
 --- /dev/null
 +++ b/libs/input/tests/test_host_input_cocoa_pad.c
 @@ -0,0 +1,27 @@
@@ -7232,7 +7232,7 @@ index 00000000..e67a13cd
 +void test_pad_menu(int open) { g_pad_overlay_open = open; }
 diff --git a/libs/input/tests/test_pad_adaptive.c b/libs/input/tests/test_pad_adaptive.c
 new file mode 100644
-index 00000000..0b37b228
+index 0000000..0b37b22
 --- /dev/null
 +++ b/libs/input/tests/test_pad_adaptive.c
 @@ -0,0 +1,254 @@
@@ -7492,7 +7492,7 @@ index 00000000..0b37b228
 +}
 diff --git a/libs/input/tests/test_pad_hotplug.c b/libs/input/tests/test_pad_hotplug.c
 new file mode 100644
-index 00000000..99fbc8b3
+index 0000000..99fbc8b
 --- /dev/null
 +++ b/libs/input/tests/test_pad_hotplug.c
 @@ -0,0 +1,283 @@
@@ -7781,7 +7781,7 @@ index 00000000..99fbc8b3
 +}
 diff --git a/libs/input/tests/test_pad_input_map.c b/libs/input/tests/test_pad_input_map.c
 new file mode 100644
-index 00000000..4eef8a5a
+index 0000000..4eef8a5
 --- /dev/null
 +++ b/libs/input/tests/test_pad_input_map.c
 @@ -0,0 +1,352 @@
@@ -8139,7 +8139,7 @@ index 00000000..4eef8a5a
 +}
 diff --git a/libs/input/tests/test_pad_keymap.c b/libs/input/tests/test_pad_keymap.c
 new file mode 100644
-index 00000000..9d74a62e
+index 0000000..9d74a62
 --- /dev/null
 +++ b/libs/input/tests/test_pad_keymap.c
 @@ -0,0 +1,474 @@
@@ -8618,7 +8618,7 @@ index 00000000..9d74a62e
 +    return 0;
 +}
 diff --git a/libs/input/tests/test_pad_rumble.c b/libs/input/tests/test_pad_rumble.c
-index b5dec8a6..06738018 100644
+index b5dec8a..0673801 100644
 --- a/libs/input/tests/test_pad_rumble.c
 +++ b/libs/input/tests/test_pad_rumble.c
 @@ -1,5 +1,6 @@
@@ -8762,7 +8762,7 @@ index b5dec8a6..06738018 100644
      printf("test_pad_rumble: ok\n");
 diff --git a/libs/input/tests/test_pad_sensor_mode.c b/libs/input/tests/test_pad_sensor_mode.c
 new file mode 100644
-index 00000000..9e551e0d
+index 0000000..9e551e0
 --- /dev/null
 +++ b/libs/input/tests/test_pad_sensor_mode.c
 @@ -0,0 +1,60 @@
@@ -8827,7 +8827,7 @@ index 00000000..9e551e0d
 +    return 0;
 +}
 diff --git a/libs/misc/cellAvconfExt.c b/libs/misc/cellAvconfExt.c
-index 2ab88b8e..e6695eee 100644
+index 2ab88b8..e6695ee 100644
 --- a/libs/misc/cellAvconfExt.c
 +++ b/libs/misc/cellAvconfExt.c
 @@ -206,12 +206,23 @@ void avconf_register_ctx(void)
@@ -8857,7 +8857,7 @@ index 2ab88b8e..e6695eee 100644
  /* cellAudioOutConfigure(audioOut, config, option, waitForEvent) -- set the
   * audio output mode. We accept any config and report success (request id 0);
 diff --git a/libs/misc/tests/test_avconf_gamma.c b/libs/misc/tests/test_avconf_gamma.c
-index bea806d0..fa7a52b7 100644
+index bea806d..fa7a52b 100644
 --- a/libs/misc/tests/test_avconf_gamma.c
 +++ b/libs/misc/tests/test_avconf_gamma.c
 @@ -67,6 +67,15 @@ int main(void)
@@ -8877,7 +8877,7 @@ index bea806d0..fa7a52b7 100644
      return 0;
  }
 diff --git a/libs/network/cellNetCtl.c b/libs/network/cellNetCtl.c
-index c7926c0c..3a0a50a0 100644
+index c7926c0..3a0a50a 100644
 --- a/libs/network/cellNetCtl.c
 +++ b/libs/network/cellNetCtl.c
 @@ -222,7 +222,12 @@ s32 cellNetCtlGetInfo(s32 code, CellNetCtlInfo* info)
@@ -8956,7 +8956,7 @@ index c7926c0c..3a0a50a0 100644
      return CELL_OK;
  }
 diff --git a/libs/network/sceNp.c b/libs/network/sceNp.c
-index 697901a0..e6100884 100644
+index 697901a..e610088 100644
 --- a/libs/network/sceNp.c
 +++ b/libs/network/sceNp.c
 @@ -9,6 +9,8 @@
@@ -9310,7 +9310,7 @@ index 697901a0..e6100884 100644
   * returned OK without writing, and the title read whatever was in its stack. */
  s32 sceNpManagerGetContentRatingFlag(s32* isRestricted, s32* age)
 diff --git a/libs/network/sceNp.h b/libs/network/sceNp.h
-index a2318a0d..22d9d65e 100644
+index a2318a0..22d9d65 100644
 --- a/libs/network/sceNp.h
 +++ b/libs/network/sceNp.h
 @@ -29,6 +29,8 @@ extern "C" {
@@ -9367,7 +9367,7 @@ index a2318a0d..22d9d65e 100644
  }
  #endif
 diff --git a/libs/network/sysNet.c b/libs/network/sysNet.c
-index 87595f37..dbb94d64 100644
+index 87595f3..dbb94d6 100644
 --- a/libs/network/sysNet.c
 +++ b/libs/network/sysNet.c
 @@ -25,6 +25,7 @@
@@ -9661,7 +9661,7 @@ index 87595f37..dbb94d64 100644
  }
  
 diff --git a/libs/network/sysNet.h b/libs/network/sysNet.h
-index 0704b5ed..1db96a3a 100644
+index 0704b5e..1db96a3 100644
 --- a/libs/network/sysNet.h
 +++ b/libs/network/sysNet.h
 @@ -178,6 +178,12 @@ int32_t  sys_net_bnet_inet_aton(const char* cp, uint32_t* inp);
@@ -9679,7 +9679,7 @@ index 0704b5ed..1db96a3a 100644
  uint32_t sys_net_errno_loc(void);
 diff --git a/libs/network/tests/test_netstart_offline.c b/libs/network/tests/test_netstart_offline.c
 new file mode 100644
-index 00000000..8e3902b8
+index 0000000..8e3902b
 --- /dev/null
 +++ b/libs/network/tests/test_netstart_offline.c
 @@ -0,0 +1,61 @@
@@ -9746,7 +9746,7 @@ index 00000000..8e3902b8
 +}
 diff --git a/libs/network/tests/test_np_commerce1.c b/libs/network/tests/test_np_commerce1.c
 new file mode 100644
-index 00000000..dae59f73
+index 0000000..dae59f7
 --- /dev/null
 +++ b/libs/network/tests/test_np_commerce1.c
 @@ -0,0 +1,79 @@
@@ -9831,7 +9831,7 @@ index 00000000..dae59f73
 +}
 diff --git a/libs/network/tests/test_np_ticket_local.c b/libs/network/tests/test_np_ticket_local.c
 new file mode 100644
-index 00000000..103b5715
+index 0000000..103b571
 --- /dev/null
 +++ b/libs/network/tests/test_np_ticket_local.c
 @@ -0,0 +1,112 @@
@@ -9949,7 +9949,7 @@ index 00000000..103b5715
 +}
 diff --git a/libs/network/tests/test_np_ticket_offline.c b/libs/network/tests/test_np_ticket_offline.c
 new file mode 100644
-index 00000000..7835583b
+index 0000000..7835583
 --- /dev/null
 +++ b/libs/network/tests/test_np_ticket_offline.c
 @@ -0,0 +1,79 @@
@@ -10033,7 +10033,7 @@ index 00000000..7835583b
 +    return 0;
 +}
 diff --git a/libs/network/tests/test_sys_net.c b/libs/network/tests/test_sys_net.c
-index e9f78886..2e814ad4 100644
+index e9f7888..2e814ad 100644
 --- a/libs/network/tests/test_sys_net.c
 +++ b/libs/network/tests/test_sys_net.c
 @@ -107,10 +107,88 @@ static void put_sockaddr(uint32_t ea, uint32_t ip_be, uint16_t port)
@@ -10126,7 +10126,7 @@ index e9f78886..2e814ad4 100644
  
      const uint32_t LOOP = 0x7F000001u;
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 19a8516f..a103c7ff 100644
+index 19a8516..a103c7f 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
 @@ -39,6 +39,7 @@ uint32_t g_ydkj_real_spurs_ea   = 0;   /* real CellSpurs instance EA (for the ta
@@ -10591,7 +10591,7 @@ index 19a8516f..a103c7ff 100644
  {
      static int _n = 0;
 diff --git a/libs/spurs/cellSpurs.h b/libs/spurs/cellSpurs.h
-index a19c93ae..c53daaad 100644
+index a19c93a..c53daaa 100644
 --- a/libs/spurs/cellSpurs.h
 +++ b/libs/spurs/cellSpurs.h
 @@ -306,6 +306,7 @@ s32 cellSpursQueueAttachLv2EventQueue(u64 queue_ea);
@@ -10603,7 +10603,7 @@ index a19c93ae..c53daaad 100644
  
  s32 cellSpursEventFlagSet(CellSpursEventFlag* eventFlag, u16 bits);
 diff --git a/libs/system/cellSaveData.c b/libs/system/cellSaveData.c
-index 286bf478..6ea53541 100644
+index 286bf47..6ea5354 100644
 --- a/libs/system/cellSaveData.c
 +++ b/libs/system/cellSaveData.c
 @@ -8,6 +8,7 @@
@@ -10832,7 +10832,7 @@ index 286bf478..6ea53541 100644
      if (!dirName || !funcStat)
          return CELL_SAVEDATA_ERROR_PARAM;
 diff --git a/libs/system/cellSysutil.c b/libs/system/cellSysutil.c
-index 2176d389..c73cdde9 100644
+index 2176d38..c73cdde 100644
 --- a/libs/system/cellSysutil.c
 +++ b/libs/system/cellSysutil.c
 @@ -7,6 +7,7 @@
@@ -10917,7 +10917,7 @@ index 2176d389..c73cdde9 100644
 +    return CELL_OK;
 +}
 diff --git a/libs/system/cellSysutil.h b/libs/system/cellSysutil.h
-index 238e1880..d265b33b 100644
+index 238e188..d265b33 100644
 --- a/libs/system/cellSysutil.h
 +++ b/libs/system/cellSysutil.h
 @@ -27,7 +27,17 @@ extern "C" {
@@ -10954,7 +10954,7 @@ index 238e1880..d265b33b 100644
  }
  #endif
 diff --git a/libs/system/sysPrxForUser.c b/libs/system/sysPrxForUser.c
-index b2cba7b6..40b62496 100644
+index b2cba7b..40b6249 100644
 --- a/libs/system/sysPrxForUser.c
 +++ b/libs/system/sysPrxForUser.c
 @@ -1042,6 +1042,20 @@ s32 sys_prx_exitspawn_with_level(void)
@@ -10979,7 +10979,7 @@ index b2cba7b6..40b62496 100644
  {
      (void)flags;
 diff --git a/libs/system/sysPrxForUser.h b/libs/system/sysPrxForUser.h
-index 30290c73..0e9a45cb 100644
+index 30290c7..0e9a45c 100644
 --- a/libs/system/sysPrxForUser.h
 +++ b/libs/system/sysPrxForUser.h
 @@ -169,6 +169,8 @@ s32   _sys_heap_free(sys_heap_t heap, void* ptr);
@@ -10993,7 +10993,7 @@ index 30290c73..0e9a45cb 100644
   * Random number generation
 diff --git a/libs/system/tests/test_license_area.c b/libs/system/tests/test_license_area.c
 new file mode 100644
-index 00000000..58ad2481
+index 0000000..58ad248
 --- /dev/null
 +++ b/libs/system/tests/test_license_area.c
 @@ -0,0 +1,52 @@
@@ -11051,7 +11051,7 @@ index 00000000..58ad2481
 +}
 diff --git a/libs/system/tests/test_quit_gate.c b/libs/system/tests/test_quit_gate.c
 new file mode 100644
-index 00000000..a3eaf9e9
+index 0000000..a3eaf9e
 --- /dev/null
 +++ b/libs/system/tests/test_quit_gate.c
 @@ -0,0 +1,72 @@
@@ -11129,7 +11129,7 @@ index 00000000..a3eaf9e9
 +}
 diff --git a/libs/system/tests/test_sysconf.c b/libs/system/tests/test_sysconf.c
 new file mode 100644
-index 00000000..eddf0bf0
+index 0000000..eddf0bf
 --- /dev/null
 +++ b/libs/system/tests/test_sysconf.c
 @@ -0,0 +1,51 @@
@@ -11185,7 +11185,7 @@ index 00000000..eddf0bf0
 +    return 0;
 +}
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index efad9b92..f23e26f9 100644
+index efad9b9..f23e26f 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
 @@ -27,6 +27,7 @@ static u32 s_gcm_context_ea = 0;
@@ -12072,7 +12072,7 @@ index efad9b92..f23e26f9 100644
      memset(s_ea_address_table, 0xFF, sizeof(s_ea_address_table));
 diff --git a/libs/video/ps3_overlay.h b/libs/video/ps3_overlay.h
 new file mode 100644
-index 00000000..ae6da436
+index 0000000..ae6da43
 --- /dev/null
 +++ b/libs/video/ps3_overlay.h
 @@ -0,0 +1,110 @@
@@ -12188,7 +12188,7 @@ index 00000000..ae6da436
 +#endif
 diff --git a/libs/video/ps3_overlay.mm b/libs/video/ps3_overlay.mm
 new file mode 100644
-index 00000000..bcfdf9ea
+index 0000000..bcfdf9e
 --- /dev/null
 +++ b/libs/video/ps3_overlay.mm
 @@ -0,0 +1,1565 @@
@@ -13759,7 +13759,7 @@ index 00000000..bcfdf9ea
 +}
 diff --git a/libs/video/ps3_overlay_settings.h b/libs/video/ps3_overlay_settings.h
 new file mode 100644
-index 00000000..b53d83cf
+index 0000000..b53d83c
 --- /dev/null
 +++ b/libs/video/ps3_overlay_settings.h
 @@ -0,0 +1,174 @@
@@ -13938,7 +13938,7 @@ index 00000000..b53d83cf
 +
 +#endif /* PS3RECOMP_PS3_OVERLAY_SETTINGS_H */
 diff --git a/libs/video/rsx_commands.c b/libs/video/rsx_commands.c
-index 6be29e4d..7824ead5 100644
+index 6be29e4..7824ead 100644
 --- a/libs/video/rsx_commands.c
 +++ b/libs/video/rsx_commands.c
 @@ -329,12 +329,64 @@ static int process_vertex_attrib_method(rsx_state* state, u32 method, u32 data)
@@ -14007,7 +14007,7 @@ index 6be29e4d..7824ead5 100644
       * The fixed 250 was spent entirely on boot-time setup, so the methods around
       * the first real draw -- exactly the ones worth seeing -- were never traced. */
 diff --git a/libs/video/rsx_commands.h b/libs/video/rsx_commands.h
-index 5d4276e8..0562eab6 100644
+index 5d4276e..0562eab 100644
 --- a/libs/video/rsx_commands.h
 +++ b/libs/video/rsx_commands.h
 @@ -393,6 +393,14 @@ void rsx_state_init(rsx_state* state);
@@ -14026,7 +14026,7 @@ index 5d4276e8..0562eab6 100644
   * buf:  pointer to command buffer data (host memory)
   * size: size in bytes
 diff --git a/libs/video/rsx_dispatch.c b/libs/video/rsx_dispatch.c
-index 7350528d..0f7ef399 100644
+index 7350528..0f7ef39 100644
 --- a/libs/video/rsx_dispatch.c
 +++ b/libs/video/rsx_dispatch.c
 @@ -150,6 +150,12 @@ void rsx_dispatch_init(rsx_dispatch* rsx, const rsx_dispatch_sink* sink)
@@ -14108,7 +14108,7 @@ index 7350528d..0f7ef399 100644
           * slot range (first 400) -- what a shader's constants really were. */
          { static int lo = -2, hi = 0, n = 0;
 diff --git a/libs/video/rsx_dispatch.h b/libs/video/rsx_dispatch.h
-index b58a830b..d44e25c5 100644
+index b58a830..d44e25c 100644
 --- a/libs/video/rsx_dispatch.h
 +++ b/libs/video/rsx_dispatch.h
 @@ -126,6 +126,15 @@ struct rsx_dispatch {
@@ -14162,7 +14162,7 @@ index b58a830b..d44e25c5 100644
  typedef struct rsx_dsp_index_array {
      u32 offset;
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index f99986b3..72d35a2f 100644
+index f99986b..72d35a2 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -22,6 +22,10 @@
@@ -19245,7 +19245,7 @@ index f99986b3..72d35a2f 100644
  
  void rsx_draw_engine_present(void)
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index 4dec1d63..59815045 100644
+index 4dec1d6..5981504 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
 @@ -65,6 +65,14 @@ typedef enum {
@@ -19524,7 +19524,7 @@ index 4dec1d63..59815045 100644
  /*
   * These are the neutral parts the unit tests in libs/video/tests exercise
 diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
-index 5ce72ef6..be5e0122 100644
+index 5ce72ef..be5e012 100644
 --- a/libs/video/rsx_fp_decompiler.c
 +++ b/libs/video/rsx_fp_decompiler.c
 @@ -298,6 +298,15 @@ int rsx_vertex_constant_ring_plan(
@@ -20038,7 +20038,7 @@ index 5ce72ef6..be5e0122 100644
   * 32-bit exports bypass the integer framebuffer's RGB transfer function. */
  int rsx_fp_srgb_output_enabled(u32 packer, u32 ctrl, u32 color_format)
 diff --git a/libs/video/rsx_fp_decompiler.h b/libs/video/rsx_fp_decompiler.h
-index 670e8863..a664bcc1 100644
+index 670e886..a664bcc 100644
 --- a/libs/video/rsx_fp_decompiler.h
 +++ b/libs/video/rsx_fp_decompiler.h
 @@ -85,18 +85,65 @@ int rsx_fp_apply_alpha_test(char* hlsl, u32 out_size, u32 func, float ref);
@@ -20109,7 +20109,7 @@ index 670e8863..a664bcc1 100644
   *   tex_cube_mask : bit N set => texture unit N is a CUBEMAP. Cube units are
 diff --git a/libs/video/rsx_host_surface.h b/libs/video/rsx_host_surface.h
 new file mode 100644
-index 00000000..0af8058c
+index 0000000..0af8058
 --- /dev/null
 +++ b/libs/video/rsx_host_surface.h
 @@ -0,0 +1,275 @@
@@ -20389,7 +20389,7 @@ index 00000000..0af8058c
 +
 +#endif /* PS3RECOMP_RSX_HOST_SURFACE_H */
 diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
-index 2e65b8ee..8fed07eb 100644
+index 2e65b8e..8fed07e 100644
 --- a/libs/video/rsx_live_draw.c
 +++ b/libs/video/rsx_live_draw.c
 @@ -22,7 +22,7 @@
@@ -20465,7 +20465,7 @@ index 2e65b8ee..8fed07eb 100644
              if (PS3_LOG_FIRST(n_dbg, 24)) {
                  fprintf(stderr, "[alias-miss] tex %u:0x%08X fmt=0x%02X %ux%u target=%u surf:",
 diff --git a/libs/video/rsx_metal_backend.h b/libs/video/rsx_metal_backend.h
-index baba40f0..f10654eb 100644
+index baba40f..f10654e 100644
 --- a/libs/video/rsx_metal_backend.h
 +++ b/libs/video/rsx_metal_backend.h
 @@ -11,6 +11,15 @@
@@ -20502,7 +20502,7 @@ index baba40f0..f10654eb 100644
  
  /* Present one frame: clear the drawable to the colour last received through the
 diff --git a/libs/video/rsx_metal_backend.m b/libs/video/rsx_metal_backend.m
-index 5b20d8ac..7fbb6e80 100644
+index 5b20d8a..7fbb6e8 100644
 --- a/libs/video/rsx_metal_backend.m
 +++ b/libs/video/rsx_metal_backend.m
 @@ -56,6 +56,22 @@
@@ -24623,7 +24623,7 @@ index 5b20d8ac..7fbb6e80 100644
 +#endif
 +}
 diff --git a/libs/video/rsx_shader_msl.cpp b/libs/video/rsx_shader_msl.cpp
-index 61cabc31..53ce15ee 100644
+index 61cabc3..53ce15e 100644
 --- a/libs/video/rsx_shader_msl.cpp
 +++ b/libs/video/rsx_shader_msl.cpp
 @@ -104,7 +104,7 @@ bool hlsl_to_spirv(const char* hlsl, EShLanguage lang, std::vector<unsigned int>
@@ -24675,7 +24675,7 @@ index 61cabc31..53ce15ee 100644
  }
  
 diff --git a/libs/video/rsx_texture_layout.c b/libs/video/rsx_texture_layout.c
-index 131cc0d8..20e0b124 100644
+index 131cc0d..20e0b12 100644
 --- a/libs/video/rsx_texture_layout.c
 +++ b/libs/video/rsx_texture_layout.c
 @@ -3,9 +3,25 @@
@@ -24850,7 +24850,7 @@ index 131cc0d8..20e0b124 100644
      if (!(control1 & 0xFFFFu)) control1 = 0xAAE4u;   /* unset -> identity */
  
 diff --git a/libs/video/rsx_vertex_compact.c b/libs/video/rsx_vertex_compact.c
-index 7fa5f314..0ef06cba 100644
+index 7fa5f31..0ef06cb 100644
 --- a/libs/video/rsx_vertex_compact.c
 +++ b/libs/video/rsx_vertex_compact.c
 @@ -177,13 +177,21 @@ void rsx_vertex_fetch_plan_set_inline(
@@ -25147,7 +25147,7 @@ index 7fa5f314..0ef06cba 100644
      rsx_vertex_remap* remap, rsx_vertex_ref* refs, u32 count,
      u32* unique_count)
 diff --git a/libs/video/rsx_vertex_compact.h b/libs/video/rsx_vertex_compact.h
-index ad213615..d17499d2 100644
+index ad21361..d17499d 100644
 --- a/libs/video/rsx_vertex_compact.h
 +++ b/libs/video/rsx_vertex_compact.h
 @@ -25,6 +25,15 @@ typedef struct rsx_vertex_layout_plan {
@@ -25228,7 +25228,7 @@ index ad213615..d17499d2 100644
      const rsx_vertex_remap* remap, u32 occurrence);
  
 diff --git a/libs/video/rsx_vp_decompiler.c b/libs/video/rsx_vp_decompiler.c
-index b9ed32be..4302228e 100644
+index b9ed32b..4302228 100644
 --- a/libs/video/rsx_vp_decompiler.c
 +++ b/libs/video/rsx_vp_decompiler.c
 @@ -132,11 +132,27 @@ static void emit_store(Out* b, const char* dst_fmt, u32 idx, const char* m)
@@ -25321,7 +25321,7 @@ index b9ed32be..4302228e 100644
          }
          /* ---- scalar ALU (reads SRC2) ---- */
 diff --git a/libs/video/rsx_vp_decompiler.h b/libs/video/rsx_vp_decompiler.h
-index ecc53fce..390d263d 100644
+index ecc53fc..390d263 100644
 --- a/libs/video/rsx_vp_decompiler.h
 +++ b/libs/video/rsx_vp_decompiler.h
 @@ -57,6 +57,16 @@ int rsx_vp_decompile(const u8* ucode, u32 max_bytes, char* out, u32 out_size);
@@ -25342,7 +25342,7 @@ index ecc53fce..390d263d 100644
   * sampler sN, and turns TXL for that unit into SampleLevel(..., LOD 0).
   * Unmasked units retain the defined-zero fallback. */
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index b22e08f6..22d30055 100644
+index b22e08f..22d3005 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -1517,6 +1517,7 @@ static int vk_guest_draw(const rsx_state* st, u32 prim, u32 first, u32 count)
@@ -25354,7 +25354,7 @@ index b22e08f6..22d30055 100644
      /* Descriptors: rewritten per draw, which is safe because every submission
       * is waited on before the next one is recorded. */
 diff --git a/libs/video/tests/test_color_feedback_engine.c b/libs/video/tests/test_color_feedback_engine.c
-index d2d870d8..63b82088 100644
+index d2d870d..63b8208 100644
 --- a/libs/video/tests/test_color_feedback_engine.c
 +++ b/libs/video/tests/test_color_feedback_engine.c
 @@ -31,6 +31,10 @@ int main(void){vm_base=calloc(1,GUEST_BYTES);ppu_vm_size=GUEST_BYTES;
@@ -25369,7 +25369,7 @@ index d2d870d8..63b82088 100644
   const rsx_be_format f[]={RSX_BE_FMT_R8G8B8A8,RSX_BE_FMT_R16G16B16A16F,RSX_BE_FMT_R32G32B32A32F,RSX_BE_FMT_R32F};const u32 b[]={0xA5,0xBA,0xBB,0xBC},bp[]={4,8,16,4};for(unsigned i=0;i<4;i++){const u32 cf[4]={8,11,12,13};rsx_dsp_surface sf={.color_format=cf[i],.raster_type=1};eng_surface s={.w=128,.h=64,.fmt=f[i],.pitch=128*bp[i]};rsx_dsp_texture t={.format=b[i],.dimension=2,.width=128,.height=64,.mipmaps=1,.pitch=128*bp[i],.depth=1};T(eng_color_feedback_compatible(&s,&t,&sf),"compatible integer/float full physical layout");t.width=64;T(!eng_color_feedback_compatible(&s,&t,&sf),"logical width must not replace AA physical width");t.width=128;s.pitch=t.pitch=0;T(eng_color_feedback_compatible(&s,&t,&sf),"zero pitch means matching packed rows");s.pitch=t.pitch=128*bp[i]+64;T(eng_color_feedback_compatible(&s,&t,&sf),"matching padded pitch supported");}
   free(vm_base);printf("engine feedback checks=%u failures=%u\n",checks,failures);return failures?1:0;}
 diff --git a/libs/video/tests/test_depth24_rounding.c b/libs/video/tests/test_depth24_rounding.c
-index a60e387a..3d2163d1 100644
+index a60e387..3d2163d 100644
 --- a/libs/video/tests/test_depth24_rounding.c
 +++ b/libs/video/tests/test_depth24_rounding.c
 @@ -93,6 +93,10 @@ static void packing_case(u32 bpp)
@@ -25385,7 +25385,7 @@ index a60e387a..3d2163d1 100644
      samples[0]=1;samples[1]=nextafterf(1,0);samples[2]=nextafterf(samples[1],0);samples[3]=.5f;samples[4]=0;samples[5]=NAN;samples[6]=-.25f;samples[7]=1.25f;samples[8]=INFINITY;samples[9]=-INFINITY;samples[10]=.75f;samples[11]=.25f;
 diff --git a/libs/video/tests/test_env_cache.c b/libs/video/tests/test_env_cache.c
 new file mode 100644
-index 00000000..2d12a633
+index 0000000..2d12a63
 --- /dev/null
 +++ b/libs/video/tests/test_env_cache.c
 @@ -0,0 +1,43 @@
@@ -25433,7 +25433,7 @@ index 00000000..2d12a633
 +    return 0;
 +}
 diff --git a/libs/video/tests/test_fp_decompiler.c b/libs/video/tests/test_fp_decompiler.c
-index 650c0211..301b540c 100644
+index 650c021..301b540 100644
 --- a/libs/video/tests/test_fp_decompiler.c
 +++ b/libs/video/tests/test_fp_decompiler.c
 @@ -520,6 +520,183 @@ int main(void)
@@ -25621,7 +25621,7 @@ index 650c0211..301b540c 100644
      printf("Results: %d passed, %d failed\n", g_pass, g_fail);
      return g_fail ? 1 : 0;
 diff --git a/libs/video/tests/test_gcm_fifo_user_command.c b/libs/video/tests/test_gcm_fifo_user_command.c
-index 78dfcd1b..b8253e87 100644
+index 78dfcd1..b8253e8 100644
 --- a/libs/video/tests/test_gcm_fifo_user_command.c
 +++ b/libs/video/tests/test_gcm_fifo_user_command.c
 @@ -36,7 +36,12 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -25638,7 +25638,7 @@ index 78dfcd1b..b8253e87 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  int  rsx_live_draw_enabled(void) { return 0; }
 diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
-index 455e2c65..53976317 100644
+index 455e2c6..5397631 100644
 --- a/libs/video/tests/test_gcm_flip_stream.c
 +++ b/libs/video/tests/test_gcm_flip_stream.c
 @@ -50,7 +50,12 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -25655,7 +25655,7 @@ index 455e2c65..53976317 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  int  rsx_live_draw_enabled(void) { return 0; }
 diff --git a/libs/video/tests/test_gcm_flip_wrap.c b/libs/video/tests/test_gcm_flip_wrap.c
-index 49380567..8492040a 100644
+index 4938056..8492040 100644
 --- a/libs/video/tests/test_gcm_flip_wrap.c
 +++ b/libs/video/tests/test_gcm_flip_wrap.c
 @@ -39,7 +39,12 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -25672,7 +25672,7 @@ index 49380567..8492040a 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  int  rsx_live_draw_enabled(void) { return 0; }
 diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
-index c63febe4..9b629940 100644
+index c63febe..9b62994 100644
 --- a/libs/video/tests/test_gcm_get_on_jump.c
 +++ b/libs/video/tests/test_gcm_get_on_jump.c
 @@ -48,7 +48,12 @@ int  rsx_process_method(rsx_state* state, u32 method, u32 data)
@@ -25689,7 +25689,7 @@ index c63febe4..9b629940 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  int  rsx_live_draw_enabled(void) { return 0; }
 diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
-index 2f79ae73..07ee5550 100644
+index 2f79ae7..07ee555 100644
 --- a/libs/video/tests/test_gcm_get_on_release.c
 +++ b/libs/video/tests/test_gcm_get_on_release.c
 @@ -46,7 +46,12 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -25707,7 +25707,7 @@ index 2f79ae73..07ee5550 100644
  int  rsx_live_draw_enabled(void) { return 0; }
 diff --git a/libs/video/tests/test_gcm_zpass_report.c b/libs/video/tests/test_gcm_zpass_report.c
 new file mode 100644
-index 00000000..7d32e0e8
+index 0000000..7d32e0e
 --- /dev/null
 +++ b/libs/video/tests/test_gcm_zpass_report.c
 @@ -0,0 +1,223 @@
@@ -25936,7 +25936,7 @@ index 00000000..7d32e0e8
 +}
 diff --git a/libs/video/tests/test_index_decode.c b/libs/video/tests/test_index_decode.c
 new file mode 100644
-index 00000000..8bff6e95
+index 0000000..8bff6e9
 --- /dev/null
 +++ b/libs/video/tests/test_index_decode.c
 @@ -0,0 +1,124 @@
@@ -26066,7 +26066,7 @@ index 00000000..8bff6e95
 +}
 diff --git a/libs/video/tests/test_metal_bind_diff.m b/libs/video/tests/test_metal_bind_diff.m
 new file mode 100644
-index 00000000..65276ec3
+index 0000000..65276ec
 --- /dev/null
 +++ b/libs/video/tests/test_metal_bind_diff.m
 @@ -0,0 +1,117 @@
@@ -26188,7 +26188,7 @@ index 00000000..65276ec3
 +    }
 +}
 diff --git a/libs/video/tests/test_metal_depth_readback.m b/libs/video/tests/test_metal_depth_readback.m
-index 75b8139c..89e2f0ef 100644
+index 75b8139..89e2f0e 100644
 --- a/libs/video/tests/test_metal_depth_readback.m
 +++ b/libs/video/tests/test_metal_depth_readback.m
 @@ -52,7 +52,18 @@ int main(void)
@@ -26213,7 +26213,7 @@ index 75b8139c..89e2f0ef 100644
          CHECK(read_depth(depth,0,0,4,3,out,24)==0,"full depth readback with padded rows");
 diff --git a/libs/video/tests/test_metal_depth_rgba8.m b/libs/video/tests/test_metal_depth_rgba8.m
 new file mode 100644
-index 00000000..6606e9d3
+index 0000000..6606e9d
 --- /dev/null
 +++ b/libs/video/tests/test_metal_depth_rgba8.m
 @@ -0,0 +1,240 @@
@@ -26459,7 +26459,7 @@ index 00000000..6606e9d3
 +}
 diff --git a/libs/video/tests/test_metal_host_surface.m b/libs/video/tests/test_metal_host_surface.m
 new file mode 100644
-index 00000000..2fa5aa0d
+index 0000000..2fa5aa0
 --- /dev/null
 +++ b/libs/video/tests/test_metal_host_surface.m
 @@ -0,0 +1,265 @@
@@ -26730,7 +26730,7 @@ index 00000000..2fa5aa0d
 +}
 diff --git a/libs/video/tests/test_metal_image_io.m b/libs/video/tests/test_metal_image_io.m
 new file mode 100644
-index 00000000..bcfafc1c
+index 0000000..bcfafc1
 --- /dev/null
 +++ b/libs/video/tests/test_metal_image_io.m
 @@ -0,0 +1,61 @@
@@ -26797,7 +26797,7 @@ index 00000000..bcfafc1c
 +}
 diff --git a/libs/video/tests/test_metal_occlusion.m b/libs/video/tests/test_metal_occlusion.m
 new file mode 100644
-index 00000000..6e9c0967
+index 0000000..6e9c096
 --- /dev/null
 +++ b/libs/video/tests/test_metal_occlusion.m
 @@ -0,0 +1,168 @@
@@ -26970,7 +26970,7 @@ index 00000000..6e9c0967
 +    }
 +}
 diff --git a/libs/video/tests/test_metal_present_post.m b/libs/video/tests/test_metal_present_post.m
-index 357ec012..a8820fcf 100644
+index 357ec01..a8820fc 100644
 --- a/libs/video/tests/test_metal_present_post.m
 +++ b/libs/video/tests/test_metal_present_post.m
 @@ -1,6 +1,8 @@
@@ -27125,7 +27125,7 @@ index 357ec012..a8820fcf 100644
      return 0;
 diff --git a/libs/video/tests/test_metal_rect_clears.m b/libs/video/tests/test_metal_rect_clears.m
 new file mode 100644
-index 00000000..afc25ac3
+index 0000000..afc25ac
 --- /dev/null
 +++ b/libs/video/tests/test_metal_rect_clears.m
 @@ -0,0 +1,139 @@
@@ -27270,7 +27270,7 @@ index 00000000..afc25ac3
 +}
 diff --git a/libs/video/tests/test_metal_res_scale.m b/libs/video/tests/test_metal_res_scale.m
 new file mode 100644
-index 00000000..d574cd9b
+index 0000000..d574cd9
 --- /dev/null
 +++ b/libs/video/tests/test_metal_res_scale.m
 @@ -0,0 +1,124 @@
@@ -27400,7 +27400,7 @@ index 00000000..d574cd9b
 +}
 diff --git a/libs/video/tests/test_metal_shader_cache.m b/libs/video/tests/test_metal_shader_cache.m
 new file mode 100644
-index 00000000..ae780793
+index 0000000..ae78079
 --- /dev/null
 +++ b/libs/video/tests/test_metal_shader_cache.m
 @@ -0,0 +1,77 @@
@@ -27483,7 +27483,7 @@ index 00000000..ae780793
 +}
 diff --git a/libs/video/tests/test_metal_stage_ring.m b/libs/video/tests/test_metal_stage_ring.m
 new file mode 100644
-index 00000000..016f9fa7
+index 0000000..016f9fa
 --- /dev/null
 +++ b/libs/video/tests/test_metal_stage_ring.m
 @@ -0,0 +1,71 @@
@@ -27560,7 +27560,7 @@ index 00000000..016f9fa7
 +}
 diff --git a/libs/video/tests/test_metal_vbuf.m b/libs/video/tests/test_metal_vbuf.m
 new file mode 100644
-index 00000000..2650df6a
+index 0000000..2650df6
 --- /dev/null
 +++ b/libs/video/tests/test_metal_vbuf.m
 @@ -0,0 +1,64 @@
@@ -27630,7 +27630,7 @@ index 00000000..2650df6a
 +}
 diff --git a/libs/video/tests/test_metal_vstreams.m b/libs/video/tests/test_metal_vstreams.m
 new file mode 100644
-index 00000000..5dc31323
+index 0000000..5dc3132
 --- /dev/null
 +++ b/libs/video/tests/test_metal_vstreams.m
 @@ -0,0 +1,145 @@
@@ -27780,7 +27780,7 @@ index 00000000..5dc31323
 +    }
 +}
 diff --git a/libs/video/tests/test_nv3089_engine_read.c b/libs/video/tests/test_nv3089_engine_read.c
-index 5fc30341..8d0ae4f3 100644
+index 5fc3034..8d0ae4f 100644
 --- a/libs/video/tests/test_nv3089_engine_read.c
 +++ b/libs/video/tests/test_nv3089_engine_read.c
 @@ -40,7 +40,12 @@ void rsx_state_init(rsx_state* state) { (void)state; }
@@ -27798,7 +27798,7 @@ index 5fc30341..8d0ae4f3 100644
  int  rsx_live_draw_enabled(void) { return 0; }
 diff --git a/libs/video/tests/test_overlay_host_surface.m b/libs/video/tests/test_overlay_host_surface.m
 new file mode 100644
-index 00000000..26ba71f6
+index 0000000..26ba71f
 --- /dev/null
 +++ b/libs/video/tests/test_overlay_host_surface.m
 @@ -0,0 +1,234 @@
@@ -28038,7 +28038,7 @@ index 00000000..26ba71f6
 +}
 diff --git a/libs/video/tests/test_overlay_host_surface_pad.c b/libs/video/tests/test_overlay_host_surface_pad.c
 new file mode 100644
-index 00000000..d587bc75
+index 0000000..d587bc7
 --- /dev/null
 +++ b/libs/video/tests/test_overlay_host_surface_pad.c
 @@ -0,0 +1,33 @@
@@ -28077,7 +28077,7 @@ index 00000000..d587bc75
 +int   ps3_quit_gate_wait(int ms) { (void)ms; return 0; }
 diff --git a/libs/video/tests/test_overlay_settings.c b/libs/video/tests/test_overlay_settings.c
 new file mode 100644
-index 00000000..3632f2bc
+index 0000000..3632f2b
 --- /dev/null
 +++ b/libs/video/tests/test_overlay_settings.c
 @@ -0,0 +1,185 @@
@@ -28268,7 +28268,7 @@ index 00000000..3632f2bc
 +}
 diff --git a/libs/video/tests/test_program_memo.c b/libs/video/tests/test_program_memo.c
 new file mode 100644
-index 00000000..524a7d8b
+index 0000000..524a7d8
 --- /dev/null
 +++ b/libs/video/tests/test_program_memo.c
 @@ -0,0 +1,127 @@
@@ -28400,7 +28400,7 @@ index 00000000..524a7d8b
 +    return g_failures ? 1 : 0;
 +}
 diff --git a/libs/video/tests/test_rsx_draw_engine.c b/libs/video/tests/test_rsx_draw_engine.c
-index aee6109f..0b034250 100644
+index aee6109..0b03425 100644
 --- a/libs/video/tests/test_rsx_draw_engine.c
 +++ b/libs/video/tests/test_rsx_draw_engine.c
 @@ -14,6 +14,7 @@
@@ -29324,8 +29324,21 @@ index aee6109f..0b034250 100644
  
      free(vm_base);
      printf(g_failures ? "\n%d check(s) FAILED\n" : "\nall checks passed\n",
+diff --git a/libs/video/tests/test_rsx_framebuffer_srgb.c b/libs/video/tests/test_rsx_framebuffer_srgb.c
+index 88b2b02..6a278a0 100644
+--- a/libs/video/tests/test_rsx_framebuffer_srgb.c
++++ b/libs/video/tests/test_rsx_framebuffer_srgb.c
+@@ -76,7 +76,7 @@ int main(int argc, char** argv)
+     for (u32 t = 0; t < 4; ++t) { char fragment[96]; snprintf(fragment, sizeof fragment, "_rsx_color_out.t%u = _rsx_srgb_output(_rsx_color_out.t%u)", t, t); CHECK(strstr(hlsl, fragment), "MRT RGB output is converted separately"); }
+     if (argc == 2) { char path[1024]; snprintf(path, sizeof path, "%s/mrt-packer.ps.hlsl", argv[1]); FILE* f = fopen(path, "wb"); if (f) { fputs(hlsl, f); fclose(f); } }
+     CHECK(rsx_fp_apply_alpha_test_buffered(hlsl, sizeof hlsl, 0x204) == 1, "alpha test composes after RGB conversion");
+-    CHECK(strstr(hlsl, "_rsx_out.t0.a"), "alpha test uses unchanged alpha");
++    CHECK(strstr(hlsl, "float4 _rsx_alpha = _rsx_out.t0;") && strstr(hlsl, "_rsx_alpha.a"), "alpha test uses unchanged alpha");
+     memcpy(before, hlsl, sizeof hlsl);
+     CHECK(rsx_fp_apply_srgb_output(hlsl, sizeof hlsl) == -1 && !memcmp(before, hlsl, sizeof hlsl), "duplicate conversion fails without mutation");
+     char malformed[64] = "float4 main() { return 0; }"; char old[64]; memcpy(old, malformed, sizeof old);
 diff --git a/libs/video/tests/test_shader_msl.c b/libs/video/tests/test_shader_msl.c
-index de2a6dc6..399270d4 100644
+index de2a6dc..399270d 100644
 --- a/libs/video/tests/test_shader_msl.c
 +++ b/libs/video/tests/test_shader_msl.c
 @@ -20,6 +20,8 @@
@@ -29461,7 +29474,7 @@ index de2a6dc6..399270d4 100644
      {
          u8 fp[16];
 diff --git a/libs/video/tests/test_shadow_compare_metal.m b/libs/video/tests/test_shadow_compare_metal.m
-index 8844a8ab..d4d2a646 100644
+index 8844a8a..d4d2a64 100644
 --- a/libs/video/tests/test_shadow_compare_metal.m
 +++ b/libs/video/tests/test_shadow_compare_metal.m
 @@ -7,7 +7,7 @@
@@ -29474,7 +29487,7 @@ index 8844a8ab..d4d2a646 100644
   s_dev=MTLCreateSystemDefaultDevice();if(!s_dev)return 2;s_queue=[s_dev newCommandQueue];vm_base=calloc(1,4096);
   rsx_test_fp_instr(vm_base+256,RSX_TEST_FP_OPC(0x18)|RSX_TEST_FP_MASK_XYZW|RSX_TEST_FP_INSRC_TC0|RSX_TEST_FP_END,RSX_TEST_FP_SRC_INPUT|RSX_TEST_FP_SWZ_IDENT);
 diff --git a/libs/video/tests/test_texture_layout.c b/libs/video/tests/test_texture_layout.c
-index b2f93a7b..9a1bd769 100644
+index b2f93a7..9a1bd76 100644
 --- a/libs/video/tests/test_texture_layout.c
 +++ b/libs/video/tests/test_texture_layout.c
 @@ -434,6 +434,31 @@ static void test_swizzle_offset(void)
@@ -29587,7 +29600,7 @@ index b2f93a7b..9a1bd769 100644
      test_remap_y16x16_lanes();
 diff --git a/libs/video/tests/test_texture_packs.c b/libs/video/tests/test_texture_packs.c
 new file mode 100644
-index 00000000..ae76f562
+index 0000000..ae76f56
 --- /dev/null
 +++ b/libs/video/tests/test_texture_packs.c
 @@ -0,0 +1,208 @@
@@ -29801,10 +29814,10 @@ index 00000000..ae76f562
 +}
 diff --git a/libs/video/tests/test_vertex_cache.c b/libs/video/tests/test_vertex_cache.c
 new file mode 100644
-index 00000000..9a17def9
+index 0000000..d6ace0c
 --- /dev/null
 +++ b/libs/video/tests/test_vertex_cache.c
-@@ -0,0 +1,826 @@
+@@ -0,0 +1,835 @@
 +/*
 + * ps3recomp - the draw engine's cross-frame vertex cache
 + *
@@ -30258,9 +30271,16 @@ index 00000000..9a17def9
 +          stub.n_vbuf_release);
 +    rsx_draw_engine_present();
 +
++    /* PS3RECOMP_ENG_VCACHE_CHURN (default 60 frames): a key whose bytes
++     * changed is not made a buffer again until the change is that old. */
++    draw_arrays(0, 3);
++    CHECK(stub.n_vbuf_create == 1 && stub.last_vbuf == 0 && stub.first_vertex[0] == 99.0f,
++          "stable again, inside the churn window: fetched, no new buffer (%d)",
++          stub.n_vbuf_create);
++    for (int f = 0; f < 60; f++) rsx_draw_engine_present();
 +    draw_arrays(0, 3);
 +    CHECK(stub.n_vbuf_create == 2 && stub.last_vbuf == 0,
-+          "stable again for a frame: a new buffer (%d)", stub.n_vbuf_create);
++          "stable past the churn window: a new buffer (%d)", stub.n_vbuf_create);
 +    rsx_draw_engine_present();
 +    draw_arrays(0, 3);
 +    CHECK(stub.last_vbuf != 0 && stub.first_vertex[0] == 99.0f,
@@ -30518,8 +30538,10 @@ index 00000000..9a17def9
 +          (double)stub.split_verts[0][0][0]);
 +    rsx_draw_engine_present();
 +
-+    /* Both streams still: both drawn from buffers, nothing staged. */
++    /* Both streams still: both drawn from buffers, nothing staged (the
++     * rewritten mesh once its change is past the churn window). */
 +    const int created = stub.n_vbuf_create;
++    for (u32 f = 0; f < 61; f++) rsx_draw_engine_present();
 +    for (u32 f = 0; f < 3; f++) { draw_arrays(0, 3); rsx_draw_engine_present(); }
 +    CHECK(stub.split_staged == 0 && stub.split_vbuf[0] && stub.split_vbuf[1] &&
 +          stub.n_vbuf_create == created + 2 && stub.bad_split == 0,
@@ -30632,7 +30654,7 @@ index 00000000..9a17def9
 +    return 0;
 +}
 diff --git a/libs/video/tests/test_vertex_fetch_plan.c b/libs/video/tests/test_vertex_fetch_plan.c
-index 79f3cc66..8af6cddf 100644
+index 79f3cc6..8af6cdd 100644
 --- a/libs/video/tests/test_vertex_fetch_plan.c
 +++ b/libs/video/tests/test_vertex_fetch_plan.c
 @@ -80,7 +80,8 @@ static void ref_prepare(rsx_vertex_fetch_plan* plan, const rsx_vertex_ref* refs,
@@ -30750,7 +30772,7 @@ index 79f3cc66..8af6cddf 100644
      }
 diff --git a/libs/video/tests/test_vp_branch_engine.c b/libs/video/tests/test_vp_branch_engine.c
 new file mode 100644
-index 00000000..c6ddbb9b
+index 0000000..c6ddbb9
 --- /dev/null
 +++ b/libs/video/tests/test_vp_branch_engine.c
 @@ -0,0 +1,143 @@
@@ -30899,7 +30921,7 @@ index 00000000..c6ddbb9b
 +}
 diff --git a/libs/video/tests/test_zpass_engine.c b/libs/video/tests/test_zpass_engine.c
 new file mode 100644
-index 00000000..7dbc8f16
+index 0000000..7dbc8f1
 --- /dev/null
 +++ b/libs/video/tests/test_zpass_engine.c
 @@ -0,0 +1,151 @@
@@ -31055,7 +31077,7 @@ index 00000000..7dbc8f16
 +    return g_failures ? 1 : 0;
 +}
 diff --git a/runtime/host/host_posix.c b/runtime/host/host_posix.c
-index ae7c60ba..aa9229ed 100644
+index ae7c60b..aa9229e 100644
 --- a/runtime/host/host_posix.c
 +++ b/runtime/host/host_posix.c
 @@ -333,6 +333,23 @@ static void upload_textured_quad(void)
@@ -31172,7 +31194,7 @@ index ae7c60ba..aa9229ed 100644
                   : (do_draw == 10) ? MRT_A_ARGB
                   : (do_draw == 9) ? MRT_B_ARGB
 diff --git a/runtime/memory/vm.h b/runtime/memory/vm.h
-index c4acf2a0..bde031ae 100644
+index c4acf2a..bde031a 100644
 --- a/runtime/memory/vm.h
 +++ b/runtime/memory/vm.h
 @@ -50,6 +50,13 @@ extern "C" {
@@ -31199,7 +31221,7 @@ index c4acf2a0..bde031ae 100644
  
  /*
 diff --git a/runtime/ppu/ppu_context.h b/runtime/ppu/ppu_context.h
-index 4199c58b..c736d65c 100644
+index 4199c58..c736d65 100644
 --- a/runtime/ppu/ppu_context.h
 +++ b/runtime/ppu/ppu_context.h
 @@ -103,9 +103,16 @@ typedef struct ppu_context {
@@ -31220,7 +31242,7 @@ index 4199c58b..c736d65c 100644
       * r2 (TOC) gets set from the ELF entry descriptor.
       * r13 (SDA base) gets set from the module loader. */
 diff --git a/runtime/ppu/ppu_fs.cpp b/runtime/ppu/ppu_fs.cpp
-index 4d54b72b..ae92fbe8 100644
+index 4d54b72..ae92fbe 100644
 --- a/runtime/ppu/ppu_fs.cpp
 +++ b/runtime/ppu/ppu_fs.cpp
 @@ -23,6 +23,7 @@
@@ -31530,7 +31552,7 @@ index 4d54b72b..ae92fbe8 100644
          const int64_t pos = (int64_t)HOST_FTELL64(f);
          if (HOST_FSEEK64(f, offset) == 0)
 diff --git a/runtime/ppu/ppu_hle.cpp b/runtime/ppu/ppu_hle.cpp
-index b44816b0..5ac9071e 100644
+index b44816b..5ac9071 100644
 --- a/runtime/ppu/ppu_hle.cpp
 +++ b/runtime/ppu/ppu_hle.cpp
 @@ -221,8 +221,16 @@ static void hle_top_note(uint32_t nid, const char* name, const ppu_context* ctx,
@@ -31551,7 +31573,7 @@ index b44816b0..5ac9071e 100644
       * call it makes. WAITBT_EVERY only samples threads that are blocking on an
       * event queue, which misses a thread that stops looping while it is BUSY --
 diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
-index f54150d9..bbd20ae6 100644
+index f54150d..bbd20ae 100644
 --- a/runtime/ppu/ppu_loader.cpp
 +++ b/runtime/ppu/ppu_loader.cpp
 @@ -944,6 +944,15 @@ static inline int resv_off() { static int v = -1; if (v < 0) v = getenv("PPU_RES
@@ -31733,7 +31755,7 @@ index f54150d9..bbd20ae6 100644
  
 diff --git a/runtime/ppu/ppu_sjlj.c b/runtime/ppu/ppu_sjlj.c
 new file mode 100644
-index 00000000..5a363f3c
+index 0000000..5a363f3
 --- /dev/null
 +++ b/runtime/ppu/ppu_sjlj.c
 @@ -0,0 +1,250 @@
@@ -31989,7 +32011,7 @@ index 00000000..5a363f3c
 +}
 diff --git a/runtime/ppu/ppu_sjlj.h b/runtime/ppu/ppu_sjlj.h
 new file mode 100644
-index 00000000..5372d6d2
+index 0000000..5372d6d
 --- /dev/null
 +++ b/runtime/ppu/ppu_sjlj.h
 @@ -0,0 +1,101 @@
@@ -32095,7 +32117,7 @@ index 00000000..5372d6d2
 +
 +#endif /* PS3RECOMP_PPU_SJLJ_H */
 diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
-index 1a393fde..5b436c10 100644
+index 1a393fd..5b436c1 100644
 --- a/runtime/ppu/ppu_sysprx.cpp
 +++ b/runtime/ppu/ppu_sysprx.cpp
 @@ -21,6 +21,10 @@
@@ -32140,7 +32162,7 @@ index 1a393fde..5b436c10 100644
      ps3_hle_register_ctx(0x6005CDE1u, "_sys_net_errno_loc",     hle_net_errno_loc);
 diff --git a/runtime/ppu/tests/test_fs_rw_switch.cpp b/runtime/ppu/tests/test_fs_rw_switch.cpp
 new file mode 100644
-index 00000000..5d8f1ec9
+index 0000000..5d8f1ec
 --- /dev/null
 +++ b/runtime/ppu/tests/test_fs_rw_switch.cpp
 @@ -0,0 +1,145 @@
@@ -32291,7 +32313,7 @@ index 00000000..5d8f1ec9
 +}
 diff --git a/runtime/ppu/tests/test_ppu_sjlj.cpp b/runtime/ppu/tests/test_ppu_sjlj.cpp
 new file mode 100644
-index 00000000..5809552d
+index 0000000..5809552
 --- /dev/null
 +++ b/runtime/ppu/tests/test_ppu_sjlj.cpp
 @@ -0,0 +1,322 @@
@@ -32618,7 +32640,7 @@ index 00000000..5809552d
 +    return s_fails ? 1 : 0;
 +}
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 59f5e4b8..02805344 100644
+index 59f5e4b..0280534 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -16,6 +16,7 @@
@@ -33229,7 +33251,7 @@ index 59f5e4b8..02805344 100644
              return;
          }
 diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
-index bc7017da..0054df4a 100644
+index bc7017d..0054df4 100644
 --- a/runtime/spu/spu_coherency.c
 +++ b/runtime/spu/spu_coherency.c
 @@ -52,9 +52,33 @@ void spu_lockline_lock(void)
@@ -33337,7 +33359,7 @@ index bc7017da..0054df4a 100644
              /* SPU_PUTLLC_WHY=1: name the agent that killed it. A PUTLLC that
               * always fails for "no reservation" is useless without knowing who
 diff --git a/runtime/spu/spu_coherency.h b/runtime/spu/spu_coherency.h
-index ca76ccd1..f84aaad9 100644
+index ca76ccd..f84aaad 100644
 --- a/runtime/spu/spu_coherency.h
 +++ b/runtime/spu/spu_coherency.h
 @@ -65,7 +65,7 @@ void spu_coh_notify_write(uint32_t ea);
@@ -33360,7 +33382,7 @@ index ca76ccd1..f84aaad9 100644
  }
  #endif
 diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
-index f46d415f..3ad0f384 100644
+index f46d415..3ad0f38 100644
 --- a/runtime/spu/spu_context.h
 +++ b/runtime/spu/spu_context.h
 @@ -39,17 +39,17 @@ extern "C" {
@@ -33768,7 +33790,7 @@ index f46d415f..3ad0f384 100644
   * brsl/bisl frame is live (host_depth>0); at 0 the frame was destroyed (task
   * resume / restack unwind) so dispatch to the link register instead -- faithful
 diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
-index 7b0debec..d16b6012 100644
+index 7b0debe..d16b601 100644
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -728,10 +728,19 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
@@ -33964,7 +33986,7 @@ index 7b0debec..d16b6012 100644
  
      /* Execute the transfer.
 diff --git a/runtime/spu/spu_drain.c b/runtime/spu/spu_drain.c
-index fc3cea12..45877a02 100644
+index fc3cea1..45877a0 100644
 --- a/runtime/spu/spu_drain.c
 +++ b/runtime/spu/spu_drain.c
 @@ -36,7 +36,7 @@ void* volatile    g_pm_flow_ctx = 0;
@@ -34168,7 +34190,7 @@ index fc3cea12..45877a02 100644
                  void (*vf)(spu_context*) = spu_take_interrupt(ctx, fn);
                  if (!ctx->int_enable) {   /* taken (a take clears the enable; a deferral leaves it) */
 diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
-index 3f7d7337..4d340f0f 100644
+index 3f7d733..4d340f0 100644
 --- a/runtime/spu/spu_helpers.h
 +++ b/runtime/spu/spu_helpers.h
 @@ -788,9 +788,7 @@ SPU__NV_INLINE u128 spu__nv_fa(u128 a, u128 b, uint32_t negb) {
@@ -34442,7 +34464,7 @@ index 3f7d7337..4d340f0f 100644
  
  
 diff --git a/runtime/spu/spu_raw.c b/runtime/spu/spu_raw.c
-index f6dc8bef..038fbb1c 100644
+index f6dc8be..038fbb1 100644
 --- a/runtime/spu/spu_raw.c
 +++ b/runtime/spu/spu_raw.c
 @@ -229,10 +229,27 @@ void spu_raw_note_image(uint32_t src_ea, uint32_t entry)
@@ -34676,7 +34698,7 @@ index f6dc8bef..038fbb1c 100644
  
      case SPU_RAW_IN_MBOX:
 diff --git a/runtime/spu/spu_workload.c b/runtime/spu/spu_workload.c
-index 20089610..f4a66d01 100644
+index 2008961..f4a66d0 100644
 --- a/runtime/spu/spu_workload.c
 +++ b/runtime/spu/spu_workload.c
 @@ -13,6 +13,7 @@
@@ -34806,7 +34828,7 @@ index 20089610..f4a66d01 100644
                  taskId, taskset_ea); fflush(stderr); }
      /* SPU_SIG_STATS=1: signals per second per (taskset, task, caller). */
 diff --git a/runtime/spu/spu_workload.h b/runtime/spu/spu_workload.h
-index f8a726e0..09c982f9 100644
+index f8a726e..09c982f 100644
 --- a/runtime/spu/spu_workload.h
 +++ b/runtime/spu/spu_workload.h
 @@ -58,6 +58,28 @@ spu_lifted_entry_fn spu_workload_find(uint64_t fingerprint);
@@ -34839,7 +34861,7 @@ index f8a726e0..09c982f9 100644
   * kernel handoff: kernel context at LS 0x100, entry ABI of
   * cellSpursModuleEntry(context, ea) with the workload's u64 data in r4.
 diff --git a/runtime/spu/spurs_job.c b/runtime/spu/spurs_job.c
-index bb8f1226..81dd81dc 100644
+index bb8f122..81dd81d 100644
 --- a/runtime/spu/spurs_job.c
 +++ b/runtime/spu/spurs_job.c
 @@ -43,6 +43,7 @@
@@ -34851,7 +34873,7 @@ index bb8f1226..81dd81dc 100644
  extern uint8_t* vm_base;
  extern int spu_run_with_halt(void (*)(spu_context*), spu_context*);
 diff --git a/runtime/spu/spurs_policy.c b/runtime/spu/spurs_policy.c
-index 905b3517..efd8c398 100644
+index 905b351..efd8c39 100644
 --- a/runtime/spu/spurs_policy.c
 +++ b/runtime/spu/spurs_policy.c
 @@ -27,6 +27,7 @@
@@ -34915,7 +34937,7 @@ index 905b3517..efd8c398 100644
      ctx->gpr[5]._u32[0] = 0;                           /* poll status */
 diff --git a/runtime/spu/tests/test_spu_cflt_fast.c b/runtime/spu/tests/test_spu_cflt_fast.c
 new file mode 100644
-index 00000000..6433225e
+index 0000000..6433225
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_cflt_fast.c
 @@ -0,0 +1,39 @@
@@ -34959,7 +34981,7 @@ index 00000000..6433225e
 +    return bad != 0;
 +}
 diff --git a/runtime/spu/tests/test_spu_coherency.c b/runtime/spu/tests/test_spu_coherency.c
-index 5d747030..13134a33 100644
+index 5d74703..13134a3 100644
 --- a/runtime/spu/tests/test_spu_coherency.c
 +++ b/runtime/spu/tests/test_spu_coherency.c
 @@ -419,6 +419,52 @@ static void test_many_contexts(void)
@@ -35025,7 +35047,7 @@ index 5d747030..13134a33 100644
      test_many_contexts();
 diff --git a/runtime/spu/tests/test_spu_decrementer.c b/runtime/spu/tests/test_spu_decrementer.c
 new file mode 100644
-index 00000000..9c984d26
+index 0000000..9c984d2
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_decrementer.c
 @@ -0,0 +1,112 @@
@@ -35143,7 +35165,7 @@ index 00000000..9c984d26
 +void spu_thread_publish_ctx(uint32_t tid, void* ctx) { (void)tid; (void)ctx; }
 diff --git a/runtime/spu/tests/test_spu_dma_repeat.c b/runtime/spu/tests/test_spu_dma_repeat.c
 new file mode 100644
-index 00000000..add088d0
+index 0000000..add088d
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_dma_repeat.c
 @@ -0,0 +1,116 @@
@@ -35264,7 +35286,7 @@ index 00000000..add088d0
 +uint32_t g_spu_image_src_ea, g_spu_image_ls_start, g_spu_image_span;
 +void spu_thread_publish_ctx(uint32_t tid, void* ctx) { (void)tid; (void)ctx; }
 diff --git a/runtime/spu/tests/test_spu_float_neon.c b/runtime/spu/tests/test_spu_float_neon.c
-index ac634cd9..cac44d13 100644
+index ac634cd..cac44d1 100644
 --- a/runtime/spu/tests/test_spu_float_neon.c
 +++ b/runtime/spu/tests/test_spu_float_neon.c
 @@ -80,6 +80,7 @@ int main(void)
@@ -35332,7 +35354,7 @@ index ac634cd9..cac44d13 100644
       * must still round to nearest: 1 + (2^-53 + 2^-60) -> 1 + 2^-52. */
      {
 diff --git a/runtime/spu/tests/test_spu_lifted_start.c b/runtime/spu/tests/test_spu_lifted_start.c
-index 7f5ef56f..6fa63c26 100644
+index 7f5ef56..6fa63c2 100644
 --- a/runtime/spu/tests/test_spu_lifted_start.c
 +++ b/runtime/spu/tests/test_spu_lifted_start.c
 @@ -104,6 +104,8 @@ int64_t lv2_spu_lock_line_classify(uint32_t a, uint64_t f) { (void)a; (void)f; r
@@ -35438,7 +35460,7 @@ index 7f5ef56f..6fa63c26 100644
      signal(SIGSEGV, guard_fault);
      signal(SIGBUS,  guard_fault);
 diff --git a/runtime/spu/tests/test_spu_mfc_slots.c b/runtime/spu/tests/test_spu_mfc_slots.c
-index f7eff36a..8677bd7c 100644
+index f7eff36..8677bd7 100644
 --- a/runtime/spu/tests/test_spu_mfc_slots.c
 +++ b/runtime/spu/tests/test_spu_mfc_slots.c
 @@ -206,6 +206,9 @@ int main(void)
@@ -35453,7 +35475,7 @@ index f7eff36a..8677bd7c 100644
      CHECK(reusere->queue_count == 0);
 diff --git a/runtime/spu/tests/test_spu_poison_scan.c b/runtime/spu/tests/test_spu_poison_scan.c
 new file mode 100644
-index 00000000..710392d8
+index 0000000..710392d
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_poison_scan.c
 @@ -0,0 +1,84 @@
@@ -35542,7 +35564,7 @@ index 00000000..710392d8
 +#endif
 +}
 diff --git a/runtime/spu/tests/test_spu_user_event_port.c b/runtime/spu/tests/test_spu_user_event_port.c
-index 26e7db33..478ec1e7 100644
+index 26e7db3..478ec1e 100644
 --- a/runtime/spu/tests/test_spu_user_event_port.c
 +++ b/runtime/spu/tests/test_spu_user_event_port.c
 @@ -12,6 +12,7 @@
@@ -35595,7 +35617,7 @@ index 26e7db33..478ec1e7 100644
      r = send_event(0x2A, &ms);
 diff --git a/runtime/spu/tests/test_spu_workload_masked.c b/runtime/spu/tests/test_spu_workload_masked.c
 new file mode 100644
-index 00000000..f9d6aea8
+index 0000000..f9d6aea
 --- /dev/null
 +++ b/runtime/spu/tests/test_spu_workload_masked.c
 @@ -0,0 +1,81 @@
@@ -35681,7 +35703,7 @@ index 00000000..f9d6aea8
 +    return 0;
 +}
 diff --git a/runtime/syscalls/lv2_register.c b/runtime/syscalls/lv2_register.c
-index 8815650c..6aeb9996 100644
+index 8815650..6aeb999 100644
 --- a/runtime/syscalls/lv2_register.c
 +++ b/runtime/syscalls/lv2_register.c
 @@ -1603,6 +1603,7 @@ static SRWLOCK s_spu_port_lock = SRWLOCK_INIT;
@@ -35725,7 +35747,7 @@ index 8815650c..6aeb9996 100644
          }
      }
 diff --git a/runtime/syscalls/sys_cond.c b/runtime/syscalls/sys_cond.c
-index 45235ea6..e1311a27 100644
+index 45235ea..e1311a2 100644
 --- a/runtime/syscalls/sys_cond.c
 +++ b/runtime/syscalls/sys_cond.c
 @@ -195,7 +195,10 @@ int64_t sys_cond_wait(ppu_context* ctx)
@@ -35740,7 +35762,7 @@ index 45235ea6..e1311a27 100644
      m->lock_count = depth;
      return result;
 diff --git a/runtime/syscalls/sys_fs.c b/runtime/syscalls/sys_fs.c
-index f076ef89..75ca10e6 100644
+index f076ef8..75ca10e 100644
 --- a/runtime/syscalls/sys_fs.c
 +++ b/runtime/syscalls/sys_fs.c
 @@ -5,6 +5,7 @@
@@ -35764,7 +35786,7 @@ index f076ef89..75ca10e6 100644
              return;
          }
 diff --git a/runtime/syscalls/sys_mutex.c b/runtime/syscalls/sys_mutex.c
-index 2e760ea5..86ad90d6 100644
+index 2e760ea..86ad90d 100644
 --- a/runtime/syscalls/sys_mutex.c
 +++ b/runtime/syscalls/sys_mutex.c
 @@ -8,6 +8,10 @@
@@ -35941,7 +35963,7 @@ index 2e760ea5..86ad90d6 100644
      m->owner_tid = caller_tid;
      m->lock_count++;
 diff --git a/runtime/syscalls/sys_mutex.h b/runtime/syscalls/sys_mutex.h
-index bfe849d8..08b20e46 100644
+index bfe849d..08b20e4 100644
 --- a/runtime/syscalls/sys_mutex.h
 +++ b/runtime/syscalls/sys_mutex.h
 @@ -62,6 +62,7 @@ typedef struct sys_mutex_info {
@@ -35953,7 +35975,7 @@ index bfe849d8..08b20e46 100644
  #ifdef _WIN32
      CRITICAL_SECTION cs;
 diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
-index c64b0b8d..cf7878e7 100644
+index c64b0b8..cf7878e 100644
 --- a/runtime/syscalls/sys_ppu_thread.c
 +++ b/runtime/syscalls/sys_ppu_thread.c
 @@ -1250,6 +1250,17 @@ int64_t sys_ppu_thread_get_join_state(ppu_context* ctx)
@@ -36032,7 +36054,7 @@ index c64b0b8d..cf7878e7 100644
      }
  
 diff --git a/runtime/syscalls/sys_semaphore.c b/runtime/syscalls/sys_semaphore.c
-index a05eeecf..8ac3d6f5 100644
+index a05eeec..8ac3d6f 100644
 --- a/runtime/syscalls/sys_semaphore.c
 +++ b/runtime/syscalls/sys_semaphore.c
 @@ -9,6 +9,7 @@
@@ -36044,7 +36066,7 @@ index a05eeecf..8ac3d6f5 100644
  /* ---------------------------------------------------------------------------
   * Globals
 diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
-index 5683446d..fc6c7c3a 100644
+index 5683446..a5a8b88 100644
 --- a/runtime/syscalls/sys_timer.c
 +++ b/runtime/syscalls/sys_timer.c
 @@ -12,7 +12,11 @@
@@ -36059,12 +36081,54 @@ index 5683446d..fc6c7c3a 100644
  
  /* ---------------------------------------------------------------------------
   * Globals
-@@ -70,13 +74,33 @@ uint64_t ppu_timebase_now(void)
+@@ -70,13 +74,75 @@ uint64_t ppu_timebase_now(void)
      uint64_t d = (uint64_t)(now.QuadPart - t0);
      uint64_t q = (uint64_t)s_qpc_freq.QuadPart;
      return (d / q) * PS3_TIMEBASE_FREQ + (d % q) * PS3_TIMEBASE_FREQ / q;
 +#else
-+    const uint64_t ns = host_monotonic_ns();
++    uint64_t ns = host_monotonic_ns();
++    /* (From the Resistance 3 port.) A thread that only reads the timebase,
++     * thousands of times in a row with nothing in between, is polling for
++     * something another thread (or SPU) will do: Resistance's main thread
++     * waits for a flag that way (func_000B7DFC in game.self v1.7: a read of
++     * the flag, a delay of 80 db8cyc pauses, a read of the clock for its 1 s
++     * timeout), about a sixth of a core in gameplay. On the PS3 that spin is
++     * free; here it holds a host core at 100% and heats the Mac until it
++     * throttles. After PS3_TB_POLL_CALLS back-to-back reads (gaps under
++     * PS3_TB_POLL_GAP_NS of guest work), each further read first sleeps
++     * PS3_TB_POLL_SLEEP_US (-1: sched_yield); any real work between two
++     * reads ends it. PS3_TB_POLL_SLEEP_US=0 turns it off. */
++    {
++        static int s_sleep_us = -1, s_init; static unsigned s_calls; static uint64_t s_gap;
++        static __thread uint64_t t_last; static __thread unsigned t_streak;
++        if (!s_init) {
++            const char* e = getenv("PS3_TB_POLL_GAP_NS"); s_gap = e ? (uint64_t)atoll(e) : 400u;
++            /* 20000, not the Resistance 3 port's 2000: Resistance 2 measured
++             * its many short waits a frame ending late at 2000 (22 -> 33 fps
++             * uncapped at 20000, with less CPU). */
++            e = getenv("PS3_TB_POLL_CALLS"); s_calls = e ? (unsigned)atoi(e) : 20000u;
++            e = getenv("PS3_TB_POLL_SLEEP_US"); s_sleep_us = e ? atoi(e) : 10;
++            s_init = 1;
++        }
++        if (s_sleep_us != 0) {
++            if (ns - t_last < s_gap) {
++                if (++t_streak >= s_calls) {
++                    /* PS3_TB_POLL_SLEEP_US=-1: give the core away (sched_yield)
++                     * instead of sleeping, so the wait ends as soon as it can. */
++                    if (s_sleep_us < 0) {
++                        sched_yield();
++                    } else {
++                        struct timespec ts = { 0, (long)s_sleep_us * 1000L };
++                        nanosleep(&ts, NULL);
++                    }
++                    ns = host_monotonic_ns();
++                }
++            } else {
++                t_streak = 0;
++            }
++            t_last = ns;
++        }
++    }
 +    return (ns / 1000000000ull) * PS3_TIMEBASE_FREQ +
 +           (ns % 1000000000ull) * PS3_TIMEBASE_FREQ / 1000000000ull;
 +#endif
@@ -36095,7 +36159,7 @@ index 5683446d..fc6c7c3a 100644
  
  static void write_be32(uint32_t addr, uint32_t val)
  {
-@@ -250,6 +274,25 @@ int64_t sys_timer_usleep(ppu_context* ctx)
+@@ -250,6 +316,25 @@ int64_t sys_timer_usleep(ppu_context* ctx)
          } while (qpc_now.QuadPart < qpc_deadline);
      }
  #else
@@ -36121,7 +36185,7 @@ index 5683446d..fc6c7c3a 100644
      if (usec > 0) {
          struct timespec ts;
          ts.tv_sec  = (time_t)(usec / 1000000);
-@@ -385,8 +428,7 @@ static uint64_t timer_now_us(void)
+@@ -385,8 +470,7 @@ static uint64_t timer_now_us(void)
      return (uint64_t)(n.QuadPart / f.QuadPart) * 1000000ull +
             (uint64_t)(n.QuadPart % f.QuadPart) * 1000000ull / (uint64_t)f.QuadPart;
  #else
@@ -36132,7 +36196,7 @@ index 5683446d..fc6c7c3a 100644
  }
  
 diff --git a/runtime/syscalls/sys_timer.h b/runtime/syscalls/sys_timer.h
-index 7b38fcbb..f3d4163a 100644
+index 7b38fcb..f3d4163 100644
 --- a/runtime/syscalls/sys_timer.h
 +++ b/runtime/syscalls/sys_timer.h
 @@ -32,6 +32,15 @@ extern "C" {
@@ -36151,8 +36215,71 @@ index 7b38fcbb..f3d4163a 100644
  #ifdef _WIN32
  /* Sub-millisecond timed-wait support for the lv2 sync primitives.
   * SleepConditionVariableCS / WaitForSingleObject floor a timed wait to 1 ms,
+diff --git a/runtime/syscalls/tests/test_timebase_poll.c b/runtime/syscalls/tests/test_timebase_poll.c
+new file mode 100644
+index 0000000..8b9670d
+--- /dev/null
++++ b/runtime/syscalls/tests/test_timebase_poll.c
+@@ -0,0 +1,57 @@
++/*
++ * ppu_timebase_now's poll sleep: a thread that only reads the timebase
++ * sleeps after PS3_TB_POLL_CALLS back-to-back reads; reads with guest work
++ * between them never sleep; PS3_TB_POLL_SLEEP_US=0 turns it off.
++ *
++ * clang -std=gnu17 -I include -I runtime/syscalls -Wl,-dead_strip -o test_timebase_poll \
++ *   runtime/syscalls/tests/test_timebase_poll.c && ./test_timebase_poll
++ */
++#include "../sys_timer.c"
++
++#include <stdio.h>
++
++static int g_fail;
++#define CHECK(c, ...) do { printf("[%s] ", (c) ? "PASS" : "FAIL"); printf(__VA_ARGS__); printf("\n"); if (!(c)) g_fail++; } while (0)
++
++static uint64_t spin_reads(int n)
++{
++    const uint64_t t0 = host_monotonic_ns();
++    for (int i = 0; i < n; i++) (void)ppu_timebase_now();
++    return host_monotonic_ns() - t0;
++}
++
++static uint64_t spaced_reads(int n, uint64_t work_ns)
++{
++    const uint64_t t0 = host_monotonic_ns();
++    for (int i = 0; i < n; i++) {
++        const uint64_t w = host_monotonic_ns();
++        while (host_monotonic_ns() - w < work_ns) { }
++        (void)ppu_timebase_now();
++    }
++    return host_monotonic_ns() - t0;
++}
++
++int main(void)
++{
++    setenv("PS3_TB_POLL_CALLS", "100", 1);
++    setenv("PS3_TB_POLL_SLEEP_US", "200", 1);
++    setenv("PS3_TB_POLL_GAP_NS", "400", 1);
++
++    /* 300 reads in a row: the last 200 sleep 200 us each (40 ms; less when a
++     * preempted read ends the streak on a loaded machine). Without the sleep
++     * they take a few microseconds. */
++    const uint64_t spin = spin_reads(300);
++    CHECK(spin >= 10000000ull, "a polling thread sleeps after 100 reads (300 reads took %.1f ms)", spin / 1e6);
++
++    /* 300 reads 2 us of work apart: none sleeps (well under 30 ms). */
++    const uint64_t spaced = spaced_reads(300, 2000);
++    CHECK(spaced < 20000000ull, "reads with work between them never sleep (%.1f ms)", spaced / 1e6);
++
++    /* The clock still advances and is monotonic across the sleeps. */
++    uint64_t a = ppu_timebase_now(), b = 0;
++    for (int i = 0; i < 400; i++) { b = ppu_timebase_now(); if (b < a) break; a = b; }
++    CHECK(b >= a, "the timebase stays monotonic while it sleeps");
++
++    printf(g_fail ? "%d check(s) FAILED\n" : "all timebase poll checks passed\n", g_fail);
++    return g_fail != 0;
++}
 diff --git a/templates/project/CMakeLists.txt b/templates/project/CMakeLists.txt
-index 3504138a..f773d4ff 100644
+index 3504138..f773d4f 100644
 --- a/templates/project/CMakeLists.txt
 +++ b/templates/project/CMakeLists.txt
 @@ -121,6 +121,9 @@ set(PS3RECOMP_SCAFFOLD
@@ -36180,7 +36307,7 @@ index 3504138a..f773d4ff 100644
      target_compile_options(${PROJECT_NAME} PRIVATE
 diff --git a/tests/test_hdd1_cache.c b/tests/test_hdd1_cache.c
 new file mode 100644
-index 00000000..82e70bcd
+index 0000000..82e70bc
 --- /dev/null
 +++ b/tests/test_hdd1_cache.c
 @@ -0,0 +1,62 @@
@@ -36248,7 +36375,7 @@ index 00000000..82e70bcd
 +}
 diff --git a/third_party/imgui/LICENSE.txt b/third_party/imgui/LICENSE.txt
 new file mode 100644
-index 00000000..d5ba3155
+index 0000000..d5ba315
 --- /dev/null
 +++ b/third_party/imgui/LICENSE.txt
 @@ -0,0 +1,21 @@
@@ -36275,7 +36402,7 @@ index 00000000..d5ba3155
 +SOFTWARE.
 diff --git a/third_party/imgui/VERSION.txt b/third_party/imgui/VERSION.txt
 new file mode 100644
-index 00000000..a45918fb
+index 0000000..a45918f
 --- /dev/null
 +++ b/third_party/imgui/VERSION.txt
 @@ -0,0 +1,6 @@
@@ -36287,7 +36414,7 @@ index 00000000..a45918fb
 +not used. Upgrade by replacing these files from a newer release.
 diff --git a/third_party/imgui/backends/imgui_impl_metal.h b/third_party/imgui/backends/imgui_impl_metal.h
 new file mode 100644
-index 00000000..8af2c8b6
+index 0000000..8af2c8b
 --- /dev/null
 +++ b/third_party/imgui/backends/imgui_impl_metal.h
 @@ -0,0 +1,78 @@
@@ -36371,7 +36498,7 @@ index 00000000..8af2c8b6
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/backends/imgui_impl_metal.mm b/third_party/imgui/backends/imgui_impl_metal.mm
 new file mode 100644
-index 00000000..445c4b36
+index 0000000..445c4b3
 --- /dev/null
 +++ b/third_party/imgui/backends/imgui_impl_metal.mm
 @@ -0,0 +1,685 @@
@@ -37062,7 +37189,7 @@ index 00000000..445c4b36
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imconfig.h b/third_party/imgui/imconfig.h
 new file mode 100644
-index 00000000..b40db389
+index 0000000..b40db38
 --- /dev/null
 +++ b/third_party/imgui/imconfig.h
 @@ -0,0 +1,150 @@
@@ -37218,7 +37345,7 @@ index 00000000..b40db389
 +*/
 diff --git a/third_party/imgui/imgui.cpp b/third_party/imgui/imgui.cpp
 new file mode 100644
-index 00000000..7fa2d49e
+index 0000000..7fa2d49
 --- /dev/null
 +++ b/third_party/imgui/imgui.cpp
 @@ -0,0 +1,18628 @@
@@ -55852,7 +55979,7 @@ index 00000000..7fa2d49e
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imgui.h b/third_party/imgui/imgui.h
 new file mode 100644
-index 00000000..611c5f28
+index 0000000..611c5f2
 --- /dev/null
 +++ b/third_party/imgui/imgui.h
 @@ -0,0 +1,4300 @@
@@ -60158,7 +60285,7 @@ index 00000000..611c5f28
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imgui_draw.cpp b/third_party/imgui/imgui_draw.cpp
 new file mode 100644
-index 00000000..e582f5cd
+index 0000000..e582f5c
 --- /dev/null
 +++ b/third_party/imgui/imgui_draw.cpp
 @@ -0,0 +1,6811 @@
@@ -66975,7 +67102,7 @@ index 00000000..e582f5cd
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imgui_internal.h b/third_party/imgui/imgui_internal.h
 new file mode 100644
-index 00000000..d2a8595a
+index 0000000..d2a8595
 --- /dev/null
 +++ b/third_party/imgui/imgui_internal.h
 @@ -0,0 +1,4119 @@
@@ -71100,7 +71227,7 @@ index 00000000..d2a8595a
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imgui_tables.cpp b/third_party/imgui/imgui_tables.cpp
 new file mode 100644
-index 00000000..f8fab377
+index 0000000..f8fab37
 --- /dev/null
 +++ b/third_party/imgui/imgui_tables.cpp
 @@ -0,0 +1,4905 @@
@@ -76011,7 +76138,7 @@ index 00000000..f8fab377
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imgui_widgets.cpp b/third_party/imgui/imgui_widgets.cpp
 new file mode 100644
-index 00000000..5ed7d6fe
+index 0000000..5ed7d6f
 --- /dev/null
 +++ b/third_party/imgui/imgui_widgets.cpp
 @@ -0,0 +1,11041 @@
@@ -87058,7 +87185,7 @@ index 00000000..5ed7d6fe
 +#endif // #ifndef IMGUI_DISABLE
 diff --git a/third_party/imgui/imstb_rectpack.h b/third_party/imgui/imstb_rectpack.h
 new file mode 100644
-index 00000000..ad089213
+index 0000000..ad08921
 --- /dev/null
 +++ b/third_party/imgui/imstb_rectpack.h
 @@ -0,0 +1,627 @@
@@ -87691,7 +87818,7 @@ index 00000000..ad089213
 +*/
 diff --git a/third_party/imgui/imstb_textedit.h b/third_party/imgui/imstb_textedit.h
 new file mode 100644
-index 00000000..583508f0
+index 0000000..583508f
 --- /dev/null
 +++ b/third_party/imgui/imstb_textedit.h
 @@ -0,0 +1,1527 @@
@@ -89224,7 +89351,7 @@ index 00000000..583508f0
 +*/
 diff --git a/third_party/imgui/imstb_truetype.h b/third_party/imgui/imstb_truetype.h
 new file mode 100644
-index 00000000..ec4d42c7
+index 0000000..ec4d42c
 --- /dev/null
 +++ b/third_party/imgui/imstb_truetype.h
 @@ -0,0 +1,5085 @@
@@ -94315,7 +94442,7 @@ index 00000000..ec4d42c7
 +*/
 diff --git a/third_party/smaa/AreaTex.h b/third_party/smaa/AreaTex.h
 new file mode 100644
-index 00000000..6c8a00b6
+index 0000000..6c8a00b
 --- /dev/null
 +++ b/third_party/smaa/AreaTex.h
 @@ -0,0 +1,14980 @@
@@ -109301,7 +109428,7 @@ index 00000000..6c8a00b6
 +#endif
 diff --git a/third_party/smaa/LICENSE.txt b/third_party/smaa/LICENSE.txt
 new file mode 100644
-index 00000000..dbce0e6b
+index 0000000..dbce0e6
 --- /dev/null
 +++ b/third_party/smaa/LICENSE.txt
 @@ -0,0 +1,24 @@
@@ -109331,7 +109458,7 @@ index 00000000..dbce0e6b
 +CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 diff --git a/third_party/smaa/SMAA.hlsl b/third_party/smaa/SMAA.hlsl
 new file mode 100644
-index 00000000..2c8d4979
+index 0000000..2c8d497
 --- /dev/null
 +++ b/third_party/smaa/SMAA.hlsl
 @@ -0,0 +1,1361 @@
@@ -110698,7 +110825,7 @@ index 00000000..2c8d4979
 +#endif // SMAA_INCLUDE_PS
 diff --git a/third_party/smaa/SearchTex.h b/third_party/smaa/SearchTex.h
 new file mode 100644
-index 00000000..9a65bba9
+index 0000000..9a65bba
 --- /dev/null
 +++ b/third_party/smaa/SearchTex.h
 @@ -0,0 +1,132 @@
@@ -110836,7 +110963,7 @@ index 00000000..9a65bba9
 +#endif
 diff --git a/third_party/smaa/smaa_msl.h b/third_party/smaa/smaa_msl.h
 new file mode 100644
-index 00000000..15497237
+index 0000000..1549723
 --- /dev/null
 +++ b/third_party/smaa/smaa_msl.h
 @@ -0,0 +1,502 @@
@@ -111344,7 +111471,7 @@ index 00000000..15497237
 +    "\n";
 diff --git a/third_party/smaa/smaa_passes.hlsl b/third_party/smaa/smaa_passes.hlsl
 new file mode 100644
-index 00000000..f9b86ded
+index 0000000..f9b86de
 --- /dev/null
 +++ b/third_party/smaa/smaa_passes.hlsl
 @@ -0,0 +1,54 @@
@@ -111404,7 +111531,7 @@ index 00000000..f9b86ded
 +}
 diff --git a/tools/host_window/host_display.h b/tools/host_window/host_display.h
 new file mode 100644
-index 00000000..9bb6ed8d
+index 0000000..9bb6ed8
 --- /dev/null
 +++ b/tools/host_window/host_display.h
 @@ -0,0 +1,156 @@
@@ -111566,10 +111693,10 @@ index 00000000..9bb6ed8d
 +#endif /* PS3RECOMP_HOST_DISPLAY_H */
 diff --git a/tools/host_window/host_window.m b/tools/host_window/host_window.m
 new file mode 100644
-index 00000000..4266dca5
+index 0000000..43a3e1e
 --- /dev/null
 +++ b/tools/host_window/host_window.m
-@@ -0,0 +1,1345 @@
+@@ -0,0 +1,1386 @@
 +/*
 + * ps3recomp - host window: one window across an executable swap (macOS)
 + *
@@ -111598,6 +111725,9 @@ index 00000000..4266dca5
 + *
 + * Environment:
 + *   PS3_TITLE              window title (default: HOST_WINDOW_TITLE, built in)
++ *   PS3_WINDOW_ICON        the Dock icon: the player's own disc's
++ *                          PS3_GAME/ICON0.PNG under PS3_VFS_ROOT by default
++ *                          ("game"), an image file, or "none" (apply_icon)
 + *   PS3_WINDOW_MODE, PS3_WINDOW_SIZE, PS3_DISPLAY, PS3_VSYNC, PS3_UPSCALE,
 + *   PS3_DOWNSCALE, PS3_CAS_AFTER, PS3_DOWNSCALE_LINEAR
 + *                          how the window opens and presents (host_display.h)
@@ -112779,6 +112909,43 @@ index 00000000..4266dca5
 +    return 2;
 +}
 +
++/* The Dock icon. This process is a bare executable, so the Dock showed a
++ * generic "exec" icon for the game. By default it is the player's own disc's
++ * PS3_GAME/ICON0.PNG (PS3_VFS_ROOT), so nothing of the game ships with the
++ * build; PS3_WINDOW_ICON=<file> uses another image, =none keeps the generic
++ * one. A PS3 ICON0 is 320x176: it is centred on a transparent square rather
++ * than stretched. From the inFAMOUS 2 port (its backend's apply_icon). */
++static void apply_icon(void)
++{
++    const char* e = getenv("PS3_WINDOW_ICON");
++    if (e && (!strcmp(e, "none") || !strcmp(e, "0"))) return;
++    char path[2048];
++    if (!e || !*e || !strcmp(e, "game")) {
++        const char* root = getenv("PS3_VFS_ROOT");
++        if (!root || !*root) return;
++        snprintf(path, sizeof path, "%s/PS3_GAME/ICON0.PNG", root);
++    } else {
++        snprintf(path, sizeof path, "%s", e);
++    }
++    NSImage* img = [[NSImage alloc] initWithContentsOfFile:[NSString stringWithUTF8String:path]];
++    if (!img) {
++        if (e && *e) fprintf(stderr, "[host window] PS3_WINDOW_ICON: %s is not an image AppKit reads\n", path);
++        return;
++    }
++    const NSSize sz = [img size];
++    if (sz.width > 0 && sz.height > 0 && sz.width != sz.height) {
++        const CGFloat d = sz.width > sz.height ? sz.width : sz.height;
++        NSImage* src = img;
++        img = [NSImage imageWithSize:NSMakeSize(d, d) flipped:NO
++                      drawingHandler:^BOOL(NSRect dst) {
++            (void)dst;
++            [src drawInRect:NSMakeRect((d - sz.width) / 2, (d - sz.height) / 2, sz.width, sz.height)];
++            return YES;
++        }];
++    }
++    [NSApp setApplicationIconImage:img];
++}
++
 +int main(int argc, char** argv)
 +{
 +    @autoreleasepool {
@@ -112826,6 +112993,7 @@ index 00000000..4266dca5
 +
 +        [NSApplication sharedApplication];
 +        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
++        apply_icon();
 +        HostWindowDelegate* delegate = [HostWindowDelegate new];
 +        NSApp.delegate = delegate;
 +        build_menu(g.title, delegate);
@@ -112917,7 +113085,7 @@ index 00000000..4266dca5
 +}
 diff --git a/tools/host_window/test_host_display.c b/tools/host_window/test_host_display.c
 new file mode 100644
-index 00000000..b6ad04a6
+index 0000000..b6ad04a
 --- /dev/null
 +++ b/tools/host_window/test_host_display.c
 @@ -0,0 +1,62 @@
@@ -112985,7 +113153,7 @@ index 00000000..b6ad04a6
 +}
 diff --git a/tools/host_window/test_host_window_downscale.m b/tools/host_window/test_host_window_downscale.m
 new file mode 100644
-index 00000000..611b5324
+index 0000000..611b532
 --- /dev/null
 +++ b/tools/host_window/test_host_window_downscale.m
 @@ -0,0 +1,218 @@
@@ -113209,7 +113377,7 @@ index 00000000..611b5324
 +}
 diff --git a/tools/host_window/test_host_window_offscreen.m b/tools/host_window/test_host_window_offscreen.m
 new file mode 100644
-index 00000000..d09d222a
+index 0000000..d09d222
 --- /dev/null
 +++ b/tools/host_window/test_host_window_offscreen.m
 @@ -0,0 +1,112 @@
@@ -113327,7 +113495,7 @@ index 00000000..d09d222a
 +}
 diff --git a/tools/host_window/test_host_window_sharpen.m b/tools/host_window/test_host_window_sharpen.m
 new file mode 100644
-index 00000000..ca96dc4a
+index 0000000..ca96dc4
 --- /dev/null
 +++ b/tools/host_window/test_host_window_sharpen.m
 @@ -0,0 +1,120 @@
@@ -113453,7 +113621,7 @@ index 00000000..ca96dc4a
 +}
 diff --git a/tools/host_window/test_host_window_upscale.m b/tools/host_window/test_host_window_upscale.m
 new file mode 100644
-index 00000000..b5941e69
+index 0000000..b5941e6
 --- /dev/null
 +++ b/tools/host_window/test_host_window_upscale.m
 @@ -0,0 +1,89 @@
@@ -113547,7 +113715,7 @@ index 00000000..b5941e69
 +    return 0;
 +}
 diff --git a/tools/lift_jobmods.py b/tools/lift_jobmods.py
-index 1c07c887..3a945d5e 100644
+index 1c07c88..3a945d5 100644
 --- a/tools/lift_jobmods.py
 +++ b/tools/lift_jobmods.py
 @@ -157,17 +157,18 @@ def main():
@@ -113625,7 +113793,7 @@ index 1c07c887..3a945d5e 100644
  
  def emit_register(manifest, REGISTER_C, sym_prefix):
 diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
-index 9d9df717..74cfa9a6 100644
+index 9d9df71..74cfa9a 100644
 --- a/tools/ppu_lifter.py
 +++ b/tools/ppu_lifter.py
 @@ -657,6 +657,89 @@ _CRSET_RE = re.compile(
@@ -114045,7 +114213,7 @@ index 9d9df717..74cfa9a6 100644
  
      header_path = os.path.join(args.output, args.header_name)
 diff --git a/tools/spu_lifter.py b/tools/spu_lifter.py
-index ec62f269..b33852a2 100644
+index ec62f26..b33852a 100644
 --- a/tools/spu_lifter.py
 +++ b/tools/spu_lifter.py
 @@ -204,11 +204,23 @@ class LiftedFunction:
@@ -114231,7 +114399,7 @@ index ec62f269..b33852a2 100644
          print(f"  {len(lifter.bi_r0_jump)} `bi $r0` computed-jump site(s) "
 diff --git a/tools/test_license_area.py b/tools/test_license_area.py
 new file mode 100644
-index 00000000..4ea58ca3
+index 0000000..4ea58ca
 --- /dev/null
 +++ b/tools/test_license_area.py
 @@ -0,0 +1,28 @@
@@ -114265,7 +114433,7 @@ index 00000000..4ea58ca3
 +    subprocess.run([str(binary)], check=True, timeout=10, env=env, cwd=temporary)
 diff --git a/tools/test_ppu_fs_rw_switch.py b/tools/test_ppu_fs_rw_switch.py
 new file mode 100644
-index 00000000..c24ed9f9
+index 0000000..c24ed9f
 --- /dev/null
 +++ b/tools/test_ppu_fs_rw_switch.py
 @@ -0,0 +1,88 @@
@@ -114359,7 +114527,7 @@ index 00000000..c24ed9f9
 +    sys.exit(main())
 diff --git a/tools/test_ppu_lifter_insn_patches.py b/tools/test_ppu_lifter_insn_patches.py
 new file mode 100644
-index 00000000..f466a820
+index 0000000..f466a82
 --- /dev/null
 +++ b/tools/test_ppu_lifter_insn_patches.py
 @@ -0,0 +1,70 @@
@@ -114435,7 +114603,7 @@ index 00000000..f466a820
 +    main()
 diff --git a/tools/test_ppu_lifter_sjlj.py b/tools/test_ppu_lifter_sjlj.py
 new file mode 100644
-index 00000000..ffd144eb
+index 0000000..ffd144e
 --- /dev/null
 +++ b/tools/test_ppu_lifter_sjlj.py
 @@ -0,0 +1,347 @@
@@ -114788,7 +114956,7 @@ index 00000000..ffd144eb
 +    main()
 diff --git a/tools/test_ppu_sjlj.py b/tools/test_ppu_sjlj.py
 new file mode 100644
-index 00000000..ff0d5ec6
+index 0000000..ff0d5ec
 --- /dev/null
 +++ b/tools/test_ppu_sjlj.py
 @@ -0,0 +1,53 @@
@@ -114847,7 +115015,7 @@ index 00000000..ff0d5ec6
 +    main()
 diff --git a/tools/test_spu_decrementer.py b/tools/test_spu_decrementer.py
 new file mode 100644
-index 00000000..354edf12
+index 0000000..354edf1
 --- /dev/null
 +++ b/tools/test_spu_decrementer.py
 @@ -0,0 +1,31 @@
@@ -114884,7 +115052,7 @@ index 00000000..354edf12
 +    subprocess.run([str(binary)], check=True, timeout=60)
 diff --git a/tools/test_spu_dma_repeat.py b/tools/test_spu_dma_repeat.py
 new file mode 100644
-index 00000000..183e6e99
+index 0000000..183e6e9
 --- /dev/null
 +++ b/tools/test_spu_dma_repeat.py
 @@ -0,0 +1,58 @@
@@ -114948,7 +115116,7 @@ index 00000000..183e6e99
 +    print("PASS: SPU_DMA_REPEAT_LOG names the repeated transfer and its size")
 diff --git a/tools/test_spu_poison_scan.py b/tools/test_spu_poison_scan.py
 new file mode 100644
-index 00000000..c65aa164
+index 0000000..c65aa16
 --- /dev/null
 +++ b/tools/test_spu_poison_scan.py
 @@ -0,0 +1,54 @@

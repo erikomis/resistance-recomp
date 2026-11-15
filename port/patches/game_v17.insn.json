@@ -11,6 +11,8 @@
     {"addr": "0x002A6448", "orig": "0xC3DF03F4", "hook": "res_mouselook",
      "note": "direct mouse look: after the integration, before the pitch clamp (lfs f30,0x3F4(r31))"},
     {"addr": "0x000B69C0", "orig": "0xF821FF21", "hook": "res_mouselook_fov",
-     "note": "direct mouse look: the camera FOV setter's entry (f3 = horizontal FOV, degrees), for zoom"}
+     "note": "direct mouse look: the camera FOV setter's entry (f3 = horizontal FOV, degrees), for zoom"},
+    {"addr": "0x00050EFC", "orig": "0x7FFFFB78", "hook": "res_spin_pause",
+     "note": "the engine's spin delay (32 x or r31,r31,r31, the Cell's db8cyc 8-cycle pause, then blr), called by the job manager's wait loops between polls of what an SPU job writes: an adaptive pause instead of a Mac core held at 100% (project/spinwait.cpp; RES_SPIN_SLEEP_US=0 turns it off)"}
   ]
 }

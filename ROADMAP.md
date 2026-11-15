@@ -7,7 +7,9 @@ campaign from the v1.7 update) port to macOS/arm64 and what comes next.
 Same layout as the inFAMOUS 2 roadmap.
 `[x]` = done and verified; `[ ]` = to do; "(in progress)" = being worked on.
 
-## Status at a glance (2026-11-13)
+## Status at a glance (2026-11-14)
+
+- **Spin waits give their core back; the game's icon in the Dock (2026-11-14):** the engine's spin delay (32 `db8cyc` pauses that the job manager's wait loops call between polls of what an SPU job writes) held a Mac core at 100% for as long as the SPUs took. An insn-patch hook at its entry (`port/spinwait.cpp`, all four executables) sleeps 20 µs per call once a wait has lasted 200 µs; the short waits, about 12,000 a second in "The Cathedral" and on the main thread's critical path, keep spinning (sleeping in those after a microsecond took it from 54 to 31 fps). Uncapped there: the same fps (55.0 / 53.5, inside the run-to-run spread), CPU 277% → 241%. The Resistance 3 port's timebase-poll sleep is in too, with the Resistance 2 port's tuning (20,000 reads, `-1` = yield): the main thread's flag wait with a 1 s clock timeout (`func_000B7DFC` in v1.7) reads the clock in a loop. `RES_SPIN_SLEEP_US=0` / `PS3_TB_POLL_SLEEP_US=0` turn them off; `RES_SPIN_STATS=1` logs the waits. The game window now shows the disc's ICON0 in the Dock instead of a generic "exec" (`PS3_WINDOW_ICON`, from the inFAMOUS 2 port). Two tests that had fallen behind the code pass again (`test_vertex_cache`: the churn window from the Resistance 2 port; `test_rsx_framebuffer_srgb`: the 8-bit alpha test), and `test_timebase_poll.c` is new. A new level sweep is below.
 
 - **More of the DualSense, and a README section for it (2026-11-14):** the mute button turns the game's sound off and on (a live host mute in cellAudio, `cellAudio_host_set_mute`) with the button's own light showing it; a touchpad click opens and closes the in-game menu like L3+R3; a battery going low or almost empty is said on screen once. Each works only while the button is not bound in the Controls table and has its own off switch (`PS3_PAD_MUTE_BUTTON=0`, `PS3_PAD_TOUCHPAD_MENU=0`, `PS3_PAD_BATTERY=0`). `test_pad_adaptive.c` checks all three on a fake DualSense. The README's new "Playing with a PS5 controller" section lists everything the controller does, and the Steam Input caveat that kept the adaptive triggers and the light bar dark on a player's controller.
 
@@ -62,6 +64,43 @@ Same layout as the inFAMOUS 2 roadmap.
 - **In progress:** playing on from Cheshire ("Secrets"; "Angel" and Somerset next) to the end of the campaign; the Resistance 2 draw-engine speed-ups for the heavy scenes; the flickering grass.
 - **Open:** dark speckles on the foliage (it looks like the game's own content, grainy leaf alpha; not yet compared with RPCS3); an eye glitch on a character that has not been reproduced (it needs a repro); the menu music's varying centre/LFE (fixed in code 2026-11-06, the speaker-layout race; to check by ear); the menus stay 01.00 (the v1.7 EBOOT exists only as NPDRM); keyboard, mouse, rumble and the new graphics settings not yet played with; a physical controller with the launcher; Windows untested (the game, and the new audio mixer), no Linux.
 - **Next:** the rest of the campaign by hand (Cheshire's "Angel" to the Chimeran Tower, the vehicles and bosses); 60 fps in the three heaviest levels ("The Cathedral", "No Way Out", "Ice and Iron": 47, 44 and 56 fps uncapped since the Resistance 2 work); the rare hang where the SPU job manager stops (the hang report catches it); the snow lighting in "Ice and Iron" against RPCS3; a play test of the shadow-pool fix in the scene where the rectangles showed; a repro of the eye glitch; compare the foliage with RPCS3; a play session with keyboard and mouse, rumble and the new graphics settings; a physical controller with the launcher; Windows.
+
+## Level sweep (2026-11-14)
+
+The same sweep on today's build: every level started with `RES_LEVEL=<n>`, headless, frame limiter off (`RES_UNLOCK_FPS=1`), 60 s measured once the player has control, the front end driven by matching each screen against reference frames. Four other games were running on the Mac throughout, so a figure is a lower bound, and the draw counts show the spot measured is not always the old one. All 30 levels reach gameplay with no errors, unresolved calls or SPU timeouts; one run of level 52 hit the known rare hang (an SPU job re-reading a word for 30 s while the main thread waited for it) and six reruns did not.
+
+| Level | Name | Area | fps 2026-10-25 | fps now | draws/frame |
+| --- | --- | --- | --- | --- | --- |
+| 20 | The Gauntlet | York | 31.0 | 58.0 | 1198 |
+| 21 | A Lone Survivor | York | 32.5 | 75.5 | 766 |
+| 22 | Spires | York | 53.5 | 43.0 | 4741 |
+| 30 | Fates Worse than Death | Grimsby | 31.0 | 48.0 | 1743 |
+| 31 | Conversion | Grimsby | 52.5 | 92.5 | 1476 |
+| 32 | Hunted Down | Grimsby | 51.5 | 75.5 | 671 |
+| 40 | Path of Least Resistance | Manchester | 49.0 | 65.5 | 589 |
+| 41 | The Cathedral | Manchester | 26.0 | 57.0 | 594 |
+| 42 | Outgunned | Manchester | 51.0 | 56.0 | 2514 |
+| 50 | Into the Fire | Nottingham | 53.0 | 43.0 | 4739 |
+| 51 | Conduits | Nottingham | 52.5 | 63.0 | 778 |
+| 52 | Viper's Nest | Nottingham | 49.5 | 32.0 | 3566 |
+| 60 | No Way Out | Cheshire | 25.0 | 107.5 | 430 |
+| 61 | Secrets | Cheshire | 33.0 | 73.5 | 234 |
+| 62 | Angel | Cheshire | 57.0 | 79.0 | 276 |
+| 70 | Search and Rescue | Somerset | 53.5 | 94.0 | 1249 |
+| 71 | Common Ground | Somerset | 51.0 | 90.0 | 1196 |
+| 72 | A Disturbing Discovery | Somerset | 53.5 | 64.5 | 2993 |
+| 80 | Devil at the Door | Bristol | 48.0 | 50.5 | 2713 |
+| 81 | Evacuation | Bristol | 56.0 | 99.0 | 1260 |
+| 82 | Parting Ways | Bristol | 30.0 | 54.5 | 3874 |
+| 90 | Into the Depths | Bracknell | 60.5 | 91.0 | 832 |
+| 91 | In a Darker Place | Bracknell | 36.5 | 74.0 | 742 |
+| 100 | A Desperate Gamble | London | 44.5 | 43.0 | 1811 |
+| 101 | Ice and Iron | London | 26.5 | 57.5 | 487 |
+| 110 | Burning Bridges | London | 56.0 | 41.5 | 2644 |
+| 111 | On the Ice | London | 50.6 | 71.5 | 372 |
+| 112 | Giant Slayer | London | 30.5 | 36.5 | 1952 |
+| 120 | Angel's Lair | Chimeran Tower | 32.0 | 58.0 | 1818 |
+| 121 | Last Hope | Chimeran Tower | 32.5 | 70.5 | 1223 |
 
 ## Level sweep (2026-10-25)
 

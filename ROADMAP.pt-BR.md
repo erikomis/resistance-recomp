@@ -7,7 +7,9 @@ campanha da atualização v1.7) para macOS/arm64 e o que vem a seguir. Mesmo
 formato do roadmap do inFAMOUS 2.
 `[x]` = feito e verificado; `[ ]` = a fazer; "(em andamento)" = sendo feito.
 
-## Resumo (2026-11-13)
+## Resumo (2026-11-14)
+
+- **As esperas ativas devolvem o núcleo; o ícone do jogo no Dock (2026-11-14):** a espera ativa do motor (32 pausas `db8cyc` que os loops de espera do gerenciador de jobs chamam entre leituras do que um job de SPU escreve) segurava um núcleo do Mac a 100% enquanto as SPUs trabalhavam. Um hook de insn-patch na entrada dela (`port/spinwait.cpp`, nos quatro executáveis) dorme 20 µs por chamada depois que uma espera passa de 200 µs; as esperas curtas, umas 12 mil por segundo em "The Cathedral" e no caminho crítico da thread principal, continuam girando (dormir nelas depois de um microssegundo levou de 54 para 31 fps). Sem limite ali: o mesmo fps (55,0 / 53,5, dentro da variação entre execuções), CPU de 277% para 241%. O sono no polling do timebase do port do Resistance 3 também entrou, com o ajuste do port do Resistance 2 (20.000 leituras, `-1` = ceder a vez): a espera de uma flag da thread principal com timeout de 1 s pelo relógio (`func_000B7DFC` na v1.7) lê o relógio em loop. `RES_SPIN_SLEEP_US=0` / `PS3_TB_POLL_SLEEP_US=0` desligam; `RES_SPIN_STATS=1` registra as esperas. A janela do jogo agora mostra o ICON0 do disco no Dock em vez de um "exec" genérico (`PS3_WINDOW_ICON`, do port do inFAMOUS 2). Dois testes que tinham ficado para trás do código voltam a passar (`test_vertex_cache`: a janela de churn do port do Resistance 2; `test_rsx_framebuffer_srgb`: o alpha test em 8 bits), e o `test_timebase_poll.c` é novo. Uma nova varredura das fases está abaixo.
 
 - **Mais do DualSense, e uma seção no README para ele (2026-11-14):** o botão de mudo desliga e liga o som do jogo (um mudo do host ao vivo no cellAudio, `cellAudio_host_set_mute`), com a luz do próprio botão mostrando; um clique no touchpad abre e fecha o menu do jogo como L3+R3; a bateria ficando fraca ou quase no fim é avisada na tela uma vez. Cada um só vale enquanto o botão não estiver remapeado na tabela de Controles e tem como desligar (`PS3_PAD_MUTE_BUTTON=0`, `PS3_PAD_TOUCHPAD_MENU=0`, `PS3_PAD_BATTERY=0`). O `test_pad_adaptive.c` confere os três num DualSense falso. A nova seção "Jogando com o controle de PS5" do README lista tudo o que o controle faz, e o aviso sobre o Steam Input, que deixava os gatilhos adaptáveis e a barra de luz apagados no controle de um jogador.
 
@@ -62,6 +64,43 @@ formato do roadmap do inFAMOUS 2.
 - **Em andamento:** seguir jogando de Cheshire ("Secrets"; as próximas são "Angel" e Somerset) até o fim da campanha; as otimizações do engine de desenho do Resistance 2 para as cenas pesadas; a grama que pisca.
 - **Em aberto:** pontos escuros na vegetação (parece ser o conteúdo do próprio jogo, o alpha granulado das folhas; ainda não comparado com o RPCS3); um defeito nos olhos de um personagem que não foi reproduzido (precisa de um jeito de reproduzir); o centro/LFE variando na música do menu (corrigido no código em 2026-11-06, a corrida no layout das caixas de som; falta conferir de ouvido); os menus continuam os da 01.00 (o EBOOT da v1.7 só existe em NPDRM); teclado, mouse, vibração e os novos ajustes de gráficos ainda não foram usados jogando; um controle físico com o launcher; Windows não testado (o jogo, e o novo mixer de áudio), sem Linux.
 - **Próximo:** o resto da campanha na mão (de "Angel", em Cheshire, à Chimeran Tower, os veículos e os chefes); 60 fps nas três fases mais pesadas ("The Cathedral", "No Way Out", "Ice and Iron": 47, 44 e 56 fps sem limite desde o trabalho do Resistance 2); o travamento raro em que o job manager das SPUs para (o relatório de travamento pega); a iluminação da neve em "Ice and Iron" comparada com o RPCS3; um teste jogando da correção do pool de shadow maps na cena onde os retângulos apareciam; reproduzir o defeito nos olhos; comparar a vegetação com o RPCS3; uma sessão de jogo com teclado e mouse, vibração e os novos ajustes de gráficos; um controle físico com o launcher; Windows.
+
+## Varredura das fases (2026-11-14)
+
+A mesma varredura no build de hoje: cada fase iniciada com `RES_LEVEL=<n>`, sem janela, limitador de quadros desligado (`RES_UNLOCK_FPS=1`), 60 s medidos depois que o jogador tem o controle, com o menu inicial guiado comparando cada tela com quadros de referência. Quatro outros jogos rodaram no Mac o tempo todo, então cada número é um piso, e a contagem de draws mostra que o ponto medido nem sempre é o de antes. As 30 fases chegam ao gameplay sem erros, chamadas sem resolver nem timeouts de SPU; uma execução da fase 52 pegou o travamento raro já conhecido (um job de SPU relendo uma palavra por 30 s enquanto a thread principal esperava por ele) e seis repetições não.
+
+| Fase | Nome | Área | fps em 2026-10-25 | fps agora | draws/quadro |
+| --- | --- | --- | --- | --- | --- |
+| 20 | The Gauntlet | York | 31.0 | 58.0 | 1198 |
+| 21 | A Lone Survivor | York | 32.5 | 75.5 | 766 |
+| 22 | Spires | York | 53.5 | 43.0 | 4741 |
+| 30 | Fates Worse than Death | Grimsby | 31.0 | 48.0 | 1743 |
+| 31 | Conversion | Grimsby | 52.5 | 92.5 | 1476 |
+| 32 | Hunted Down | Grimsby | 51.5 | 75.5 | 671 |
+| 40 | Path of Least Resistance | Manchester | 49.0 | 65.5 | 589 |
+| 41 | The Cathedral | Manchester | 26.0 | 57.0 | 594 |
+| 42 | Outgunned | Manchester | 51.0 | 56.0 | 2514 |
+| 50 | Into the Fire | Nottingham | 53.0 | 43.0 | 4739 |
+| 51 | Conduits | Nottingham | 52.5 | 63.0 | 778 |
+| 52 | Viper's Nest | Nottingham | 49.5 | 32.0 | 3566 |
+| 60 | No Way Out | Cheshire | 25.0 | 107.5 | 430 |
+| 61 | Secrets | Cheshire | 33.0 | 73.5 | 234 |
+| 62 | Angel | Cheshire | 57.0 | 79.0 | 276 |
+| 70 | Search and Rescue | Somerset | 53.5 | 94.0 | 1249 |
+| 71 | Common Ground | Somerset | 51.0 | 90.0 | 1196 |
+| 72 | A Disturbing Discovery | Somerset | 53.5 | 64.5 | 2993 |
+| 80 | Devil at the Door | Bristol | 48.0 | 50.5 | 2713 |
+| 81 | Evacuation | Bristol | 56.0 | 99.0 | 1260 |
+| 82 | Parting Ways | Bristol | 30.0 | 54.5 | 3874 |
+| 90 | Into the Depths | Bracknell | 60.5 | 91.0 | 832 |
+| 91 | In a Darker Place | Bracknell | 36.5 | 74.0 | 742 |
+| 100 | A Desperate Gamble | London | 44.5 | 43.0 | 1811 |
+| 101 | Ice and Iron | London | 26.5 | 57.5 | 487 |
+| 110 | Burning Bridges | London | 56.0 | 41.5 | 2644 |
+| 111 | On the Ice | London | 50.6 | 71.5 | 372 |
+| 112 | Giant Slayer | London | 30.5 | 36.5 | 1952 |
+| 120 | Angel's Lair | Chimeran Tower | 32.0 | 58.0 | 1818 |
+| 121 | Last Hope | Chimeran Tower | 32.5 | 70.5 | 1223 |
 
 ## Varredura das fases (2026-10-25)
 
