@@ -3581,7 +3581,7 @@ index 6ec3bbc..93eefc0 100644
   * with dlopen / LoadLibrary the first time a decoder is created, and only the
   * handful of functions the modules call are resolved into a table. So
 diff --git a/libs/codec/tests/CMakeLists.txt b/libs/codec/tests/CMakeLists.txt
-index 935169b..1a0ed0a 100644
+index 935169b..13f1bbe 100644
 --- a/libs/codec/tests/CMakeLists.txt
 +++ b/libs/codec/tests/CMakeLists.txt
 @@ -1,4 +1,5 @@
@@ -3628,10 +3628,14 @@ index 935169b..1a0ed0a 100644
  
  # Real decode needs streams, made by the ffmpeg CLI at test time.
  find_program(PS3RECOMP_FFMPEG_EXECUTABLE ffmpeg)
-@@ -72,3 +89,17 @@ foreach(c avc mpeg2)
+@@ -72,3 +89,21 @@ foreach(c avc mpeg2)
      set_tests_properties(vdec_decode_${c} vdec_rgba_${c} vdec_disabled_${c}
          PROPERTIES FIXTURES_REQUIRED vdec_media)
  endforeach()
++
++add_test(NAME vdec_resume_avc COMMAND test_vdec_ffmpeg resume ${VDEC_MEDIA}/v.h264)
++set_tests_properties(vdec_resume_avc PROPERTIES
++    ENVIRONMENT "${VDEC_LIB_ENV}" SKIP_RETURN_CODE 77 FIXTURES_REQUIRED vdec_media)
 +
 +# AC3 3/2 + LFE, one tone per speaker, through cellAdec.
 +set(ADEC_MEDIA "${CMAKE_CURRENT_BINARY_DIR}/adec_media")
@@ -4035,6 +4039,94 @@ index 0000000..b95def5
 +    printf("unknown mode %s\n", mode);
 +    return 2;
 +}
+diff --git a/libs/codec/tests/test_vdec_decode.c b/libs/codec/tests/test_vdec_decode.c
+index 5aa78d9..6be3cf7 100644
+--- a/libs/codec/tests/test_vdec_decode.c
++++ b/libs/codec/tests/test_vdec_decode.c
+@@ -21,6 +21,8 @@
+  *                          ARGB32 and RGBA32 output against FFmpeg's
+  *                          (swscale) RGBA decode by PSNR; channel order
+  *                          swapped must fail.
++ *   resume ES             H.264 resumes after two midstream drains without
++ *                         losing pictures before the next IDR.
+  * CODEC: avc | mpeg2.
+  */
+ #include "../cellVdec.c"
+@@ -412,6 +414,44 @@ static int mode_rgba(int argc, char** argv)
+     return 0;
+ }
+ 
++/* A feeder pause can trigger an idle drain between non-IDR H.264 AUs.
++ * Every submitted picture must still come out when feeding resumes. */
++static void count_drained_picture(void* ctx, const VdecFfPicture* pic)
++{
++    (*(int*)ctx)++;
++    free(pic->yuv);
++}
++
++static int mode_resume(int argc, char** argv)
++{
++    CHECK(argc == 3);
++    size_t len;
++    u8* es = read_file(argv[2], &len);
++    split(es, len, 1);
++    VdecFf* d = vdec_ff_open(CELL_VDEC_CODEC_TYPE_AVC);
++    if (!d) {
++#ifdef PS3RECOMP_FFMPEG_RUNTIME
++        if (!ps3_ffmpeg_get()) return 77;
++#endif
++        CHECK(d);
++    }
++    int pictures = 0;
++    for (int i = 0; i < s_nau; i++) {
++        CHECK(vdec_ff_decode(d, es + s_au_off[i],
++              (u32)(s_au_off[i + 1] - s_au_off[i]), (u32)i,
++              count_drained_picture, &pictures) == 0);
++        if (i == 5 || i == 17)
++            vdec_ff_drain(d, count_drained_picture, &pictures);
++    }
++    vdec_ff_drain(d, count_drained_picture, &pictures);
++    printf("resume: %d pictures for %d AUs after two midstream drains\n",
++           pictures, s_nau);
++    CHECK(pictures == s_nau);
++    vdec_ff_close(d);
++    free(es);
++    return 0;
++}
++
+ int main(int argc, char** argv)
+ {
+     setvbuf(stdout, NULL, _IONBF, 0);
+@@ -422,6 +462,7 @@ int main(int argc, char** argv)
+     if (strcmp(mode, "stub") == 0)   return mode_stub(argc, argv);
+     if (strcmp(mode, "decode") == 0) return mode_decode(argc, argv);
+     if (strcmp(mode, "rgba") == 0)   return mode_rgba(argc, argv);
++    if (strcmp(mode, "resume") == 0) return mode_resume(argc, argv);
+     printf("unknown mode %s\n", mode);
+     return 2;
+ }
+diff --git a/libs/codec/vdec_ffmpeg.c b/libs/codec/vdec_ffmpeg.c
+index 5bea1a9..83490f5 100644
+--- a/libs/codec/vdec_ffmpeg.c
++++ b/libs/codec/vdec_ffmpeg.c
+@@ -116,6 +116,17 @@ VdecFf* vdec_ff_open(u32 codec_type)
+         /* One thread: pictures come out of the call that decoded them (or
+          * the next ones, for reordering) rather than a frame-thread later. */
+         d->ctx->thread_count = 1;
++        /* Every picture out, even before a recovery point. vdec_ff_drain
++         * flushes the decoder, and cellVdec's idle drain runs it whenever
++         * the title has fed nothing for VDEC_IDLE_DRAIN_MS (a movie's last
++         * pictures, held for reordering, are otherwise never output). A
++         * feeder that merely stalls that long mid-stream -- a loaded Mac --
++         * gets the same flush, and H.264 then dropped every picture up to
++         * the next IDR: the campaign's opening movie ended 74 pictures
++         * short of its 5,584 access units and the game waited for them
++         * for ever. Shown, those pictures may carry a few blocks of
++         * concealment until the next keyframe; the count stays right. */
++        d->ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
+     }
+     if (!d->ctx || !d->pkt || !d->frame || ff->avcodec_open2(d->ctx, codec, NULL) < 0) {
+         printf("[cellVdec] could not open the libavcodec decoder\n");
 diff --git a/libs/filesystem/cellFs.c b/libs/filesystem/cellFs.c
 index 4d916ac..ef6c960 100644
 --- a/libs/filesystem/cellFs.c
@@ -4172,7 +4264,7 @@ index 49e1390..24f12d0 100644
  s32 cellKbSetReadMode(u32 port_no, u32 rmode);
  s32 cellKbSetCodeType(u32 port_no, u32 codetype);
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 7fa8cab..31517fd 100644
+index 7fa8cab..4cec9a8 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -4,10 +4,43 @@
@@ -4249,7 +4341,7 @@ index 7fa8cab..31517fd 100644
  #if PAD_BACKEND_SDL2
    #include <SDL2/SDL.h>
  #endif
-@@ -96,11 +139,163 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
+@@ -96,11 +139,174 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
  /* Per-port "a report has arrived since your last read" flag; see cellPadGetData. */
  static int s_data_fresh[PAD_MAX_HOST_PORTS];
  
@@ -4396,10 +4488,21 @@ index 7fa8cab..31517fd 100644
 + * libpad reports a controller plugged in or taken away. */
 +static int s_port_reported[PAD_MAX_HOST_PORTS];
 +static int s_port_changed[PAD_MAX_HOST_PORTS];
++/* PAD_FILE2=<path>: a second driver-script pad, on port 1 (player 2), read
++ * like PAD_FILE (buttons and "S lx ly rx ry polls"); the port reports a pad
++ * connected while it is set, so split-screen can be driven with no physical
++ * controller. Port 0 is always the virtual pad. */
++static int pad_virtual_port(u32 i)
++{
++    static int s_p2 = -1;
++    if (s_p2 < 0) { const char* e = getenv("PAD_FILE2"); s_p2 = (e && *e) ? 1 : 0; }
++    return i == 0 || (i == 1 && s_p2);
++}
++
 +static void pad_track_assign(void)
 +{
 +    for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
-+        const int on = s_host_state[i].connected || i == 0;   /* port 0: the virtual pad */
++        const int on = s_host_state[i].connected || pad_virtual_port(i);   /* port 0 (and PAD_FILE2's port 1): virtual pads */
 +        if (on != s_port_reported[i]) { s_port_reported[i] = on; s_port_changed[i] = 1; }
 +    }
 +}
@@ -4413,7 +4516,7 @@ index 7fa8cab..31517fd 100644
  /* ---------------------------------------------------------------------------
   * Rumble (cellPadSetActDirect)
   *
-@@ -113,6 +308,12 @@ static int s_sdl_inited = 0;
+@@ -113,6 +319,12 @@ static int s_sdl_inited = 0;
   * PAD_RUMBLE_HOLD_MS. Large -> the host's low-frequency motor, small -> the
   * high-frequency one, which is how DualShock 4, DualSense and Xbox pads are
   * laid out too.
@@ -4426,7 +4529,7 @@ index 7fa8cab..31517fd 100644
   * -------------------------------------------------------------------------*/
  
  #define PAD_RUMBLE_HOLD_MS     1000   /* one SDL request lasts this long ... */
-@@ -121,16 +322,46 @@ static int s_sdl_inited = 0;
+@@ -121,16 +333,46 @@ static int s_sdl_inited = 0;
  typedef struct {
      u16 lo, hi;                 /* what the host motors were last asked for */
      unsigned long long sent_ms; /* when (pad_now_ms), 0 = nothing to renew */
@@ -4478,7 +4581,7 @@ index 7fa8cab..31517fd 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -143,6 +374,39 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
+@@ -143,6 +385,39 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
  #define PAD_STICK_DEADZONE  7849
  #define PAD_TRIGGER_THRESHOLD 30
  
@@ -4518,7 +4621,7 @@ index 7fa8cab..31517fd 100644
  static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
  {
      float normalized;
-@@ -240,7 +504,8 @@ static void pad_poll_xinput(void)
+@@ -240,7 +515,8 @@ static void pad_poll_xinput(void)
          XINPUT_STATE state;
          memset(&state, 0, sizeof(state));
  
@@ -4528,7 +4631,7 @@ index 7fa8cab..31517fd 100644
          if (result != ERROR_SUCCESS) {
              s_host_state[i].connected = 0;
              continue;
-@@ -299,7 +564,8 @@ static void pad_poll_xinput(void)
+@@ -299,7 +575,8 @@ static void pad_poll_xinput(void)
  
  static void pad_init_backend(void)
  {
@@ -4538,7 +4641,7 @@ index 7fa8cab..31517fd 100644
  }
  
  static void pad_shutdown_backend(void)
-@@ -333,79 +599,634 @@ static u8 pad_sdl_trigger_to_u8(int raw)
+@@ -333,79 +610,634 @@ static u8 pad_sdl_trigger_to_u8(int raw)
      return (u8)val;
  }
  
@@ -5055,7 +5158,7 @@ index 7fa8cab..31517fd 100644
 +        if (!gc) {
 +            fprintf(stderr, "[cellPad] SDL controller %d: open failed: %s\n", idx, SDL_GetError());
 +            continue;
-         }
++        }
 +        s_sdl_controllers[port] = gc;
 +        s_sdl_ids[port] = id;
 +        s_sdl_last_guid[port] = guid;
@@ -5071,7 +5174,7 @@ index 7fa8cab..31517fd 100644
 +                SDL_GameControllerHasRumble(gc) ? "" : " (no rumble)");
 +    }
 +}
- 
++
 +/* Device changes since the last poll. */
 +static void pad_sdl_hotplug(int force)
 +{
@@ -5089,7 +5192,7 @@ index 7fa8cab..31517fd 100644
 +        if (s_sdl_controllers[p] && !SDL_GameControllerGetAttached(s_sdl_controllers[p])) {
 +            pad_sdl_close(p, 1);
 +            changed = 1;
-+        }
+         }
 +    int free_port = 0;
 +    for (int p = 0; p < PAD_MAX_HOST_PORTS; p++) if (!s_sdl_controllers[p]) free_port = 1;
 +    if (!free_port) return;
@@ -5098,7 +5201,7 @@ index 7fa8cab..31517fd 100644
 +    s_sdl_scan_ms = now;
 +    pad_sdl_scan();
 +}
-+
+ 
 +static void pad_poll_sdl2(void)
 +{
 +    if (pad_sdl_off()) {
@@ -5215,7 +5318,7 @@ index 7fa8cab..31517fd 100644
  
          /* Pressure: SDL has digital buttons, so 0 or 255 */
          s_host_state[i].press_up       = (btns & CELL_PAD_CTRL_UP)       ? 255 : 0;
-@@ -419,36 +1240,57 @@ static void pad_poll_sdl2(void)
+@@ -419,36 +1251,57 @@ static void pad_poll_sdl2(void)
          s_host_state[i].press_l1       = (btns & CELL_PAD_CTRL_L1)       ? 255 : 0;
          s_host_state[i].press_r1       = (btns & CELL_PAD_CTRL_R1)       ? 255 : 0;
      }
@@ -5286,7 +5389,7 @@ index 7fa8cab..31517fd 100644
      memset(s_rumble, 0, sizeof s_rumble);
  }
  
-@@ -485,6 +1327,392 @@ static unsigned long long pad_now_ms(void)
+@@ -485,6 +1338,392 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -5679,7 +5782,7 @@ index 7fa8cab..31517fd 100644
  static void pad_poll_backend(void)
  {
      /* Benign race: two threads may poll in the same tick. That costs one extra
-@@ -492,6 +1720,7 @@ static void pad_poll_backend(void)
+@@ -492,6 +1731,7 @@ static void pad_poll_backend(void)
      static unsigned long long s_last_ms = 0;
      unsigned long long now = pad_now_ms();
      if (s_last_ms && now - s_last_ms < PAD_POLL_INTERVAL_MS) return;
@@ -5687,7 +5790,7 @@ index 7fa8cab..31517fd 100644
      s_last_ms = now;
      /* A real pad streams reports at roughly this rate whether or not anything
       * changed, and libpad buffers them; a fresh sweep is a fresh report for
-@@ -505,7 +1734,24 @@ static void pad_poll_backend(void)
+@@ -505,7 +1745,24 @@ static void pad_poll_backend(void)
  #endif
  #ifdef _WIN32
      if (!s_host_state[0].connected) pad_poll_keyboard();
@@ -5712,7 +5815,7 @@ index 7fa8cab..31517fd 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -526,15 +1772,24 @@ s32 cellPadInit(u32 max_connect)
+@@ -526,15 +1783,24 @@ s32 cellPadInit(u32 max_connect)
      if (max_connect == 0 || max_connect > 127)
          return CELL_PAD_ERROR_INVALID_PARAMETER;
  
@@ -5731,13 +5834,13 @@ index 7fa8cab..31517fd 100644
 +    /* What is there at start is the baseline; only later changes are
 +     * flagged CELL_PAD_STATUS_ASSIGN_CHANGES. */
 +    for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
-+        s_port_reported[i] = s_host_state[i].connected || i == 0;
++        s_port_reported[i] = s_host_state[i].connected || pad_virtual_port(i);
 +        s_port_changed[i] = 0;
 +    }
  
      return CELL_OK;
  }
-@@ -546,7 +1801,9 @@ s32 cellPadEnd(void)
+@@ -546,7 +1812,9 @@ s32 cellPadEnd(void)
      if (!s_pad_initialized)
          return CELL_PAD_ERROR_NOT_OPENED;
  
@@ -5747,15 +5850,40 @@ index 7fa8cab..31517fd 100644
  
      s_pad_initialized = 0;
      s_max_connect = 0;
-@@ -735,6 +1992,7 @@ skip_inject: ;
+@@ -627,7 +1895,7 @@ s32 cellPadGetData(u32 port_no, CellPadData* data_guest)
+     }
+ skip_inject: ;
+ 
+-    if (port_no >= PAD_MAX_HOST_PORTS || (!s_host_state[port_no].connected && port_no != 0)) {
++    if (port_no >= PAD_MAX_HOST_PORTS || (!s_host_state[port_no].connected && !pad_virtual_port(port_no))) {
+         goto emit;   /* data stays zeroed -> len=0 */
+     }
+     /* port 0 is always a valid (virtual) pad; s_host_state[0] is neutral if no
+@@ -735,22 +2003,45 @@ skip_inject: ;
       *   echo 0x0040 4 > pad.txt  # DOWN for 4 polls (menus auto-repeat a
       *                            # long hold; the default is 40)
       */
-+    static u8 s_pf_stick[4]; static int s_pf_stick_n = 0;   /* PAD_FILE "S ..." */
-     { static int s_pf = -1; static char pf_path[512];
-       static unsigned held_mask = 0; static int held_n = 0;
-       if (s_pf < 0) { const char* e = getenv("PAD_FILE");
-@@ -746,11 +2004,25 @@ skip_inject: ;
+-    { static int s_pf = -1; static char pf_path[512];
+-      static unsigned held_mask = 0; static int held_n = 0;
+-      if (s_pf < 0) { const char* e = getenv("PAD_FILE");
++    /* port 0 reads PAD_FILE, port 1 PAD_FILE2 (pad_virtual_port) */
++    static u8 s_pf_stick_all[2][4]; static int s_pf_stick_n_all[2];   /* PAD_FILE "S ..." */
++    const int pfp = port_no < 2 ? (int)port_no : 0;
++    u8* s_pf_stick = s_pf_stick_all[pfp];
++    #define s_pf_stick_n s_pf_stick_n_all[pfp]
++    { static int s_pf_all[2] = {-1, -1}; static char pf_path_all[2][512];
++      static unsigned held_mask_all[2]; static int held_n_all[2];
++      #define s_pf s_pf_all[pfp]
++      #define pf_path pf_path_all[pfp]
++      #define held_mask held_mask_all[pfp]
++      #define held_n held_n_all[pfp]
++      if (s_pf < 0) { const char* e = getenv(pfp ? "PAD_FILE2" : "PAD_FILE");
+                       s_pf = (e && *e) ? 1 : 0;
+                       if (s_pf) { strncpy(pf_path, e, sizeof pf_path - 1); pf_path[sizeof pf_path - 1] = 0; } }
+-      if (s_pf && port_no == 0) {
++      if (s_pf && port_no < 2) {
+           if (held_n <= 0) {
+               FILE* f = fopen(pf_path, "rb");
                if (f) {
                    char buf[64]; buf[0] = 0;
                    if (fgets(buf, sizeof buf, f)) {
@@ -5786,20 +5914,35 @@ index 7fa8cab..31517fd 100644
                    }
                    fclose(f);
                    if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
-@@ -782,6 +2054,12 @@ skip_inject: ;
+@@ -759,7 +2050,12 @@ skip_inject: ;
+           if (held_n > 0) { held_n--;
+               data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(held_mask & 0xFF);
+               data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((held_mask >> 8) & 0xFF); }
+-      } }
++      }
++      #undef s_pf
++      #undef pf_path
++      #undef held_mask
++      #undef held_n
++    }
+ 
+     /* Analog sticks */
+     /* PAD_STICK="lx,ly,rx,ry" (0-255, 128 = centred): hold the analog sticks at
+@@ -782,6 +2078,13 @@ skip_inject: ;
        if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
                    hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
                    hs->connected = 1; }
-+      if (s_pf_stick_n > 0 && port_no == 0) {     /* PAD_FILE "S ..." */
++      if (s_pf_stick_n > 0 && port_no < 2) {     /* PAD_FILE / PAD_FILE2 "S ..." */
 +          s_pf_stick_n--;
 +          hs->analog_lx = s_pf_stick[0]; hs->analog_ly = s_pf_stick[1];
 +          hs->analog_rx = s_pf_stick[2]; hs->analog_ry = s_pf_stick[3];
 +          hs->connected = 1;
 +      }
++      #undef s_pf_stick_n
        /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
         * deflections instead of holding one. Guessing a single stick position and
         * re-running costs ~5 minutes a try; a sweep answers "can input move the
-@@ -896,6 +2174,21 @@ emit:
+@@ -896,6 +2199,21 @@ emit:
      }
      {
          unsigned int ea = (unsigned int)(uintptr_t)data_guest;
@@ -5821,8 +5964,21 @@ index 7fa8cab..31517fd 100644
          vm_write32((unsigned long long)ea + 0, (unsigned int)data->len);   /* len (s32) */
          for (int _i = 0; _i < CELL_PAD_MAX_CODES; _i++)                    /* button[] u16 */
              vm_write16((unsigned long long)ea + 4 + (unsigned int)_i * 2, data->button[_i]);
-@@ -946,7 +2239,7 @@ s32 cellPadGetInfo(CellPadInfo2* info)
-                   (s_host_state[i].connected || i == 0));
+@@ -932,7 +2250,7 @@ s32 cellPadGetInfo(CellPadInfo2* info)
+      * and have to answer the same way. */
+     u32 connected = 0;
+     for (u32 i = 0; i < s_max_connect && i < PAD_MAX_HOST_PORTS; i++)
+-        if (s_host_state[i].connected || i == 0) connected++;
++        if (s_host_state[i].connected || pad_virtual_port(i)) connected++;
+ 
+     vm_write32(gaddr + 0x00, s_max_connect);
+     vm_write32(gaddr + 0x04, connected);
+@@ -943,10 +2261,10 @@ s32 cellPadGetInfo(CellPadInfo2* info)
+      * info+0x208+port -- saw port 0 disconnected and never polled the pad. */
+     for (u32 i = 0; i < CELL_PAD_MAX_PORT_NUM; i++) {
+         int on = (i < s_max_connect && i < PAD_MAX_HOST_PORTS &&
+-                  (s_host_state[i].connected || i == 0));
++                  (s_host_state[i].connected || pad_virtual_port(i)));
          vm_write16(gaddr + 0x00C + i * 2, on ? 0x054C : 0);   /* vendor: Sony  */
          vm_write16(gaddr + 0x10A + i * 2, on ? 0x0268 : 0);   /* product: DS3  */
 -        vm_write8(gaddr + 0x208 + i, on ? CELL_PAD_STATUS_CONNECTED : 0);
@@ -5830,16 +5986,18 @@ index 7fa8cab..31517fd 100644
      }
      return CELL_OK;
  }
-@@ -973,7 +2266,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
+@@ -972,8 +2290,8 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
+         /* Always present a virtual pad on port 0 (standard emulator behavior) so
           * boot flows that block until a controller is connected can proceed even
           * with no physical device attached. */
-         if (s_host_state[i].connected || i == 0) {
+-        if (s_host_state[i].connected || i == 0) {
 -            info->port_status[i]       = CELL_PAD_STATUS_CONNECTED;
++        if (s_host_state[i].connected || pad_virtual_port(i)) {
 +            info->port_status[i]       = CELL_PAD_STATUS_CONNECTED | pad_status_take(i);
              info->port_setting[i]      = s_port_setting[i];
              info->device_capability[i] = CELL_PAD_CAPABILITY_PS3_CONFORMITY
                                         | CELL_PAD_CAPABILITY_PRESS_MODE
-@@ -983,7 +2276,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
+@@ -983,7 +2301,7 @@ s32 cellPadGetInfo2(CellPadInfo2* info_guest)
              info->device_type[i]       = CELL_PAD_DEV_TYPE_STANDARD;
              connected++;
          } else {
@@ -5848,16 +6006,18 @@ index 7fa8cab..31517fd 100644
          }
      }
      info->now_connect = connected;
-@@ -1028,7 +2321,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+@@ -1027,8 +2345,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+     for (u32 i = 0; i < s_max_connect && i < CELL_PAD_MAX_PORT_NUM; i++) {
          /* Same virtual-pad-on-port-0 rule as cellPadGetInfo2, so both views of
           * the ports agree (a game that cross-checks them must see one truth). */
-         if ((i < PAD_MAX_HOST_PORTS && s_host_state[i].connected) || i == 0) {
+-        if ((i < PAD_MAX_HOST_PORTS && s_host_state[i].connected) || i == 0) {
 -            info->port_status[i]       = CELL_PAD_STATUS_CONNECTED;
++        if ((i < PAD_MAX_HOST_PORTS && s_host_state[i].connected) || pad_virtual_port(i)) {
 +            info->port_status[i]       = CELL_PAD_STATUS_CONNECTED | pad_status_take(i);
              info->port_setting[i]      = s_port_setting[i];
              info->device_capability[i] = CELL_PAD_CAPABILITY_PS3_CONFORMITY
                                         | CELL_PAD_CAPABILITY_PRESS_MODE
-@@ -1040,7 +2333,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+@@ -1040,7 +2358,7 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
              info->pclass_profile[i]    = 0;
              connected++;
          } else {
@@ -5866,7 +6026,7 @@ index 7fa8cab..31517fd 100644
          }
      }
      info->now_connect = connected;
-@@ -1104,6 +2397,39 @@ s32 cellPadSetPressMode(u32 port_no, u32 mode)
+@@ -1104,6 +2422,39 @@ s32 cellPadSetPressMode(u32 port_no, u32 mode)
      return CELL_OK;
  }
  
@@ -5906,7 +6066,7 @@ index 7fa8cab..31517fd 100644
  s32 cellPadGetCapabilityInfo(u32 port_no, CellPadCapabilityInfo* info)
  {
      if (!s_pad_initialized)
-@@ -1136,29 +2462,43 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1136,29 +2487,43 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
  
      param = GUEST_PTR(param, CellPadActParam*);
  
