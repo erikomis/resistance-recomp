@@ -46,6 +46,12 @@ author's [inFAMOUS 2 port](https://github.com/erikomis/infamous2-recomp). See
 > project, not affiliated with Sony Interactive Entertainment or Insomniac
 > Games.
 
+## Project metadata
+
+Project metadata for directories and tools lives in [`.recomp.json`](.recomp.json),
+following the [recomp.board specification](https://recomp.fyi/spec). Keep it
+updated when the project status, supported game version or target platforms change.
+
 ## Status
 
 | | |

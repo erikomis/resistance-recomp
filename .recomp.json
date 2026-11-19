@@ -1,0 +1,15 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Resistance: Fall of Man",
+  "system": "PS3",
+  "type": "recomp",
+  "original": {
+    "serial": "BCUS98107"
+  },
+  "status": "released",
+  "targets": [
+    "macOS"
+  ],
+  "toolchain": "ps3recomp",
+  "notes": "Public alpha for Apple silicon Macs. All 30 levels load, but the campaign has only been played by hand through Cheshire; later progression is untested."
+}
